@@ -18,7 +18,7 @@ u32 big-endian Adler-32(command || flags || transmitted payload)
 
 `N` excludes the length prefix and includes the command, flags, and checksum. If `N >= 0x7fff`, the prefix becomes `u16(0x7fff), u16(11), u32(N)`, all big-endian. Flag `0` means uncompressed; flag `2` means zlib compression. The encoder uses level 9, retaining compression only if it reduces the payload size. The checksum covers the compressed bytes when compression is used. The reference decoder allocates a 10 MiB decompression buffer.
 
-The checksum constructor passes type `0`. POCO defines this as Adler-32 in its [Checksum header](https://github.com/pocoproject/poco/blob/main/Foundation/include/Poco/Checksum.h). The compression entry points are `00d19160` and `00d190d0`. A readable, offline codec is in [framing.py](../protocol/framing.py).
+The checksum constructor passes type `0`. POCO defines this as Adler-32 in its [Checksum header](https://github.com/pocoproject/poco/blob/main/Foundation/include/Poco/Checksum.h). The compression entry points are `00d19160` and `00d190d0`. A readable, offline codec is in [framing.js](../src/framing.js).
 
 There are two logical protocols inside this transport:
 

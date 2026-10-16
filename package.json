@@ -1,0 +1,28 @@
+{
+  "name": "foxwq-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "vite --host 127.0.0.1",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.js",
+    "proxy:dev": "wrangler dev --config proxy/wrangler.jsonc",
+    "proxy:deploy": "node scripts/deploy-worker.js"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "fflate": "^0.8.2",
+    "spark-md5": "^3.0.2"
+  },
+  "devDependencies": {
+    "miniflare": "^5.20261006.0-alpha",
+    "vite": "^7.0.0",
+    "wrangler": "^4.148.0"
+  }
+}

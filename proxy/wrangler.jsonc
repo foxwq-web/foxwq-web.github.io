@@ -1,0 +1,13 @@
+{
+  "name": "proxy",
+  "main": "index.js",
+  "compatibility_date": "2026-10-08",
+  "workers_dev": true,
+  "observability": {
+    "enabled": false
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173,http://localhost:4173",
+    "ALLOWED_TARGETS": "43.132.13.39:10000,119.91.247.46:3001"
+  }
+}

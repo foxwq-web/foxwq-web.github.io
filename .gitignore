@@ -6,9 +6,17 @@ __pycache__/
 creds
 creds.*
 analysis/live/
+node_modules/
+dist/
+.wrangler/
+.env
+.env.*
+!.env.example
+.dev.vars
+proxy/.dev.vars
+cloudflare-creds
 
 # Local reverse-engineering exports
 /analysis/
 /decompiled/
 /protocol/wire-fields.json
-cloudflare-creds
