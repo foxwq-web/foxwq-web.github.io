@@ -15,7 +15,7 @@ Open the URL printed by Vite, normally `http://127.0.0.1:5173`. The app uses the
 
 Enter your Fox account in the login dialog and select a time control after connecting. An existing game can be restored on login. **Remember credentials** stores the username and password in a JavaScript-readable cookie for 30 days. The app also remembers the selected time control in a cookie.
 
-For offline UI previews, open `/?dev-screen=all` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
+For offline UI previews, open `/?dev-screen=all&mute=1` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
 
 ## Build and verification
 
@@ -29,7 +29,7 @@ npm run build
 
 The static app is built into `client/dist/`. Serve that directory with a static host; `npm run preview` previews the build locally. The Worker is deployed separately.
 
-Browser checks start their own local server:
+Browser checks start their own local server and mute audio:
 
 ```sh
 npm run test:browser:install

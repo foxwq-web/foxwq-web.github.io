@@ -223,6 +223,9 @@ export function App({ controller: c }: { controller: Controller }) {
       if (c.state.preview !== null)
         c.emit({ type: "board.hover", point: null });
     };
+    const unlock = () => {
+      c.sounds.unlock();
+    };
     const focus = (event: FocusEvent) => {
       if ((event.target as Element)?.closest("#dev-menu"))
         return;
@@ -289,6 +292,8 @@ export function App({ controller: c }: { controller: Controller }) {
     };
     for (const type of ["blur", "resize", "scroll"])
       window.addEventListener(type, clear, true);
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
     document.addEventListener("focusin", focus);
     document.addEventListener("keydown", key, true);
     document.addEventListener("keyup", key, true);
@@ -297,6 +302,8 @@ export function App({ controller: c }: { controller: Controller }) {
     return () => {
       for (const type of ["blur", "resize", "scroll"])
         window.removeEventListener(type, clear, true);
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
       document.removeEventListener("focusin", focus);
       document.removeEventListener("keydown", key, true);
       document.removeEventListener("keyup", key, true);

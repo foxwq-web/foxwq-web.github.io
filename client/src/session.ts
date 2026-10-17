@@ -3,6 +3,7 @@ import SparkMD5 from "spark-md5";
 import * as game from "./game.ts";
 import { clockReading } from "./clock.ts";
 import { Board } from "./board.ts";
+import { placementSound } from "./sound.ts";
 import { Connection } from "./transport.ts";
 import { encode, decode, signed, type Message, type Fields } from "./wire.ts";
 
@@ -43,6 +44,7 @@ export interface SessionOptions {
     failed: (reason: string) => void,
     options: TransportOptions,
   ) => Promise<Transport>;
+  onSound?: (name: string) => void;
   onChange?: (state: SessionState) => void;
 }
 type Confirmation = [
@@ -57,6 +59,7 @@ export class Session {
   proxyToken!: string;
   preferredTimeControl!: Omit<TimeControl, "id"> | null;
   connectionFactory!: NonNullable<SessionOptions["connectionFactory"]>;
+  onSound!: (name: string) => void;
   onChange!: (state: SessionState) => void;
   connection: Transport | null;
   gateway: Transport | null;
@@ -95,6 +98,7 @@ export class Session {
   pending: boolean;
   pendingAction: number | null = null;
   quitRequested: boolean;
+  startedRoom: string | null;
   clocks: Record<string, Clock>;
   pendingConfirmation: Confirmation | null;
   counting: boolean;
@@ -109,6 +113,7 @@ export class Session {
     proxyToken = "",
     preferredTimeControl = null,
     connectionFactory = Connection.open,
+    onSound = (_name) => {},
     onChange = (_state) => {},
   }: SessionOptions = {}) {
     Object.assign(this, {
@@ -118,6 +123,7 @@ export class Session {
       proxyToken,
       preferredTimeControl,
       connectionFactory,
+      onSound,
       onChange,
     });
     this.connection = null;
@@ -147,6 +153,7 @@ export class Session {
     this.pendingMove = null;
     this.pending = false;
     this.quitRequested = false;
+    this.startedRoom = null;
     this.clocks = {};
     this.pendingConfirmation = null;
     this.counting = false;
@@ -222,6 +229,7 @@ export class Session {
       this.roomKey = {};
       this.color = 0;
       this.quitRequested = false;
+      this.startedRoom = null;
       this.phase = "disconnected";
       this.status = "Disconnected";
       this.pending = false;
@@ -581,6 +589,7 @@ export class Session {
       if (op === 105) {
         if (signed(m.one(1))) throw Error("Game room rejected entry");
       } else if (op === 107) {
+        const resuming = this.phase === "resuming";
         this.roomKey = {
           1: game.GAME,
           2: header.number(8),
@@ -622,6 +631,7 @@ export class Session {
         this.counting = false;
         this.countingAnswer = null;
         this.quitRequested = false;
+        this.announceStart(resuming);
       } else if (op === 203) {
         const color = m.number(3),
           x = m.number(1),
@@ -629,7 +639,8 @@ export class Session {
         if (confirmsMove) this.pendingMove = null;
         else {
           this.rollbackMove();
-          this.board.play(x, y, color);
+          const captures = this.board.play(x, y, color);
+          this.onSound(placementSound(captures));
         }
         this.sync = m.sub(5).number(1, this.sync);
         this.clock(color, m.sub(4));
@@ -726,6 +737,7 @@ export class Session {
       } else if ([218, 219].includes(op))
         this.sync = m.sub(1).number(1, this.sync);
       else if (op === 501) {
+        const resuming = this.phase !== "joining";
         if (signed(m.one(1))) throw Error("Game synchronization failed");
         const previousBoard = this.pendingMove?.board ?? this.board;
         this.roomKey = {
@@ -787,6 +799,7 @@ export class Session {
         this.status =
           m.number(6) === 5 ? "Game ended" : "Game synchronized";
         this.pending = false;
+        if (!this.gameOver) this.announceStart(resuming);
         if (this.quitRequested) {
           if (this.gameOver) this.leaveFinishedRoom();
           else {
@@ -817,6 +830,12 @@ export class Session {
         rank: this.players[color].rank || this.account?.rank || "",
       };
     }
+  }
+  announceStart(resuming: boolean) {
+    const room = Object.values(this.roomKey).join(":");
+    if (!room || room === this.startedRoom) return;
+    this.startedRoom = room;
+    if (!resuming) this.onSound("start-play");
   }
   rollbackMove() {
     if (!this.pendingMove) return;
@@ -932,6 +951,7 @@ export class Session {
       this.counting = false;
       this.countingAnswer = null;
       this.quitRequested = false;
+      this.startedRoom = null;
       this.phase = "matching";
       this.status = "Requesting a match...";
     } finally {
@@ -1006,8 +1026,8 @@ export class Session {
       if (this.counting || this.pendingConfirmation)
         throw Error("Finish the counting confirmation first");
       if (this.board.turn !== this.color) throw Error("Wait for your turn");
-      const board = this.board.clone();
-      board.play(x, y, this.color);
+      const board = this.board.clone(),
+        captures = board.play(x, y, this.color);
       this.onlineAction(201, {
         1: x,
         2: y,
@@ -1033,6 +1053,7 @@ export class Session {
       }
       if (this.clocks[3 - this.color]) this.clocks[3 - this.color].at = now();
       this.board = board;
+      this.onSound(placementSound(captures));
     } finally {
       this.changed();
     }

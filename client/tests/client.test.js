@@ -248,8 +248,8 @@ test('late asynchronous login cannot overwrite a disconnected session', async ()
   await new Promise(r=>setTimeout(r,0));assert.equal(closed,true);assert.equal(s.phase,'disconnected');
 });
 
-test('online placement is immediate and rejection restores captures and clocks', () => {
-  const s = new Session();
+test('online placement is immediate, confirmation is silent, and rejection restores captures and clocks', () => {
+  const sounds = [], s = new Session({ onSound: name => sounds.push(name) });
   s.gateway = { send() {}, close() {} }; s.phase = 'playing'; s.color = 1; s.uid = 42;
   s.roomKey = { 1: 31000, 2: 63 }; s.clocks = { 1: { main: 60, periods: 3, byoyomi: 60, at: Date.now() / 1000 } };
   for (const [x, y] of [[1, 0], [0, 1], [2, 1]]) s.board.play(x, y, 1);
@@ -257,7 +257,7 @@ test('online placement is immediate and rejection restores captures and clocks',
   const before = s.board.clone(), clocks = structuredClone(s.clocks);
   s.play(1, 2);
   assert.equal(s.board.stones[20], 0); assert.equal(s.board.captures[1], 1);
-  assert.equal(s.pending, true);
+  assert.equal(s.pending, true); assert.deepEqual(sounds, ['stone-capture-small']);
   assert.throws(() => s.play(5, 5));
   s.gameMessage(201, decode(encode({ 1: 7 })));
   assert.deepEqual(s.board, before); assert.deepEqual(s.clocks, clocks); assert.equal(s.pending, false);
@@ -266,9 +266,9 @@ test('online placement is immediate and rejection restores captures and clocks',
   assert.equal(s.pending, true);
   s.gameMessage(203, decode(encode({ 1: 1, 2: 2, 3: 1, 5: { 1: 9 } })));
   assert.equal(s.board.moves.length, before.moves.length + 1); assert.equal(s.sync, 9);
-  assert.equal(s.pending, false);
+  assert.equal(s.pending, false); assert.deepEqual(sounds, ['stone-capture-small', 'stone-capture-small']);
   s.gameMessage(203, decode(encode({ 1: 15, 2: 15, 3: 2 })));
-  s.close();
+  assert.deepEqual(sounds, ['stone-capture-small', 'stone-capture-small', 'stone']); s.close();
 });
 
 test('send failure leaves board untouched; close undoes an unconfirmed move', () => {
@@ -286,14 +286,14 @@ test('countdown notifications populate the correct player clock', () => {
   assert.equal(s.clocks[1].main, 60);
 });
 
-test('authoritative synchronization replaces an optimistic move', () => {
-  const s = new Session();
+test('authoritative synchronization replaces an optimistic move without replaying sounds', () => {
+  const sounds = [], s = new Session({ onSound: name => sounds.push(name) });
   s.uid = 42; s.color = 1; s.phase = 'playing'; s.roomKey = { 1: 31000, 2: 63 };
   s.gateway = { send() {}, close() {} }; s.play(3, 3);
   s.gameMessage(501, decode(encode({ 1: 0, 3: [{ 1: 42, 6: 1, 7: 1200, 8: 3, 9: 60 }],
     4: [{ 1: 1, 2: 3, 3: 3, 4: 1 }], 5: { 1: 4 }, 6: 3, 12: 31000, 13: 63 })));
   assert.equal(s.pendingMove, null); assert.equal(s.pending, false); assert.equal(s.sync, 4);
-  assert.deepEqual(s.board.moves, [[1, 3, 3]]); s.close();
+  assert.deepEqual(s.board.moves, [[1, 3, 3]]); assert.deepEqual(sounds, ['stone']); s.close();
 });
 
 test('discovery waits for the game-lock check in either response order', () => {
@@ -492,24 +492,22 @@ test('a failed matchmaking send preserves the finished game screen and result', 
   s.close();
 });
 
-test('game start and restoration preserve player color and clock settings', () => {
-  const s = new Session();
+test('game start announces once, including starting as White, while synchronization and restoration stay silent', () => {
+  const sounds = [], s = new Session({onSound:name=>sounds.push(name)});
   s.uid = 42; s.phase = 'matching';
   const header = decode(encode({8:63}));
   const start = decode(encode({1:{7:30},6:23,7:202,9:[{1:42,6:2,7:300,8:3,9:30}]}));
   s.gameMessage(107, start, header); s.gameMessage(107, start, header);
-  assert.equal(s.color, 2); assert.equal(s.clocks[2].periodLength, 30);
+  assert.deepEqual(sounds, ['start-play']); assert.equal(s.color, 2); assert.equal(s.clocks[2].periodLength, 30);
   const env = decode(encode({1:0,2:{7:30},3:[{1:42,6:2,7:300,8:3,9:10}],6:3,7:23,10:202,12:31000,13:63}));
-  s.gameMessage(501, env, header);
+  s.gameMessage(501, env, header); assert.deepEqual(sounds, ['start-play']);
   s.gameMessage(108, decode(encode({2:0,3:2,4:10,5:42})), header); assert.equal(s.clocks[2].periodLength, 30);
   s.close(); s.uid = 42; s.phase = 'resuming';
   s.gameMessage(501, env, header); s.gameMessage(107, start, header);
-  assert.equal(s.color, 2); assert.equal(s.clocks[2].periodLength, 30);
-
+  assert.deepEqual(sounds, ['start-play']);
   s.close(); s.uid = 42; s.phase = 'joining';
   s.gameMessage(501, env, header); s.gameMessage(107, start, header);
-  assert.equal(s.color, 2); assert.equal(s.clocks[2].periodLength, 30);
-  s.close();
+  assert.deepEqual(sounds, ['start-play','start-play']); s.close();
 });
 
 const koSequence = [[0,1],[1,1],[1,0],[0,2],[2,1],[2,2],[10,10],[1,3],[1,2]];
@@ -530,9 +528,9 @@ test('ko and suicide validation are immutable, including the former authoritativ
   }
 });
 
-test('illegal online moves cannot change stones, history, clocks, or send a packet', () => {
+test('illegal online moves cannot change stones, history, clocks, play audio, or send a packet', () => {
   for (const [sequence, reason] of [[koSequence,/ko/],[suicideSequence,/suicide/]]) {
-    const sent = [], s = new Session();
+    const sent = [], sounds = [], s = new Session({onSound:name=>sounds.push(name)});
     s.board = position(sequence); s.phase = 'playing'; s.color = s.board.turn;
     s.roomKey = {1:31000,2:63,3:23,4:202};
     s.clocks = {2:{main:120,periods:3,byoyomi:60,at:Date.now()/1000}};
@@ -541,7 +539,7 @@ test('illegal online moves cannot change stones, history, clocks, or send a pack
     assert.throws(()=>s.play(1,1),reason);
     assert.deepEqual(structuredClone(s.board),before); assert.deepEqual(s.clocks,clocks);
     assert.equal(s.pending,false); assert.equal(s.pendingMove,null);
-    assert.deepEqual(sent,[]); s.close();
+    assert.deepEqual(sent,[]); assert.deepEqual(sounds,[]); s.close();
   }
 });
 

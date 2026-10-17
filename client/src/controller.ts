@@ -5,6 +5,8 @@ import {
   rememberedTimeControl,
   rememberTimeControl,
 } from "./time-preference.ts";
+import { FoxSounds } from "./sound.ts";
+import { ByoyomiAnnouncements } from "./clock.ts";
 import {
   reducer,
   boardAvailable,
@@ -28,6 +30,10 @@ function download(contents: string, type: string, filename: string) {
 
 export class Controller {
   readonly session: Session;
+  readonly sounds = new FoxSounds();
+  readonly announcements = new ByoyomiAnnouncements((name: string) =>
+    this.sounds.play(name),
+  );
   state!: UIState;
   password = "";
   preview = false;
@@ -46,6 +52,9 @@ export class Controller {
       proxyUrl: PROXY_URL,
       proxyToken: PROXY_TOKEN,
       preferredTimeControl: rememberedTimeControl(),
+      onSound: (name: string) => {
+        this.sounds.play(name);
+      },
       onChange: (state) => this.sync(state),
     });
   }
@@ -114,7 +123,14 @@ export class Controller {
         this.emit({ type: "form.remember", value: true });
       }
     }
+    this.audio();
     this.scheduleClock();
+  }
+  audio() {
+    const s = this.state.session;
+    this.announcements.update(s, this.state.now);
+    if (s.phase !== "playing") this.sounds.stopVoice();
+    else if (s.turn !== s.color || s.pending) this.sounds.stopCountdown();
   }
   scheduleClock() {
     clearTimeout(this.clockTimer);
@@ -127,6 +143,7 @@ export class Controller {
       return;
     this.clockTimer = setTimeout(() => {
       this.emit({ type: "clock.tick", now: Date.now() / 1000 });
+      this.audio();
       this.scheduleClock();
     }, 250);
   }
@@ -243,5 +260,6 @@ export class Controller {
     clearTimeout(this.errorTimer);
     this.suppress = true;
     this.session.close();
+    this.sounds.stopVoice();
   }
 }

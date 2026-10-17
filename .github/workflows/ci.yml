@@ -29,4 +29,5 @@ jobs:
       - run: npm run proxy:check
       - run: npm run test:browser:install
       - run: npm run test:browser
+      - run: npm run test:browser -- --audio-only
       - run: npm run test:browser -- --production-shortcuts

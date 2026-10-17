@@ -134,6 +134,8 @@ export async function applyDevScreen(session: Session, id: string) {
   session.proxyUrl = "ws://offline.invalid";
   session.proxyToken = "offline-preview";
   session.preferredTimeControl = null;
+  const sound = session.onSound;
+  session.onSound = () => {};
   let prompt: Prompt | null = null, menuError = "", boardError = "";
   const packet = (command: number, fields: Fields) => session.receive(
     session.generation, { command, flags: 0, payload: encode(fields) });
@@ -210,6 +212,7 @@ export async function applyDevScreen(session: Session, id: string) {
     clearTimeout(session.timer ?? undefined);
     clearTimeout(session.bootstrapTimer);
     session.timer = null;
+    session.onSound = sound;
     session.login = () => { throw Error("Offline preview. Remove dev-screen to connect to Fox."); };
     session.connectionFactory = async () => { throw Error("Offline development preview"); };
   }
@@ -229,6 +232,7 @@ export function mountDevNavigation(id: string) {
     const a = document.createElement("a"),
       url = new URL(location.href);
     url.searchParams.set("dev-screen", screen);
+    url.searchParams.set("mute", "1");
     a.href = url.href;
     a.textContent = label;
     a.tabIndex = 0;

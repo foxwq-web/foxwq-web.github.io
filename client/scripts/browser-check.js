@@ -6,13 +6,14 @@ import assert from 'node:assert/strict';
 import { DEV_SCREENS } from '../src/dev-screens.ts';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
-const browser = await chromium.launch({ headless: true });
+const quietURL = value => { const target = new URL(value); target.searchParams.set('mute', '1'); return target.href; };
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const browserErrors = [];
 let websocketCount = 0;
 try {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(url);
+  await page.goto(quietURL(url));
   const cdp = await context.newCDPSession(page);
   cdp.on('Network.webSocketCreated', ({ url: socketURL }) => {
     const socket = new URL(socketURL);
@@ -26,7 +27,7 @@ try {
     let timer;
     try {
       return await Promise.race([
-        cdp.send(method, params),
+        cdp.send(method, method === 'Page.navigate' ? { ...params, url: quietURL(params.url) } : params),
         new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`CDP ${method} timed out`)), 20000); })
       ]);
     } finally { clearTimeout(timer); }
@@ -63,6 +64,17 @@ try {
   };
   await call('Runtime.enable');
   await call('Network.enable');
+  if (process.argv.includes('--audio-only')) {
+    const waitForEvent = method => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { cdp.off(method, listener); reject(Error(`CDP ${method} timed out`)); }, 20000);
+      const listener = params => { clearTimeout(timer); resolve(params); };
+      cdp.once(method, listener);
+    });
+    const { checkAudio } = await import('./audio-browser-check.ts');
+    await checkAudio({ call, js, wait, pause, url, waitForEvent });
+    assert.deepEqual(browserErrors, []);
+  } else {
+
   for (const screen of ['matchmaking', 'board-black', 'unknown']) {
     const shortcut = new URL(url); shortcut.searchParams.set('dev-screen', screen);
     await js('window.shortcutPageMarker=true');
@@ -134,6 +146,7 @@ try {
     if (fixture.id === 'login') {
       await js("document.getElementById('dev-menu').open=true");
       assert.equal(await js("document.querySelectorAll('#dev-screen-tools li a').length"), DEV_SCREENS.length);
+      assert.equal(await js("[...document.querySelectorAll('#dev-screen-tools a')].every(a=>new URL(a.href).searchParams.get('mute')==='1')"), true);
       await js("document.getElementById('dev-menu').open=false");
     }
     assert.equal(await js("document.getElementById('dev-screens')"), null, fixture.id);
@@ -303,6 +316,7 @@ try {
   if (!production) {
     await wait("document.querySelector('#dev-screens li') != null");
     assert.equal(await js("document.querySelectorAll('#dev-screens li').length"), DEV_SCREENS.length);
+    assert.equal(await js("[...document.querySelectorAll('#dev-screens a')].every(a => new URL(a.href).searchParams.get('mute') === '1')"), true);
   }
   assert.equal(websocketCount, 0, 'Offline previews must never open an application WebSocket');
   console.log(`Browser offline previews passed: ${DEV_SCREENS.length} states, reloads, index, production gating`);
@@ -606,6 +620,99 @@ try {
   console.log('Browser checks passed: Escape ignored, stable pending login, default-colored errors, modal gating, cookies, matchmaking, restoration, Fox play/resignation/SGF');
 
 
+  await call('Page.navigate', { url: `${url}/scripts/sound-preview.html` });
+  await wait("window.foxSoundDemo != null && document.getElementById('reset')?.onclick != null");
+  await call('Runtime.evaluate', { expression: `(async()=>{
+    const audio=window.foxSoundDemo.sounds;
+    window.soundCalls=[];
+    const play=audio.play;
+    audio.play=function(name){window.soundCalls.push(name);return play.call(this,name);};
+    audio.unlock();await audio.context.resume();await audio.loading;
+    window.decodedSounds=audio.buffers.size;
+  })()`, awaitPromise: true, userGesture: true });
+  assert.equal(await js('window.decodedSounds'), 17);
+  assert.equal(await js('foxSoundDemo.sounds.muted'), true);
+  assert.equal(await js('foxSoundDemo.sounds.output.gain.value'), 0);
+
+
+  const renderedAudio = await js(`(async()=>{
+    const {FoxSounds}=await import('/src/sound.ts');
+    const results=[];
+    for(const muted of [true,false]) for(const name of ['stone','stone-capture-small','stone-capture-medium','stone-capture-large','start-play']) {
+      const NativeContext=window.AudioContext;
+      let audio;
+      try {
+        window.AudioContext=class extends OfflineAudioContext {
+          constructor(){super(1,57600,48000);}
+        };
+        audio=new FoxSounds({muted});
+      } finally { window.AudioContext=NativeContext; }
+      await audio.loading;
+      Object.defineProperty(audio.context,'state',{get:()=> 'running'});
+      if (!audio.buffers.has(name)) throw Error('Missing decoded sound: '+name);
+      audio.play(name);
+      const rendered=await audio.context.startRendering();
+      const samples=rendered.getChannelData(0);
+      results.push({muted,name,gain:audio.output.gain.value,
+        hasSignal:samples.some(sample=>sample!==0),
+        delayedCaptureSignal:name.startsWith('stone-capture-') ? samples.slice(24000).some(sample=>Math.abs(sample)>.001) : null});
+    }
+    return results;
+  })()`);
+  assert.deepEqual(renderedAudio, [true,false].flatMap(muted =>
+    ['stone','stone-capture-small','stone-capture-medium','stone-capture-large','start-play'].map(name =>
+      ({muted,name,gain:muted?0:1,hasSignal:!muted,delayedCaptureSignal:name.startsWith('stone-capture-')?!muted:null}))));
+  await call('Runtime.evaluate', {expression: "document.getElementById('start-play').click()",userGesture:true});
+  await wait("window.soundCalls.includes('start-play')");
+  assert.equal(await js("(()=>{const a=foxSoundDemo.sounds,v=a.voice;a.stopCountdown();return v!=null&&v===a.voice})()"), true);
+  await js(`(async()=>{const audio=foxSoundDemo.sounds;audio.stopVoice();window.soundCalls=[];
+    const {ByoyomiAnnouncements}=await import('/src/clock.ts');
+    const speaker=new ByoyomiAnnouncements(name=>audio.play(name));
+    const state={phase:'playing',gameId:'audio-check',color:1,turn:1,pending:false,moves:0,
+      clocks:{1:{main:2,periods:3,byoyomi:30,periodLength:30,at:0}}};
+    speaker.update(state,0);speaker.update(state,2);speaker.update(state,2.25);
+    const voice=audio.voice;audio.play('count-9');window.announcementProtected=voice===audio.voice;
+    speaker.update(state,32);speaker.update(state,62);
+  })()`);
+  assert.equal(await js('window.announcementProtected'), true);
+  assert.deepEqual(await js('window.soundCalls'), ['byoyomi-start','count-9','periods-2','periods-1']);
+  await js('foxSoundDemo.sounds.stopVoice();window.soundCalls=[]');
+  const clickDemo = "(()=>{const b=document.getElementById('board'),r=b.getBoundingClientRect();b.dispatchEvent(new MouseEvent('click',{clientX:r.left+90*r.width/420,clientY:r.top+90*r.height/420,bubbles:true}));})()";
+  await js(clickDemo);
+  assert.match(await js("document.getElementById('status').textContent"), /waiting 2 seconds/);
+  assert.deepEqual(await js('window.soundCalls'), ['stone']);
+  await wait("document.getElementById('status').textContent.includes('Confirmed silently')");
+  assert.deepEqual(await js('window.soundCalls'), ['stone']);
+  await js("document.getElementById('reset').click();document.getElementById('reject').checked=true");
+  await js(clickDemo);
+  await wait("document.getElementById('status').textContent.includes('Rejected')");
+  assert.deepEqual(await js('window.soundCalls'), ['stone','stone']);
+
+
+  for (const [count, name] of [[1,'stone-capture-small'],[2,'stone-capture-small'],[3,'stone-capture-medium'],[15,'stone-capture-medium'],[16,'stone-capture-large']]) {
+    await js(`document.getElementById('reset').click();document.getElementById('reject').checked=false;window.soundCalls=[];
+      (()=>{const b=foxSoundDemo.session.board;b.captures[1]=100;
+        for(let x=1;x<=${count};x++){b.stones[19+x]=2;b.stones[x]=1;if(x!==1)b.stones[38+x]=1;}
+        b.stones[19]=1;b.stones[20+${count}]=1;
+        const canvas=document.getElementById('board'),r=canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+50*r.width/420,clientY:r.top+70*r.height/420,bubbles:true}));})()`);
+    assert.deepEqual(await js('window.soundCalls'), [name]);
+    assert.equal(await js('foxSoundDemo.session.board.captures[1]'), 100+count);
+    await wait("document.getElementById('status').textContent.includes('Confirmed silently')");
+    assert.deepEqual(await js('window.soundCalls'), [name]);
+  }
+  await js(`document.getElementById('reset').click();document.getElementById('reject').checked=true;window.soundCalls=[];
+    (()=>{const b=foxSoundDemo.session.board;b.stones[20]=2;for(const p of [1,19,21])b.stones[p]=1;
+      const canvas=document.getElementById('board'),r=canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+50*r.width/420,clientY:r.top+70*r.height/420,bubbles:true}));})()`);
+  assert.deepEqual(await js('window.soundCalls'), ['stone-capture-small']);
+  await wait("document.getElementById('status').textContent.includes('Rejected')");
+  assert.equal(await js('foxSoundDemo.session.board.stones[20]'), 2);
+  assert.deepEqual(await js('window.soundCalls'), ['stone-capture-small']);
+  await js("document.getElementById('countdown').click()");
+  await wait("window.soundCalls.includes('count-9')");
+  assert.equal(await js('window.soundCalls.at(-1)'), 'count-9');
+  console.log('Browser sound checks passed: zero-output mute graph, 17 WAVs decode, delayed capture audio, capture thresholds, announcements, placement, confirmation, rejection, countdown');
   await call('Page.navigate', { url });
   await wait("document.getElementById('pass') != null");
 
@@ -812,8 +919,8 @@ try {
       const s=matchSession;s.board=new Board();for(const [x,y] of ${JSON.stringify(sequence)})s.board.play(x,y);
       s.phase='playing';s.color=s.board.turn;s.pending=false;s.counting=false;s.pendingConfirmation=null;
       s.roomKey={1:31000,2:63,3:23,4:202};s.clocks={};s.status=${JSON.stringify(name + ' check')};
-      window.illegalPackets=0;
-      s.gateway={send(){illegalPackets++},close(){}};
+      window.illegalPackets=0;window.illegalSounds=0;
+      s.gateway={send(){illegalPackets++},close(){}};s.onSound=()=>illegalSounds++;
       window.boardBeforeIllegal=JSON.stringify(s.board);s.changed();
     })()`);
     await wait(`document.getElementById('board-status').textContent===${JSON.stringify(name + ' check')} && document.getElementById('connection-layer').hidden`);
@@ -821,10 +928,10 @@ try {
     assert.equal(await js("document.getElementById('board').style.cursor"),'default');
     await pointerAt(1,1,'click');
     assert.equal(await js('JSON.stringify(matchSession.board)===boardBeforeIllegal'),true);
-    assert.equal(await js('illegalPackets'),0);
+    assert.equal(await js('illegalPackets'),0);assert.equal(await js('illegalSounds'),0);
   }
   await js('matchSession.close()');
-  console.log('Browser legality checks passed: online ko and suicide have no preview, placement, or packet');
+  console.log('Browser legality checks passed: online ko and suicide have no preview, placement, packet, or sound');
 
   await js(`(() => {
     const s=matchSession;s.phase='finished';s.color=1;s.status='player panel check';
@@ -1004,6 +1111,7 @@ try {
     console.log('Browser live fresh and remembered login through Cloudflare proxy and normal-match availability verified');
   }
   assert.deepEqual(browserErrors, []);
+  }
   }
 } finally {
   await browser.close();

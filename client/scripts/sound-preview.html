@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Fox sound and latency check</title>
+<style>*,*::before,*::after{font-weight:normal}body{font:16px system-ui;max-width:700px;margin:32px auto;background:#f5f3e9}button,label{margin:8px}canvas{display:block;width:420px;height:420px;margin:20px 0}output{display:block}</style>
+<h1>Fox sound and latency check</h1>
+<p>This development demo uses the real board, session, clock and audio code with a simulated server. Confirmations take 2 seconds. The demo uses 12-second periods; normal games use 60 seconds.</p>
+<button id="reset">Reset Board</button><button id="start-play">Play Game-Start Announcement</button><button id="countdown">Start Main Time / Byoyomi Demo</button>
+<label><input id="reject" type="checkbox">Reject next move</label>
+<output id="status">Click the board: the stone and sound should be immediate.</output>
+<canvas id="board" width="420" height="420"></canvas>
+<script type="module">
+import { Session } from '../src/session.ts';
+import { Board } from '../src/board.ts';
+import { encode, decode } from '../src/wire.ts';
+import { FoxSounds } from '../src/sound.ts';
+import { clockReading, ByoyomiAnnouncements } from '../src/clock.ts';
+const sounds = new FoxSounds(), speaker = new ByoyomiAnnouncements(name => sounds.play(name));
+const session = new Session({ onSound: name => sounds.play(name) });
+
+window.foxSoundDemo = { sounds, session };
+const board = document.querySelector('canvas'), ctx = board.getContext('2d'), status = document.querySelector('output');
+let reply;
+window.addEventListener('pointerdown', () => sounds.unlock());
+window.addEventListener('keydown', () => sounds.unlock());
+function reset() {
+  clearTimeout(reply); session.close(); sounds.stopVoice(); speaker.reset(); session.board = new Board(); session.clocks = {};
+  session.phase = 'playing'; session.color = 1; session.roomKey = { 1: 31000, 2: 63 };
+  session.gateway = { close() {}, send(command, payload) {} };
+  status.textContent = 'Click the board: the stone and sound should be immediate.'; draw();
+}
+function draw() {
+  ctx.fillStyle = '#d6b77d'; ctx.fillRect(0, 0, 420, 420); ctx.strokeStyle = '#655634';
+  for(let i=0;i<19;i++){const p=30+i*20;ctx.beginPath();ctx.moveTo(30,p);ctx.lineTo(390,p);ctx.moveTo(p,30);ctx.lineTo(p,390);ctx.stroke();}
+  session.board.stones.forEach((color,p)=>{if(!color)return;ctx.fillStyle=color===1?'#171717':'white';ctx.beginPath();ctx.arc(30+p%19*20,30+Math.floor(p/19)*20,9,0,Math.PI*2);ctx.fill();});
+}
+board.onclick = e => {
+  if(session.pending || session.board.turn !== session.color) return;
+  const r=board.getBoundingClientRect(),x=Math.round(((e.clientX-r.left)*420/r.width-30)/20),y=Math.round(((e.clientY-r.top)*420/r.height-30)/20);
+  try {
+    session.play(x,y); sounds.stopVoice(); draw(); status.textContent='Stone placed; waiting 2 seconds for the simulated server...';
+    const reject=document.querySelector('#reject').checked; document.querySelector('#reject').checked=false;
+    reply=setTimeout(()=>{
+      if(reject){session.gameMessage(201,decode(encode({1:7})));status.textContent='Rejected: board and clock restored. Try again.';}
+      else {
+        session.gameMessage(203,decode(encode({1:x,2:y,3:session.color})));
+        session.color=session.board.turn;status.textContent='Confirmed silently. You may play the next stone.';
+      }
+      draw();
+    },2000);
+  } catch(error){status.textContent=error.message;}
+};
+document.querySelector('#reset').onclick=reset;
+document.querySelector('#start-play').onclick=async()=>{sounds.unlock();await sounds.loading;sounds.play('start-play');};
+document.querySelector('#countdown').onclick=async()=>{
+  reset();await sounds.loading;
+  session.clocks[1]={main:3,periods:3,byoyomi:10,periodLength:12,at:Date.now()/1000};
+};
+setInterval(()=>{
+  const state=session.snapshot();speaker.update(state);
+  if(state.clocks[1]&&!state.pending){const c=clockReading(state.clocks[1],Date.now()/1000-state.clocks[1].at);status.textContent=`${c.periods} periods left · ${c.seconds}s. Place a stone to stop counting.`;}
+},100);
+reset();
+</script></html>
