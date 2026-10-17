@@ -1,0 +1,14 @@
+analysis/ghidra/
+analysis/*.log
+analysis/brew-before.txt
+__pycache__/
+.DS_Store
+creds
+creds.*
+analysis/live/
+
+# Local reverse-engineering exports
+/analysis/
+/decompiled/
+/protocol/wire-fields.json
+cloudflare-creds
