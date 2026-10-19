@@ -6,12 +6,24 @@ import { Board } from '../src/board.ts';
 import { encode, decode, signed, readVarint } from '../src/wire.ts';
 import { encode as frame, decodeOne, gatewayPayload, splitGateway } from '../src/framing.ts';
 import { Session, loginRequest } from '../src/session.ts';
+import type { Fields, Message } from '../src/wire.ts';
+import type { Frame } from '../src/framing.ts';
+import type { Transport } from '../src/transport.ts';
+import type { SessionState } from '../src/state.ts';
+import type { NetworkEntry } from '../src/network-log.ts';
 import * as game from '../src/game.ts';
+
+function unpack(payload: Buffer): [Message, Message] {
+  const [header, body] = game.unpack(payload);
+  assert.ok(header && body);
+  return [header, body];
+}
+
 
 test('wire preserves nested, repeated and all 64-bit values; rejects malformed input', () => {
   const m = decode(encode({ 1: -1, 2: { 1: 1200, 2: 60, 3: 3 }, 3: [Buffer.from('a'), Buffer.from('b')], 4: 18446744073709551615n }));
   assert.equal(signed(m.one(1)), -1); assert.equal(m.sub(2).one(1), 1200);
-  assert.deepEqual(m.get(3).map(b => b.toString()), ['a', 'b']); assert.equal(m.one(4), 18446744073709551615n);
+  assert.deepEqual(m.get(3)!.map(b => b.toString()), ['a', 'b']); assert.equal(m.one(4), 18446744073709551615n);
   for (const bytes of ['00', '0a056869', '08ffffffffffffffffffff']) assert.throws(() => decode(Buffer.from(bytes, 'hex')));
   assert.throws(() => readVarint(Buffer.from([128])));
 });
@@ -22,7 +34,7 @@ test('login contract', () => {
 test('login profile is available before matchmaking and follows the current player', () => {
   const s = new Session();
   s.connection = { send() {}, close() {} };
-  s.receive(s.generation, { command: 2005, payload: encode({
+  s.receive(s.generation, { command: 2005, flags: 0, payload: encode({
     1: 0, 2: 42, 3: { 1: 42, 2: 'account', 3: 'StoneRiver', 4: 20 }, 8: 'token',
   }) });
   try {
@@ -38,11 +50,11 @@ test('login profile is available before matchmaking and follows the current play
 });
 test('Fox credential rejection shows a login error and stops authentication', () => {
   const s = new Session();
-  const sent = [];
+  const sent: Parameters<Transport["send"]>[] = [];
   let closed = false;
   s.connection = { send: (...args) => sent.push(args), close: () => { closed = true; } };
   s.phase = 'authenticating';
-  s.receive(s.generation, { command: 2005, payload: encode({ 1: 111231 }) });
+  s.receive(s.generation, { command: 2005, flags: 0, payload: encode({ 1: 111231 }) });
   assert.equal(s.phase, 'error');
   assert.equal(s.status, 'incorrect credentials');
   assert.equal(s.uid, 0);
@@ -54,14 +66,14 @@ test('framing matches reference bytes, fragmentation, extended headers and compr
   const fixture = Buffer.from('000707d00001b800d8', 'hex');
   assert.deepEqual(frame(2000, Buffer.alloc(0)), fixture);
   for (let i = 0; i < fixture.length; i++) assert.equal(decodeOne(fixture.subarray(0, i)), null);
-  assert.equal(decodeOne(fixture)[0].command, 2000);
+  assert.equal(decodeOne(fixture)![0].command, 2000);
   assert.throws(() => decodeOne(Buffer.from('000707d00001b800d9', 'hex')), /Adler/);
   const small = frame(7000, Buffer.alloc(0x7ffe - 7, 120)), large = frame(7000, Buffer.alloc(0x7fff - 7, 120));
   assert.equal(small.readUInt16BE(0), 0x7ffe); assert.equal(large.subarray(0, 8).toString('hex'), '7fff000b00007fff');
-  assert.equal(decodeOne(large)[0].payload.length, 0x7fff - 7);
+  assert.equal(decodeOne(large)![0].payload.length, 0x7fff - 7);
   const packet = frame(26200, Buffer.alloc(5000, 97), true);
-  assert.equal(packet[4], 2); assert.equal(decodeOne(Buffer.concat([packet, fixture]))[1], packet.length);
-  assert.deepEqual(decodeOne(packet)[0].payload, Buffer.alloc(5000, 97)); assert.throws(() => decodeOne(packet, 100));
+  assert.equal(packet[4], 2); assert.equal(decodeOne(Buffer.concat([packet, fixture]))![1], packet.length);
+  assert.deepEqual(decodeOne(packet)![0].payload, Buffer.alloc(5000, 97)); assert.throws(() => decodeOne(packet, 100));
   const envelope = gatewayPayload(Buffer.from('0801', 'hex'), Buffer.from('1002', 'hex'));
   assert.equal(envelope.toString('hex'), '000208011002'); assert.deepEqual(splitGateway(envelope).map(b => b.toString('hex')), ['0801', '1002']);
 });
@@ -78,17 +90,17 @@ test('capture, suicide, ko, passes and SGF escaping', () => {
   assert.match(recorded.sgf('', 'a]b'), /PB\[a\\\]b\]/); assert.match(recorded.sgf(), /;B\[dd\];W\[\];B\[\]/);
 });
 function countingSession() {
-  const s = new Session(), sent = [];
-  s.gateway = { send: (command, payload) => sent.push([command, ...game.unpack(payload)]), close() {} };
+  const s = new Session(), sent: [number, Message, Message][] = [];
+  s.gateway = { send: (command, payload) => sent.push([command, ...unpack(Buffer.from(payload))]), close() {} };
   s.uid = 42; s.color = 1; s.roomKey = { 1: 31000, 2: 63, 3: 23, 4: 202 }; s.phase = 'playing';
-  return { s, sent, notify: (op, fields) => s.gameMessage(op, decode(encode(fields)), new Map()) };
+  return { s, sent, notify: (op: number, fields: Fields) => s.gameMessage(op, decode(encode(fields)), decode(encode({}))) };
 }
 test('counting request uses the game node, blocks duplicate requests and recovers from rejection', () => {
   const { s, sent, notify } = countingSession();
   s.requestCounting();
-  assert.equal(sent.at(-1)[0], 26200); assert.equal(sent.at(-1)[1].one(1), 301);
-  assert.equal(sent.at(-1)[1].one(7), 31000); assert.equal(sent.at(-1)[1].one(8), 63);
-  assert.equal(sent.at(-1)[2].one(1), 0);
+  assert.equal(sent.at(-1)![0], 26200); assert.equal(sent.at(-1)![1].one(1), 301);
+  assert.equal(sent.at(-1)![1].one(7), 31000); assert.equal(sent.at(-1)![1].one(8), 63);
+  assert.equal(sent.at(-1)![2].one(1), 0);
   assert.throws(() => s.requestCounting(), /already active/);
   notify(301, { 1: 0 }); assert.equal(s.pending, false); assert.equal(s.counting, true);
   assert.throws(() => s.play(3, 3), /confirmation/); assert.throws(() => s.passTurn(), /confirmation/);
@@ -123,7 +135,7 @@ test('passing on your turn leaves an incoming counting request available to answ
     notify(303, { 1: 0, 2: 1 });
     const confirmation = structuredClone(s.pendingConfirmation);
     s.passTurn();
-    assert.equal(sent.at(-1)[1].one(1), 204);
+    assert.equal(sent.at(-1)![1].one(1), 204);
     assert.equal(s.pending, true);
     assert.deepEqual(s.pendingConfirmation, confirmation);
   } finally { s.close(); }
@@ -134,8 +146,8 @@ test('both counting confirmation stages reply with their own mode; only Fox ends
     notify(303, { 1: 0, 2: mode, 8: 2 });
     assert.equal(s.snapshot().confirmationKind, mode === 1 ? 'counting-request' : 'counting-result');
     s.confirm(accept);
-    assert.equal(sent.at(-1)[1].one(1), 304); assert.equal(sent.at(-1)[1].one(8), 63);
-    assert.equal(sent.at(-1)[2].one(1), Number(accept)); assert.equal(sent.at(-1)[2].one(2), mode);
+    assert.equal(sent.at(-1)![1].one(1), 304); assert.equal(sent.at(-1)![1].one(8), 63);
+    assert.equal(sent.at(-1)![2].one(1), Number(accept)); assert.equal(sent.at(-1)![2].one(2), mode);
     assert.equal(s.snapshot().confirmation, false); assert.equal(s.phase, 'playing');
     assert.throws(() => s.confirm(accept), /No pending/);
     notify(304, { 1: 0 }); assert.equal(s.counting, accept);
@@ -178,6 +190,33 @@ test('counting errors do not open a dialog, failed answers can be retried, disco
   notify(303, { 1: 0, 2: 1 }); s.close();
   assert.equal(s.snapshot().confirmation, false); assert.equal(s.counting, false);
 });
+test('Fox clock resumption ends counting after a rejection without a 306 notification', () => {
+  for (const mode of [1, 2]) {
+    const { s, sent, notify } = countingSession();
+    try {
+      // fox-network-log-20261020T0356: 303, reject, 304 status 1,
+      // then 109 in the same inbound packet. Fox subsequently plays a move.
+      s.color = 2;
+      notify(303, { 1: 0, 2: mode, 7: 20 });
+      s.confirm(false);
+      notify(304, { 1: 1 });
+      notify(109, { 1: 3, 2: { 1: 0, 2: 732, 3: 3, 4: 60, 5: 43, 6: 23 } });
+      assert.equal(s.pending, false);
+      assert.equal(s.counting, false);
+      assert.equal(s.countingAnswer, null);
+      assert.equal(s.snapshot().confirmation, false);
+      assert.equal(s.clocks[1].main, 732);
+      assert.throws(() => s.confirm(false), /No pending confirmation/);
+      notify(203, { 1: 1, 2: 3, 3: 1, 5: { 1: 31 } });
+      s.play(3, 3);
+      assert.equal(sent.at(-1)![1].number(1), 201);
+      assert.equal(s.pending, true);
+      // An ordinary clock resumption must not clear an unrelated pending move.
+      notify(109, { 2: { 2: 700, 3: 3, 4: 60, 5: s.uid } });
+      assert.equal(s.pending, true);
+    } finally { s.close(); }
+  }
+});
 test('counting result decodes the float area and server winner without using final-result margin', () => {
   const count = Buffer.alloc(4); count.writeFloatLE(185.5);
   const m = decode(Buffer.concat([encode({ 1: 0, 2: 2, 8: 1 }), Buffer.from([0x35]), count]));
@@ -189,26 +228,29 @@ test('counting result decodes the float area and server winner without using fin
 
 
 test('browser WebSocket transport: login, gateway, start before entry, play, pass, resume, resign', async () => {
-  const Original = globalThis.WebSocket, requests = [];
+  const Original = globalThis.WebSocket, requests: [number, number][] = [];
   const room = {1:31000,2:63,3:23,4:202}, user = {1:42,6:1,7:1200,8:3,9:60}, rules = {1:19,6:1200,7:60,8:3};
   class FakeWebSocket extends EventTarget {
     static OPEN=1;
-    constructor(url, protocols) {
+    url: URL;
+    readyState: number;
+    bufferedAmount: number;
+    constructor(url: string | URL, protocols?: string | string[]) {
       super(); this.url=new URL(url); this.readyState=0; this.bufferedAmount=0;
       assert.deepEqual(protocols,['tcp-proxy','a'.repeat(43)]);
       queueMicrotask(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});
     }
     close(){this.readyState=3;queueMicrotask(()=>this.dispatchEvent(new Event('close')));}
-    response(command, body) {
+    response(command: number, body: Uint8Array) {
       const packet=frame(command,body,true);
 
       for(const part of [packet.subarray(0,3),packet.subarray(3)]) queueMicrotask(()=>{
         if(this.readyState===1)this.dispatchEvent(new MessageEvent('message',{data:Uint8Array.from(part).buffer}));
       });
     }
-    reply(service,op,body){this.response(26200,game.envelope(42,service,op,body,service===31000?63:1));}
-    send(data){
-      const [p]=decodeOne(Buffer.from(data));
+    reply(service: number,op: number,body: Fields){this.response(26200,game.envelope(42,service,op,body,service===31000?63:1));}
+    send(data: Uint8Array){
+      const [p]=decodeOne(Buffer.from(data))!;
       if(this.url.searchParams.get('port')==='10000') {
         const m=decode(p.payload);
         if(p.command===2000){assert.equal(m.text(7).length,12);this.response(2005,encode({1:0,2:42,8:Buffer.from('private-token')}));}
@@ -216,7 +258,7 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
         else if(p.command===3010)this.response(3015,encode({1:0}));
         return;
       }
-      const [h,m]=game.unpack(p.payload), service=h.one(7), op=h.one(1); requests.push([service,op]);
+      const [h,m]=game.unpack(p.payload), service=h.number(7), op=h.number(1); requests.push([service,op]);
       assert.equal(h.one(3),42);assert.equal(h.text(19),'11509231');
       if(service===20001&&op===1){assert.equal(m.text(1),'private-token');this.reply(service,op,{1:0});}
       else if(op===100008)this.reply(service,op,{1:0});
@@ -230,29 +272,29 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
       else if(op===311){assert.deepEqual(game.plain(m.sub(2)),room);this.reply(service,op,{1:0});this.reply(service,402,{1:0,2:2,3:-1,4:3});}
     }
   }
-  globalThis.WebSocket=FakeWebSocket;
+  globalThis.WebSocket=FakeWebSocket as unknown as typeof WebSocket;
   const s=new Session({proxyUrl:'wss://example.com/proxy',proxyToken:'a'.repeat(43)});
-  const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}assert.fail(JSON.stringify(s.snapshot()));};
+  const wait=async (predicate: () => boolean)=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}assert.fail(JSON.stringify(s.snapshot()));};
   try {
     s.login('test','password');await wait(()=>s.phase==='ready');assert.equal(s.servers.length,1);assert.ok(!JSON.stringify(s.snapshot()).includes('private-token'));
     s.match();await wait(()=>s.phase==='playing');assert.equal(s.color,1);
     s.play(3,3);await wait(()=>s.board.moves.length===2);assert.equal(s.sync,2);
     s.passTurn();await wait(()=>s.board.moves.length===3);s.send(31000,501,{},63);await wait(()=>s.status==='Game synchronized');
     assert.deepEqual(s.board.moves,[[1,3,3],[2,15,15],[1,null,null]]);s.resign();await wait(()=>s.phase==='finished');assert.equal(s.result,'W+R');assert.match(s.board.sgf(s.result),/RE\[W\+R\]/);
-    const log = JSON.parse(s.networkLog.serialize());
+    const log: NetworkEntry[] = JSON.parse(s.networkLog.serialize());
     assert.ok(Array.isArray(log));
     assert.ok(!s.networkLog.serialize().includes('a'.repeat(43)), 'proxy access token is excluded');
     assert.deepEqual([...new Set(log.filter(e => e.source.startsWith('client:')).map(e => e.destination))],
       ['43.132.13.39:10000', '119.91.247.46:3001']);
-    const packets = (client, inbound) => {
+    const packets = (client: string, inbound: boolean) => {
       const chunks = log.filter(e => (inbound ? e.destination : e.source) === client);
       let stream = Buffer.concat(chunks.map(e => Buffer.from(e.payload, 'base64')));
-      const result = [];
-      while (stream.length) { const [packet, size] = decodeOne(stream); result.push(packet); stream = stream.subarray(size); }
+      const result: Frame[] = [];
+      while (stream.length) { const [packet, size] = decodeOne(stream)!; result.push(packet); stream = stream.subarray(size); }
       return result;
     };
-    const firstClient = log.find(e => e.source.startsWith('client:')).source;
-    const secondClient = log.find(e => e.source.startsWith('client:') && e.source !== firstClient).source;
+    const firstClient = log.find(e => e.source.startsWith('client:'))!.source;
+    const secondClient = log.find(e => e.source.startsWith('client:') && e.source !== firstClient)!.source;
     assert.ok(!packets(firstClient, false).some(p => p.command === 2000));
     assert.ok(!packets(firstClient, true).some(p => p.command === 2005));
     assert.ok(log.some(e => !e.payload));
@@ -264,14 +306,14 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
   } finally {s.close();globalThis.WebSocket=Original;}
 });
 test('late asynchronous login cannot overwrite a disconnected session', async () => {
-  let resolve;let closed=false;
+  let resolve!: (transport: Transport) => void;let closed=false;
   const s=new Session({proxyUrl:'wss://example.com',proxyToken:'a'.repeat(43),connectionFactory:()=>new Promise(r=>{resolve=r;})});
   s.login('test','password');s.close();resolve({close(){closed=true;},send(){assert.fail('stale send');}});
   await new Promise(r=>setTimeout(r,0));assert.equal(closed,true);assert.equal(s.phase,'disconnected');
 });
 
 test('online placement is immediate, confirmation is silent, and rejection restores captures and clocks', () => {
-  const sounds = [], s = new Session({ onSound: name => sounds.push(name) });
+  const sounds: string[] = [], s = new Session({ onSound: name => sounds.push(name) });
   s.gateway = { send() {}, close() {} }; s.phase = 'playing'; s.color = 1; s.uid = 42;
   s.roomKey = { 1: 31000, 2: 63 }; s.clocks = { 1: { main: 60, periods: 3, byoyomi: 60, at: Date.now() / 1000 } };
   for (const [x, y] of [[1, 0], [0, 1], [2, 1]]) s.board.play(x, y, 1);
@@ -281,15 +323,15 @@ test('online placement is immediate, confirmation is silent, and rejection resto
   assert.equal(s.board.stones[20], 0); assert.equal(s.board.captures[1], 1);
   assert.equal(s.pending, true); assert.deepEqual(sounds, ['stone-capture-small']);
   assert.throws(() => s.play(5, 5));
-  s.gameMessage(201, decode(encode({ 1: 7 })));
+  s.gameMessage(201, decode(encode({ 1: 7 })), decode(encode({})));
   assert.deepEqual(s.board, before); assert.deepEqual(s.clocks, clocks); assert.equal(s.pending, false);
   s.play(1, 2);
-  s.gameMessage(201, decode(encode({ 1: 0 })));
+  s.gameMessage(201, decode(encode({ 1: 0 })), decode(encode({})));
   assert.equal(s.pending, true);
-  s.gameMessage(203, decode(encode({ 1: 1, 2: 2, 3: 1, 5: { 1: 9 } })));
+  s.gameMessage(203, decode(encode({ 1: 1, 2: 2, 3: 1, 5: { 1: 9 } })), decode(encode({})));
   assert.equal(s.board.moves.length, before.moves.length + 1); assert.equal(s.sync, 9);
   assert.equal(s.pending, false); assert.deepEqual(sounds, ['stone-capture-small', 'stone-capture-small']);
-  s.gameMessage(203, decode(encode({ 1: 15, 2: 15, 3: 2 })));
+  s.gameMessage(203, decode(encode({ 1: 15, 2: 15, 3: 2 })), decode(encode({})));
   assert.deepEqual(sounds, ['stone-capture-small', 'stone-capture-small', 'stone']); s.close();
 });
 
@@ -297,23 +339,23 @@ test('send failure leaves board untouched; close undoes an unconfirmed move', ()
   const s = new Session(); s.phase = 'playing'; s.color = 1; s.roomKey = { 1: 31000, 2: 63 };
   s.gateway = { send() { throw Error('closed'); }, close() {} };
   assert.throws(() => s.play(3, 3), /closed/); assert.equal(s.board.moves.length, 0); assert.equal(s.pending, false);
-  s.gateway.send = () => {}; s.play(3, 3); s.close(); assert.equal(s.board.moves.length, 0);
+  s.gateway!.send = () => {}; s.play(3, 3); s.close(); assert.equal(s.board.moves.length, 0);
 });
 
 test('countdown notifications populate the correct player clock', () => {
   const s = new Session(); s.uid = 42; s.color = 2; s.phase = 'playing';
-  s.gameMessage(108, decode(encode({ 2: 0, 3: 2, 4: 10, 5: 42 })));
+  s.gameMessage(108, decode(encode({ 2: 0, 3: 2, 4: 10, 5: 42 })), decode(encode({})));
   assert.equal(s.clocks[2].main, 0); assert.equal(s.clocks[2].periods, 2); assert.equal(s.clocks[2].byoyomi, 10);
-  s.gameMessage(108, decode(encode({ 2: 60, 3: 3, 4: 60, 5: 99 })));
+  s.gameMessage(108, decode(encode({ 2: 60, 3: 3, 4: 60, 5: 99 })), decode(encode({})));
   assert.equal(s.clocks[1].main, 60);
 });
 
 test('authoritative synchronization replaces an optimistic move without replaying sounds', () => {
-  const sounds = [], s = new Session({ onSound: name => sounds.push(name) });
+  const sounds: string[] = [], s = new Session({ onSound: name => sounds.push(name) });
   s.uid = 42; s.color = 1; s.phase = 'playing'; s.roomKey = { 1: 31000, 2: 63 };
   s.gateway = { send() {}, close() {} }; s.play(3, 3);
   s.gameMessage(501, decode(encode({ 1: 0, 3: [{ 1: 42, 6: 1, 7: 1200, 8: 3, 9: 60 }],
-    4: [{ 1: 1, 2: 3, 3: 3, 4: 1 }], 5: { 1: 4 }, 6: 3, 12: 31000, 13: 63 })));
+    4: [{ 1: 1, 2: 3, 3: 3, 4: 1 }], 5: { 1: 4 }, 6: 3, 12: 31000, 13: 63 })), decode(encode({})));
   assert.equal(s.pendingMove, null); assert.equal(s.pending, false); assert.equal(s.sync, 4);
   assert.deepEqual(s.board.moves, [[1, 3, 3]]); assert.deepEqual(sounds, ['stone']); s.close();
 });
@@ -333,16 +375,16 @@ test('discovery waits for the game-lock check in either response order', () => {
 test('existing game skips ready and matchmaking, even when field discovery arrives first', () => {
   const fields = decode(encode({1:[{1:101,2:19,3:1200,4:3,5:60,7:0,12:1}]}));
   for (const order of [[100150,100115],[100115,100150]]) {
-    const s = new Session(), sent = [];
+    const s = new Session(), sent: [Message, Message][] = [];
     s.phase = 'gateway'; s.uid = 42;
-    s.gateway = {send(command, payload) { sent.push(game.unpack(payload)); }, close() {}};
+    s.gateway = {send(command, payload) { sent.push(unpack(Buffer.from(payload))); }, close() {}};
     for (const op of order) {
       s.roomMessage(op, op === 100150 ? fields : decode(encode({1:0,2:game.GAME,3:63})));
       assert.notEqual(s.phase, 'ready');
     }
     assert.equal(s.phase, 'resuming');
     assert.equal(sent[0][0].one(1), 501);
-    s.gameMessage(501, decode(encode({1:0,3:[{1:42,6:1}],4:[{1:1,2:3,3:3,4:1}],5:{1:1},6:3,7:23,10:202,12:31000,13:63})), new Map());
+    s.gameMessage(501, decode(encode({1:0,3:[{1:42,6:1}],4:[{1:1,2:3,3:3,4:1}],5:{1:1},6:3,7:23,10:202,12:31000,13:63})), decode(encode({})));
     assert.equal(s.phase, 'playing'); assert.equal(s.color, 1); assert.equal(s.board.stones[60], 1);
     assert.ok(!sent.some(([h]) => h.one(1) === 100130)); s.close();
   }
@@ -359,7 +401,9 @@ test('finished synchronization clears counting and a new match starts without st
   assert.equal(s.counting, false);
   assert.equal(s.countingAnswer, null);
 
-  s.counting = true; s.countingAnswer = { accept: true }; s.pendingConfirmation = ['counting-result'];
+  s.counting = true;
+  s.pendingConfirmation = ['counting-result', {}];
+  s.countingAnswer = { accept: true, confirmation: s.pendingConfirmation };
   s.fieldId = 101;
   s.match();
   assert.equal(s.phase, 'matching');
@@ -370,10 +414,10 @@ test('finished synchronization clears counting and a new match starts without st
 });
 
 test('Fox time controls are discovered dynamically and the selected field is sent for matchmaking', () => {
-  const s = new Session(), sent = [];
+  const s = new Session(), sent: [Message, Message][] = [];
   s.phase = 'gateway'; s.gameLockChecked = true;
-  s.gateway = { send: (command, payload) => sent.push(game.unpack(payload)), close() {} };
-  const field = (id, main, periods = 3, byoyomi = 30, extra = {}) => ({1:id,2:19,3:main,4:periods,5:byoyomi,7:0,12:1,...extra});
+  s.gateway = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+  const field = (id: number, main: number, periods = 3, byoyomi = 30, extra: Fields = {}) => ({1:id,2:19,3:main,4:periods,5:byoyomi,7:0,12:1,...extra});
   s.roomMessage(100150, decode(encode({1:[field(101,1200,3,60),field(102,300),field(103,0,5),field(104,600,3,30,{2:9}),field(105,600,3,30,{7:1}),field(106,600,3,30,{12:2}),field(107,-1),field(102,300)]})));
   assert.equal(s.phase, 'ready');
   assert.deepEqual(s.snapshot().matchFields.map(f => f.id), [103,102,101]);
@@ -381,8 +425,8 @@ test('Fox time controls are discovered dynamically and the selected field is sen
   s.selectMatchField(102); assert.equal(s.snapshot().time, '5m30s');
   assert.throws(() => s.selectMatchField(999), /No time control available/);
   s.match();
-  assert.equal(sent.at(-1)[0].one(1), 100130);
-  assert.equal(sent.at(-1)[1].one(1), 102); assert.equal(sent.at(-1)[1].one(2), 0);
+  assert.equal(sent.at(-1)![0].one(1), 100130);
+  assert.equal(sent.at(-1)![1].one(1), 102); assert.equal(sent.at(-1)![1].one(2), 0);
   assert.throws(() => s.selectMatchField(101), /cannot change/);
   const before = s.snapshot(), sentBefore = sent.length;
   for (const op of [100135, 100143, 100146]) {
@@ -411,7 +455,7 @@ test('remembered time controls survive changed field IDs and fall back when unav
   const preferredTimeControl = { size: 19, main: 300, periods: 3, byoyomi: 30 };
   const s = new Session({ preferredTimeControl });
   s.phase = 'gateway'; s.gameLockChecked = true;
-  const discover = fields => s.roomMessage(100150, decode(encode({ 1: fields.map(([id, main, byoyomi]) => ({ 1:id, 2:19, 3:main, 4:3, 5:byoyomi, 7:0, 12:1 })) })));
+  const discover = (fields: number[][]) => s.roomMessage(100150, decode(encode({ 1: fields.map(([id, main, byoyomi]) => ({ 1:id, 2:19, 3:main, 4:3, 5:byoyomi, 7:0, 12:1 })) })));
   discover([[201,1200,60],[202,300,30]]);
   assert.equal(s.fieldId, 202);
   s.selectMatchField(201);
@@ -448,8 +492,8 @@ test('field populations follow field IDs in either discovery order and reset on 
 });
 
 test('field populations refresh every 25 seconds in matchmaking and stop during a game', () => {
-  const s = new Session(), sent = [];
-  s.gateway = {send: (command,payload) => sent.push(game.unpack(payload)),close(){}};
+  const s = new Session(), sent: [Message, Message][] = [];
+  s.gateway = {send: (command,payload) => sent.push(unpack(Buffer.from(payload))),close(){}};
   s.phase = 'ready'; s.fieldPlayersRequestedAt = 1000;
   s.refreshFieldPlayers(25999); assert.equal(sent.length, 0);
   s.refreshFieldPlayers(26000); assert.equal(sent.length, 1);
@@ -467,8 +511,8 @@ test('quitting an active room waits for Fox resignation, then returns to matchma
   s.matchFields = [{id:101,size:19,main:1200,periods:3,byoyomi:60}];
   s.token = Buffer.from('session'); const gateway = s.gateway, generation = s.generation;
   s.quitRoom();
-  assert.equal(sent.at(-1)[1].one(1), 311); assert.equal(sent.at(-1)[1].one(8), 63);
-  assert.deepEqual(game.plain(sent.at(-1)[2].sub(2)), {1:31000,2:63,3:23,4:202});
+  assert.equal(sent.at(-1)![1].one(1), 311); assert.equal(sent.at(-1)![1].one(8), 63);
+  assert.deepEqual(game.plain(sent.at(-1)![2].sub(2)), {1:31000,2:63,3:23,4:202});
   assert.equal(s.phase, 'playing'); assert.equal(s.snapshot().quitRequested, true);
   assert.throws(() => s.quitRoom(), /Waiting to confirm/);
   notify(311, {1:0}); assert.equal(s.phase, 'playing');
@@ -481,7 +525,7 @@ test('quitting an active room waits for Fox resignation, then returns to matchma
   notify(403, {1:0,2:2,4:3});
   s.roomMessage(100140, decode(encode({1:0,2:31000,3:63,4:23,7:202})));
   assert.equal(s.phase, 'ready'); assert.deepEqual(s.roomKey, {});
-  s.match(); assert.equal(s.phase, 'matching'); assert.equal(sent.at(-1)[1].one(1), 100130);
+  s.match(); assert.equal(s.phase, 'matching'); assert.equal(sent.at(-1)![1].one(1), 100130);
   s.gameMessage(107, decode(encode({6:24,7:203,9:[{1:42,6:1}]})), decode(encode({8:63}))); assert.equal(s.phase, 'playing');
   s.roomMessage(100130, decode(encode({1:0}))); assert.equal(s.phase, 'playing');
   s.roomMessage(100139, decode(encode({1:0}))); assert.equal(s.phase, 'playing');
@@ -490,9 +534,9 @@ test('quitting an active room waits for Fox resignation, then returns to matchma
 
 test('finished rooms quit immediately; rejected or failed resignation stays in the game', () => {
   const {s, notify} = countingSession();
-  s.gateway.send = () => {throw Error('Send failed');};
+  s.gateway!.send = () => {throw Error('Send failed');};
   assert.throws(() => s.quitRoom(), /Send failed/); assert.equal(s.phase, 'playing'); assert.equal(s.quitRequested, false);
-  s.gateway.send = () => {};
+  s.gateway!.send = () => {};
   s.quitRoom(); notify(311, {1:-1});
   assert.equal(s.phase, 'playing'); assert.equal(s.quitRequested, false); assert.equal(s.pending, false);
   s.quitRoom(); notify(501, {1:0,3:[{1:42,6:1}],6:3,7:23,10:202,12:31000,13:63});
@@ -507,7 +551,7 @@ test('finished rooms quit immediately; rejected or failed resignation stays in t
 test('a failed matchmaking send preserves the finished game screen and result', () => {
   const {s, notify} = countingSession();
   notify(402, {1:0,2:2,4:3}); s.fieldId = 101;
-  s.gateway.send = () => {throw Error('Send failed');};
+  s.gateway!.send = () => {throw Error('Send failed');};
   assert.throws(() => s.match(), /Send failed/);
   assert.equal(s.phase, 'finished'); assert.equal(s.result, 'W+R');
   assert.equal(s.color, 1); assert.equal(s.gameOver, true); assert.notDeepEqual(s.roomKey, {});
@@ -515,7 +559,7 @@ test('a failed matchmaking send preserves the finished game screen and result', 
 });
 
 test('game start announces once, including starting as White, while synchronization and restoration stay silent', () => {
-  const sounds = [], s = new Session({onSound:name=>sounds.push(name)});
+  const sounds: string[] = [], s = new Session({onSound:name=>sounds.push(name)});
   s.uid = 42; s.phase = 'matching';
   const header = decode(encode({8:63}));
   const start = decode(encode({1:{7:30},6:23,7:202,9:[{1:42,6:2,7:300,8:3,9:30}]}));
@@ -534,25 +578,25 @@ test('game start announces once, including starting as White, while synchronizat
 
 const koSequence = [[0,1],[1,1],[1,0],[0,2],[2,1],[2,2],[10,10],[1,3],[1,2]];
 const suicideSequence = [[1,0],[10,10],[0,1],[11,10],[2,1],[12,10],[1,2]];
-function position(sequence) {
+function position(sequence: readonly (readonly number[])[]) {
   const board = new Board();
   for (const [x,y] of sequence) board.play(x,y);
   return board;
 }
 
 test('ko and suicide validation are immutable, including the former authoritative bypass', () => {
-  for (const [sequence, point, reason] of [[koSequence,[1,1],/ko/],[suicideSequence,[1,1],/suicide/]]) {
+  for (const [sequence, point, reason] of [[koSequence,[1,1],/ko/],[suicideSequence,[1,1],/suicide/]] as const) {
     const board = position(sequence), before = structuredClone(board);
     assert.throws(()=>board.checkMove(...point),reason);
     assert.throws(()=>board.play(...point),reason);
-    assert.throws(()=>board.play(...point,board.turn,true),reason);
+    assert.throws(()=>(board.play as (...args: unknown[]) => unknown)(...point,board.turn,true),reason);
     assert.deepEqual(structuredClone(board),before);
   }
 });
 
 test('illegal online moves cannot change stones, history, clocks, play audio, or send a packet', () => {
-  for (const [sequence, reason] of [[koSequence,/ko/],[suicideSequence,/suicide/]]) {
-    const sent = [], sounds = [], s = new Session({onSound:name=>sounds.push(name)});
+  for (const [sequence, reason] of [[koSequence,/ko/],[suicideSequence,/suicide/]] as const) {
+    const sent: Parameters<Transport["send"]>[] = [], sounds: string[] = [], s = new Session({onSound:name=>sounds.push(name)});
     s.board = position(sequence); s.phase = 'playing'; s.color = s.board.turn;
     s.roomKey = {1:31000,2:63,3:23,4:202};
     s.clocks = {2:{main:120,periods:3,byoyomi:60,at:Date.now()/1000}};
@@ -566,13 +610,13 @@ test('illegal online moves cannot change stones, history, clocks, play audio, or
 });
 
 test('ko remains illegal after confirmed captures and reconnecting, but recapture after a ko threat is legal', () => {
-  const sent = [], s = new Session(); s.phase = 'playing'; s.uid = 42; s.color = 2;
+  const sent: Parameters<Transport["send"]>[] = [], s = new Session(); s.phase = 'playing'; s.uid = 42; s.color = 2;
   s.board = position(koSequence.slice(0,-1)); s.roomKey = {1:31000,2:63,3:23,4:202};
   s.gateway = {send:(...args)=>sent.push(args),close(){}};
-  s.gameMessage(203,decode(encode({1:1,2:2,3:1,5:{1:1}})),new Map());
+  s.gameMessage(203,decode(encode({1:1,2:2,3:1,5:{1:1}})),decode(encode({})));
   assert.throws(()=>s.play(1,1),/ko/); assert.equal(sent.length,0);
   const env = decode(encode({1:0,3:[{1:42,6:2}],4:koSequence.map(([x,y],i)=>({1:1,2:x,3:y,4:i%2+1})),6:3,7:23,10:202,12:31000,13:63}));
-  s.phase = 'resuming'; s.gameMessage(501,env,new Map());
+  s.phase = 'resuming'; s.gameMessage(501,env,decode(encode({})));
   assert.throws(()=>s.play(1,1),/ko/); assert.equal(sent.length,0);
 
   s.board.play(15,15); s.board.play(16,15); s.play(1,1);
@@ -590,7 +634,7 @@ test('capturing to gain a liberty is legal even when the intersection starts sur
 
 
 test('session updates are coalesced and expose the completed command and packet state', async () => {
-  const updates = [];
+  const updates: SessionState[] = [];
   const s = new Session({ onChange: state => updates.push(state) });
   setupFoxGame(s);
   s.play(3, 3);
@@ -602,13 +646,13 @@ test('session updates are coalesced and expose the completed command and packet 
   await Promise.resolve();
   assert.equal(updates.length, 1);
   s.phase = 'playing'; s.color = 1;
-  s.gameMessage(108, decode(encode({1:2,2:45,3:3,4:20,5:true})), new Map());
+  s.gameMessage(108, decode(encode({1:2,2:45,3:3,4:20,5:true})), decode(encode({})));
   await Promise.resolve();
   assert.equal(updates.length, 2);
   assert.equal(updates[1].clocks[2].main, 45);
   s.close();
   await Promise.resolve();
-  assert.equal(updates.at(-1).phase, 'disconnected');
+  assert.equal(updates.at(-1)!.phase, 'disconnected');
 });
 
 
@@ -623,12 +667,12 @@ test('player names and ranks follow their colors through game start and restorat
   assert.deepEqual(s.snapshot().players, {
     1:{id:42,name:'棋手一',rank:'3d'}, 2:{id:43,name:'BambooMoon',rank:'1k'}
   });
-  s.gameMessage(501, decode(encode({1:0,3:[{...users[1],6:1,4:18},{...users[0],6:2,4:21}],6:3,7:23,10:202,12:31000,13:63})), new Map());
+  s.gameMessage(501, decode(encode({1:0,3:[{...users[1],6:1,4:18},{...users[0],6:2,4:21}],6:3,7:23,10:202,12:31000,13:63})), decode(encode({})));
   assert.equal(s.color, 2);
   assert.deepEqual(s.snapshot().players, {
     1:{id:43,name:'BambooMoon',rank:'1d'}, 2:{id:42,name:'棋手一',rank:'4d'}
   });
-  s.gameMessage(501, decode(encode({1:0,3:[{1:43,6:1},{1:42,6:2}],6:5,7:23,10:202,12:31000,13:63})), new Map());
+  s.gameMessage(501, decode(encode({1:0,3:[{1:43,6:1},{1:42,6:2}],6:5,7:23,10:202,12:31000,13:63})), decode(encode({})));
   assert.equal(s.snapshot().players[2].name, '棋手一');
   s.gateway = {send(){},close(){}}; s.fieldId = 101; s.match();
   assert.deepEqual(s.snapshot().players, {});
@@ -636,8 +680,8 @@ test('player names and ranks follow their colors through game start and restorat
 });
 
 test('rank labels cover kyu, dan, professional and unavailable ranks', () => {
-  for (const [rank, label] of [[0,'18k'],[17,'1k'],[18,'1d'],[26,'9d'],[27,'1p'],[35,'9p'],[-1,''],[100,''],[null,'']]) {
-    assert.equal(game.rankLabel(rank), label);
+  for (const [rank, label] of [[0,'18k'],[17,'1k'],[18,'1d'],[26,'9d'],[27,'1p'],[35,'9p'],[-1,''],[100,''],[null,'']] as const) {
+    assert.equal(game.rankLabel(rank as number), label);
   }
 });
 
@@ -650,18 +694,18 @@ test('time controls use compact minute and byoyomi notation', () => {
 
 test('resignation can follow an unconfirmed placement and remains pending after its reply', () => {
   for (const rejected of [false, true]) {
-    const s = new Session(), sent = [];
+    const s = new Session(), sent: number[] = [];
     try {
-      s.gateway = {send(service, payload) { sent.push(game.unpack(payload)[0].number(1)); }, close() {}};
+      s.gateway = {send(service, payload) { sent.push(unpack(Buffer.from(payload))[0].number(1)); }, close() {}};
       s.phase = 'playing'; s.color = 1; s.roomKey = {1: 31000, 2: 63};
       s.play(3, 3); s.resign();
       assert.deepEqual(sent, [201, 311]);
       assert.equal(s.snapshot().pendingMove, false);
       assert.throws(() => s.resign(), /Waiting to confirm/);
-      s.gameMessage(rejected ? 201 : 203, decode(encode(rejected ? {1: 7} : {1: 3, 2: 3, 3: 1})));
+      s.gameMessage(rejected ? 201 : 203, decode(encode(rejected ? {1: 7} : {1: 3, 2: 3, 3: 1})), decode(encode({})));
       assert.equal(s.pending, true);
       assert.throws(() => s.resign(), /Waiting to confirm/);
-      s.gameMessage(311, decode(encode({1: 7})));
+      s.gameMessage(311, decode(encode({1: 7})), decode(encode({})));
       assert.equal(s.pending, false);
     } finally { s.close(); }
   }
@@ -674,11 +718,11 @@ test('a rejected resignation preserves a placement still awaiting confirmation',
     s.gateway = {send() {}, close() {}};
     s.phase = 'playing'; s.color = 1; s.roomKey = {1: 31000, 2: 63};
     s.play(3, 3); s.resign();
-    s.gameMessage(311, decode(encode({1: 7})));
+    s.gameMessage(311, decode(encode({1: 7})), decode(encode({})));
     assert.equal(s.pending, true);
     assert.equal(s.snapshot().pendingMove, true);
     assert.equal(s.board.stones[3 * 19 + 3], 1);
-    s.gameMessage(203, decode(encode({1: 3, 2: 3, 3: 1})));
+    s.gameMessage(203, decode(encode({1: 3, 2: 3, 3: 1})), decode(encode({})));
     assert.equal(s.pending, false);
     assert.equal(s.board.moves.length, 1);
   } finally { s.close(); }

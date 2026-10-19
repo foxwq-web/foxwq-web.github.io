@@ -138,7 +138,7 @@ export class Controller {
     if (
       this.preview ||
       s.phase !== "playing" ||
-      !s.clocks[s.turn]
+      (!s.clocks[s.turn] && s.opponentDisconnectDeadline == null)
     )
       return;
     this.clockTimer = setTimeout(() => {
@@ -159,6 +159,7 @@ export class Controller {
     command: Command,
     body: { x?: number; y?: number; id?: number; accept?: boolean } = {},
   ) {
+    if (this.state.session.phase === "reconnecting" && command !== "disconnect") return;
     if (outOfTurn({
       phase: this.session.phase,
       color: this.session.color,

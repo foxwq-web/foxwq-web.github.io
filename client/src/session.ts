@@ -111,12 +111,19 @@ export class Session {
   quitRequested: boolean;
   startedRoom: string | null;
   clocks: Record<string, Clock>;
+  opponentDisconnectDeadline: number | null = null;
   pendingConfirmation: Confirmation | null;
   counting: boolean;
   countingAnswer: { confirmation: Confirmation; accept: boolean } | null;
   changeQueued = false;
   lastChangeKey = "";
   pendingSince = 0;
+  private loginPacket: Buffer | null = null;
+  private reconnectBoard: SessionState | null = null;
+  private reconnectAttempt = 0;
+  private reconnectStatus = "";
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private lastGatewayResponse = 0;
   constructor({
     host = "43.132.13.39",
     port = 10000,
@@ -191,6 +198,18 @@ export class Session {
     this.onChange(state);
   }
   snapshot(): SessionState {
+    if (this.reconnectBoard) return structuredClone({
+      ...this.reconnectBoard,
+      phase: "reconnecting",
+      status: this.reconnectStatus,
+      pending: false,
+      pendingMove: false,
+      confirmation: false,
+      confirmationKind: null,
+      counting: false,
+      estimation: null,
+      gatewayAvailable: false,
+    });
     return structuredClone({
       phase: this.phase,
       status: this.status,
@@ -213,6 +232,7 @@ export class Session {
       players: this.players,
       account: this.account,
       clocks: this.clocks,
+      opponentDisconnectDeadline: this.opponentDisconnectDeadline,
       gameId: Object.values(this.roomKey).join(":"),
       last_move: this.board.moves.at(-1) ?? null,
       confirmation: this.pendingConfirmation !== null,
@@ -226,6 +246,11 @@ export class Session {
   }
   close() {
     try {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectBoard = null;
+      this.opponentDisconnectDeadline = null;
+      this.reconnectAttempt = 0;
+      this.loginPacket = null;
       this.clearEstimate();
       this.rollbackMove();
       this.generation++;
@@ -268,7 +293,7 @@ export class Session {
         throw Error("Enter your username and password");
       const request = loginRequest(username, password);
       this.close();
-
+      this.loginPacket = request;
       this.account = { name: username, rank: "" };
       this.players = {};
       this.board = new Board();
@@ -334,12 +359,53 @@ export class Session {
   failed(generation: number, reason: string) {
     try {
       if (generation !== this.generation) return;
+      if (this.loginPacket &&
+          (this.reconnectBoard || (this.phase === "playing" && [1, 2].includes(this.color)))) {
+        const first = !this.reconnectBoard;
+        this.reconnectBoard ??= this.snapshot();
+        this.clearEstimate();
+        this.rollbackMove();
+        // Invalidate callbacks before closing either transport.
+        this.generation++;
+        clearTimeout(this.timer ?? undefined);
+        clearTimeout(this.bootstrapTimer);
+        clearTimeout(this.reconnectTimer);
+        this.gateway?.close();
+        this.connection?.close();
+        this.gateway = this.connection = null;
+        this.phase = "reconnecting";
+        this.pending = false;
+        this.pendingConfirmation = null;
+        this.counting = false;
+        this.countingAnswer = null;
+        this.quitRequested = false;
+        if (first) this.reconnect();
+        else {
+          this.reconnectStatus = `Reconnection ${/timed out/i.test(reason) ? "timed out" : "failed"}: ${reason}. Retrying... (Attempt ${this.reconnectAttempt})`;
+          this.reconnectTimer = setTimeout(() => this.reconnect(), 2000);
+        }
+        return;
+      }
       this.close();
       this.phase = "error";
       this.status = reason;
     } finally {
       this.changed();
     }
+  }
+  private reconnect() {
+    if (!this.reconnectBoard || !this.loginPacket) return;
+    this.reconnectAttempt++;
+    this.reconnectStatus = `Connection lost. Reconnecting... (Attempt ${this.reconnectAttempt})`;
+    this.phase = "connecting";
+    this.token = Buffer.alloc(0);
+    this.fieldsLoaded = false;
+    this.gameLockChecked = false;
+    this.roomKey = {};
+    this.startedRoom = null;
+    this.timeout(this.generation, "Reconnection timed out");
+    void this.connect(this.generation, this.loginPacket);
+    this.changed();
   }
   receive(generation: number, packet: Frame) {
     try {
@@ -431,6 +497,10 @@ export class Session {
     try {
       if (generation !== this.generation || !this.gateway) return;
       try {
+        if (now() - this.lastGatewayResponse > 20) {
+          this.failed(generation, "Network response timed out");
+          return;
+        }
         const ticks = Math.floor(performance.now());
         this.send(game.GATEWAY, 5, { 1: ticks });
         this.send(game.ROOM, 100010, { 1: ticks });
@@ -457,6 +527,7 @@ export class Session {
   }
   gatewayMessage(generation: number, packet: Frame) {
     try {
+      this.lastGatewayResponse = now();
       const [header, m] = game.unpack(packet.payload),
         service = header.number(7),
         op = header.number(1);
@@ -513,6 +584,10 @@ export class Session {
           this.phase = "resuming";
           this.status = "Reconnecting...";
           this.send(game.GAME, 501, {}, m.number(3));
+        } else if (this.reconnectBoard) {
+          // The lock can disappear when the game ends during the outage.
+          this.phase = "resuming";
+          this.send(game.GAME, 501, {}, Number(this.reconnectBoard.gameId.split(":")[1]));
         } else this.discoveryReady();
       } else if (op === 100145) {
         if (signed(m.one(1))) {
@@ -594,6 +669,8 @@ export class Session {
   }
   gameMessage(op: number, m: Message, header: Message) {
     try {
+      // Only a full synchronization may replace the board during recovery.
+      if (this.reconnectBoard && ![107, 501].includes(op)) return;
       if (["ready", "disconnected", "error"].includes(this.phase)) return;
       if (
         this.phase === "matching" &&
@@ -609,6 +686,11 @@ export class Session {
       if (op === 105) {
         if (signed(m.one(1))) throw Error("Game room rejected entry");
       } else if (op === 107) {
+        if (this.reconnectBoard) {
+          this.phase = "resuming";
+          this.send(game.GAME, 501, {}, header.number(8));
+          return;
+        }
         const resuming = this.phase === "resuming";
         this.roomKey = {
           1: game.GAME,
@@ -617,6 +699,7 @@ export class Session {
           4: m.number(7),
         };
         this.players = {};
+        this.opponentDisconnectDeadline = null;
         this.board = new Board();
         this.boardRoomKey = Object.values(this.roomKey).join(":");
         this.board.timeControl = this.matchSettings ? {
@@ -656,6 +739,7 @@ export class Session {
         const color = m.number(3),
           x = m.number(1),
           y = m.number(2);
+        if (color === 3 - this.color) this.opponentDisconnectDeadline = null;
         if (confirmsMove) this.pendingMove = null;
         else {
           this.rollbackMove();
@@ -668,6 +752,7 @@ export class Session {
         this.status = "";
       } else if (op === 206) {
         const color = this.board.turn;
+        if (color === 3 - this.color) this.opponentDisconnectDeadline = null;
         this.board.passTurn();
         this.clock(color, m.sub(1));
         this.sync = m.sub(2).number(1, this.sync);
@@ -708,19 +793,45 @@ export class Session {
         this.status = m.number(1)
           ? "Counting accepted"
           : "Counting rejected. Continue playing.";
-      } else if (op === 108 && m.has(5) && [1, 2].includes(this.color)) {
-        const color = m.number(5) === this.uid ? this.color : 3 - this.color;
-        if (m.has(2))
-          this.clocks[color] = {
-            main: m.number(2),
-            periods: m.number(3),
-            byoyomi: m.number(4),
-            periodLength:
-              this.clocks[color]?.periodLength ||
-              this.matchSettings?.byoyomi ||
-              60,
+      } else if ([108, 109].includes(op) && [1, 2].includes(this.color)) {
+        // ResumeCountdownNotify (109) wraps the same clock data as 108.
+        // Fox can answer a counting rejection with 304 status 1, then resume
+        // the clock without sending 306. Resumption ends the counting flow,
+        // including any confirmation restored by the nonzero 304 response.
+        if (op === 109 && this.phase === "playing" && this.counting) {
+          this.pending = false;
+          this.pendingConfirmation = null;
+          this.countingAnswer = null;
+          this.counting = false;
+          this.status = "Counting rejected. Continue playing.";
+        }
+        const timing = op === 109 ? m.sub(2) : m;
+        if (timing.has(5)) {
+          const color = timing.number(5) === this.uid ? this.color : 3 - this.color;
+          this.readClock(color, timing);
+        }
+      } else if (
+        op === 503 && this.phase === "playing" &&
+        [1, 2].includes(this.color) &&
+        m.number(1) === this.players[3 - this.color]?.id
+      ) {
+        // OpponentOfflineNotify: player ID, remaining allowance in seconds.
+        const color = 3 - this.color, clock = this.clocks[color];
+        if (clock && this.opponentDisconnectDeadline == null && this.board.turn === color) {
+          const remaining = clockReading(clock, Math.max(0, now() - clock.at));
+          Object.assign(clock, {
+            main: remaining.main,
+            periods: remaining.periods,
+            byoyomi: remaining.seconds,
             at: now(),
-          };
+          });
+        }
+        this.opponentDisconnectDeadline = now() + Math.max(0, m.number(2));
+      } else if (op === 504 && m.number(1) === this.players[3 - this.color]?.id) {
+        // OpponentReconnectNotify identifies the returning player in field 1.
+        const clock = this.clocks[3 - this.color];
+        if (clock && this.opponentDisconnectDeadline != null) clock.at = now();
+        this.opponentDisconnectDeadline = null;
       } else if (
         op === 303 &&
         this.phase === "playing" &&
@@ -749,6 +860,7 @@ export class Session {
               : "Counting result needs your confirmation";
         }
       } else if ([402, 403, 405].includes(op)) {
+        this.opponentDisconnectDeadline = null;
         this.rollbackMove();
         this.pending = false;
         this.phase = "finished";
@@ -769,6 +881,7 @@ export class Session {
         };
         const roomKey = Object.values(this.roomKey).join(":");
         const sameGame = roomKey === this.boardRoomKey;
+        if (!sameGame || m.number(6) === 5) this.opponentDisconnectDeadline = null;
         this.sync = m.sub(5).number(1);
         this.pendingMove = null;
         this.board = new Board();
@@ -815,6 +928,10 @@ export class Session {
           this.countingAnswer = null;
         }
         this.gameOver = m.number(6) === 5;
+        if (this.reconnectBoard && ![1, 2].includes(this.color))
+          throw Error("Game synchronization did not restore the player");
+        this.reconnectBoard = null;
+        this.reconnectAttempt = 0;
         clearTimeout(this.bootstrapTimer);
         this.phase = this.gameOver ? "finished" : "playing";
         this.status =
@@ -871,6 +988,10 @@ export class Session {
         ...(m.number(2) <= 0 && m.has(3) ? { periods: m.number(3) } : {}),
       };
     }
+    this.readClock(color, m);
+    if (this.clocks[3 - color]) this.clocks[3 - color].at = now();
+  }
+  readClock(color: number, m: Message) {
     if (m.has(2))
       this.clocks[color] = {
         main: m.number(2),
@@ -880,7 +1001,6 @@ export class Session {
           this.clocks[color]?.periodLength || this.matchSettings?.byoyomi || 60,
         at: now(),
       };
-    if (this.clocks[3 - color]) this.clocks[3 - color].at = now();
   }
   setResult(m: Message) {
     const winner = m.number(2),

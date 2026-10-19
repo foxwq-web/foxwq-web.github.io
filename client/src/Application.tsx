@@ -28,7 +28,8 @@ function Player({ state, color }: { state: UIState; color: number }) {
   const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
   const clock = s.clocks[color];
   const elapsed =
-    clock && !state.frozen && s.phase === "playing" && s.turn === color
+    clock && !state.frozen && s.phase === "playing" && s.turn === color &&
+    !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
       ? Math.max(0, state.now - clock.at)
       : 0;
   const reading = clock ? clockReading(clock, elapsed) : null;
@@ -152,6 +153,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const countingRequested =
     s.counting && s.status === "Counting requested; waiting for opponent";
   const gameHidden =
+    s.phase !== "reconnecting" &&
     !s.game_over &&
     !promptCounting &&
     (s.counting || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
@@ -160,6 +162,7 @@ export function App({ controller: c }: { controller: Controller }) {
     : s.pending && !s.counting && !s.quitRequested
       ? "Waiting to confirm action"
       : s.status;
+  const disconnectSeconds = Math.max(0, Math.ceil((s.opponentDisconnectDeadline ?? 0) - state.now));
   const ask = (command: Command) => {
     const prompt = promptForAction(command);
     if (prompt) c.emit({ type: "prompt.open", prompt });
@@ -350,7 +353,7 @@ export function App({ controller: c }: { controller: Controller }) {
               <div className="primary-actions-slot">
                 <div
                   id="primary-actions"
-                  hidden={!playing && s.phase !== "finished"}
+                  hidden={!playing && s.phase !== "finished" && s.phase !== "reconnecting"}
                 >
                   <button
                     id="pass"
@@ -476,6 +479,15 @@ export function App({ controller: c }: { controller: Controller }) {
                   </button>
                 </section>
                 <section
+                  id="opponent-connection-panel"
+                  className="quest-panel"
+                  hidden={!playing || s.opponentDisconnectDeadline == null}
+                >
+                  <p id="opponent-connection-status" role="status">
+                    Opponent disconnected ({Math.floor(disconnectSeconds / 60)}:{String(disconnectSeconds % 60).padStart(2, "0")})
+                  </p>
+                </section>
+                <section
                   id="game-state-panel"
                   className="quest-panel"
                   hidden={gameHidden}
@@ -489,6 +501,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   </p>
                   <p
                     id="board-status"
+                    role="status"
                     hidden={promptCounting || !boardStatus}
                     className={
                       /failed|rejected|error/i.test(s.status) ? "is-error" : ""

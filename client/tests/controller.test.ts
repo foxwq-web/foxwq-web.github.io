@@ -215,3 +215,24 @@ test("commands publish one detached session snapshot immediately without a secon
     controller.dispose();
   }
 });
+
+test("reconnection ignores game commands and keeps the board visible without allowing placement", () => {
+  const controller = new Controller();
+  try {
+    setupFoxGame(controller.session);
+    controller.emit({ type: "initialize", state: initial(controller.session) });
+    controller.state.session = {
+      ...controller.state.session, phase: "reconnecting", color: 1,
+    };
+    let commands = 0;
+    controller.session.play = () => { commands++; };
+    controller.session.resign = () => { commands++; };
+    controller.session.passTurn = () => { commands++; };
+    controller.session.estimateScore = async () => { commands++; };
+    for (const command of ["play", "resign", "pass", "estimate-score"] as const)
+      controller.command(command, { x: 3, y: 3 });
+    assert.equal(commands, 0);
+    assert.equal(playablePoint(controller.state, 3 + 3 * 19), null);
+    assert.equal(controller.state.prompt, null);
+  } finally { controller.dispose(); }
+});

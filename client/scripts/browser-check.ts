@@ -983,10 +983,46 @@ try {
     assert.equal(await js(`document.getElementById('${id}').checkVisibility()`), true);
   assert.equal(await js("document.getElementById('board-status').textContent"), 'Result: B+R');
   await js("document.getElementById('quit-room').click()");
-  await js("document.getElementById('match').click();gameNotice(107,{6:25,7:204,9:[{1:42,6:1}]})");
+  await js("document.getElementById('match').click();gameNotice(107,{6:25,7:204,9:[{1:42,6:1},{1:43,6:2}]})");
   await wait("document.getElementById('connection-layer').hidden");
+  await js("matchSession.board.turn=2;matchSession.clocks[2]={main:1200,periods:3,byoyomi:60,at:Date.now()/1000-10}");
+  await js("gameNotice(503,{1:43,2:90,3:1})");
+  await wait("document.getElementById('opponent-connection-status').checkVisibility() && document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (1:30)'");
+  await wait("document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (1:29)'");
+  assert.equal(await js("document.getElementById('white-hours').value"), '00:19:50');
+  assert.equal(await js("document.getElementById('resign').disabled"), false);
+  await js("matchSession.opponentDisconnectDeadline=Date.now()/1000-1;matchSession.changed()");
+  await wait("document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (0:00)'");
+  assert.equal(await js("document.getElementById('opponent-connection-status').checkVisibility()"), true);
+  await js("gameNotice(109,{1:27,2:{1:0,2:1034,3:3,4:60,5:43,6:45}});gameNotice(504,{1:43})");
+  await wait("!document.getElementById('opponent-connection-status').checkVisibility()");
+  await wait("document.getElementById('white-hours').value==='00:17:14'");
+  await wait("document.getElementById('white-hours').value==='00:17:13'");
+  await js("matchSession.board.turn=1;matchSession.changed()");
   assert.equal(await js("document.getElementById('disconnect-board')"), null);
   assert.equal(await js("document.getElementById('disconnect')"), null);
+  await js(`(async () => {
+    const {loginRequest} = await import('/src/session.ts');
+    matchSession.loginPacket = loginRequest('test', 'password');
+    matchSession.connectionFactory = () => new Promise(() => {});
+    gameNotice(203,{1:3,2:3,3:1});
+    window.reconnectStones = [...matchSession.snapshot().stones];
+    matchSession.failed(matchSession.generation, 'Proxy connection closed');
+  })()`);
+  await wait("document.getElementById('board-status').checkVisibility() && document.getElementById('board-status').textContent.includes('Connection lost. Reconnecting… (Attempt 1)')");
+  assert.equal(await js("document.getElementById('connection-layer').hidden"), true);
+  assert.equal(await js("document.querySelector('main').inert"), false);
+  for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {
+    assert.equal(await js(`document.getElementById('${id}').checkVisibility()`), true);
+    assert.equal(await js(`document.getElementById('${id}').disabled`), true);
+  }
+  await clickControl("#board");
+  assert.deepEqual(await js("matchSession.snapshot().stones"), await js("reconnectStones"));
+  await js("matchSession.failed(matchSession.generation, 'Proxy unreachable')");
+  await wait("document.getElementById('board-status').textContent.includes('Reconnection failed: Proxy unreachable')");
+  await wait("document.getElementById('board-status').textContent.includes('Attempt 2')");
+  await js("gameNotice(501,{1:0,3:[{1:42,6:1}],4:[{1:1,2:3,3:3,4:1}],6:3,7:25,10:204,12:31000,13:63})");
+  await wait("!document.getElementById('resign').disabled");
   await js("matchSession.close()");
   assert.equal(await js("document.getElementById('login-form').hidden"), false);
   assert.equal(await js("document.getElementById('matchmaking').hidden"), true);

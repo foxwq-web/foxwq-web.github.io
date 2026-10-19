@@ -34,6 +34,7 @@ export interface SessionState {
   account: { name: string; rank: string } | null;
   players: Record<string, { id?: number; name: string; rank?: string }>;
   clocks: Record<string, Clock>;
+  opponentDisconnectDeadline?: number | null;
   gameId: string;
   last_move: [number, number | null, number | null] | null;
   confirmation: boolean;
@@ -104,7 +105,7 @@ export type UIEvent =
 
 export function boardAvailable(s: SessionState): boolean {
   return (
-    ["playing", "finished"].includes(s.phase) &&
+    ["playing", "finished", "reconnecting"].includes(s.phase) &&
     [1, 2].includes(s.color)
   );
 }
