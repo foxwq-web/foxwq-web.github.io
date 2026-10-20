@@ -6,8 +6,12 @@ export function clockInputValue(seconds: number): string {
 }
 
 
-export function clockReading(clock: Clock, elapsed = 0, periodLength = 60) {
-  const main = Math.max(0, clock.main - elapsed);
+// Fox's 006e7060 rounds elapsed milliseconds to the nearest second. Its own
+// clock tick (006e7cd0) spends a period only after seconds become negative;
+// the opponent tick (006e7fd0) waits at zero for the next server update.
+export function clockReading(clock: Clock, elapsed = 0, periodLength = 60, own = true) {
+  const ticks = Math.floor(Math.max(0, elapsed) + 0.5);
+  const main = Math.max(0, clock.main - ticks);
   if (main > 0)
     return {
       main,
@@ -15,20 +19,16 @@ export function clockReading(clock: Clock, elapsed = 0, periodLength = 60) {
       seconds: clock.byoyomi,
       overtime: false,
     };
-  const overtime = Math.max(0, elapsed - clock.main);
   const length = clock.periodLength || periodLength;
-  const spent =
-    overtime < clock.byoyomi
-      ? 0
-      : 1 + Math.floor((overtime - clock.byoyomi) / length);
-  const periods = Math.max(0, clock.periods - spent);
-  const seconds = periods
-    ? Math.ceil(
-        spent
-          ? length - ((overtime - clock.byoyomi) % length)
-          : clock.byoyomi - overtime,
-      )
-    : 0;
+  let periods = clock.periods;
+  let seconds = clock.byoyomi - Math.max(0, ticks - clock.main);
+  if (own && seconds < 0 && periods > 0) {
+    periods--;
+    // The native tick spends at most one period and resets its anchor to now.
+    // Session.tickClock persists that reset before the next display/audio tick.
+    seconds = periods ? length : 0;
+  }
+  seconds = periods ? Math.max(0, seconds) : 0;
   return { main: 0, periods, seconds, overtime: true };
 }
 

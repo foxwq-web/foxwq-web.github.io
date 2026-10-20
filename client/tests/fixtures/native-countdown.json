@@ -1,0 +1,2189 @@
+{
+  "binarySha256": "beb4112eb519985c5d0a8af5c342a0152ff1fa82e523c16428981a803b29994d",
+  "cases": [
+    {
+      "name": "period rollover",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58000,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58499,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 60999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 61000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 119000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 120000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 121000
+        },
+        {
+          "ms": 121500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 121000
+        }
+      ]
+    },
+    {
+      "name": "main boundary",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 5,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 5,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4499,
+          "main": 1,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 6500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "server zero",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 2,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 500
+        }
+      ]
+    },
+    {
+      "name": "partial period",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 3,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 3,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3500,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 29,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 33000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 34000,
+          "main": 0,
+          "seconds": 30,
+          "periods": 1,
+          "atMs": 34000
+        }
+      ]
+    },
+    {
+      "name": "last period",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 1,
+        "byoyomi": 2,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 2,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": -2,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "late callback",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 10,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 10,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 9,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90000,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 90250,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 90500,
+          "main": 0,
+          "seconds": 29,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 120500,
+          "main": 0,
+          "seconds": 30,
+          "periods": 1,
+          "atMs": 120500
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 29,
+          "periods": 1,
+          "atMs": 120500
+        }
+      ]
+    },
+    {
+      "name": "no overtime",
+      "color": 1,
+      "own": true,
+      "initial": {
+        "main": 2,
+        "periods": 0,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 2,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 1,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "period rollover",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58000,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58499,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60999,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 61000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 119000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 120000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "main boundary",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 5,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 5,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4499,
+          "main": 1,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 6500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "server zero",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 2,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 999,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "partial period",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 3,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 3,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 33000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 34000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "last period",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 1,
+        "byoyomi": 2,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 2,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "late callback",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 10,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 10,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 9,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90250,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 120500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "no overtime",
+      "color": 1,
+      "own": false,
+      "initial": {
+        "main": 2,
+        "periods": 0,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 2,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 1,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "period rollover",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58000,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58499,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 60999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 61000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 119000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 120000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 60500
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 121000
+        },
+        {
+          "ms": 121500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 121000
+        }
+      ]
+    },
+    {
+      "name": "main boundary",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 5,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 5,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4499,
+          "main": 1,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 6500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "server zero",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 2,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 500
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 1,
+          "atMs": 500
+        }
+      ]
+    },
+    {
+      "name": "partial period",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 3,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 3,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3500,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 29,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 33000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 3500
+        },
+        {
+          "ms": 34000,
+          "main": 0,
+          "seconds": 30,
+          "periods": 1,
+          "atMs": 34000
+        }
+      ]
+    },
+    {
+      "name": "last period",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 1,
+        "byoyomi": 2,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 2,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": -2,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "late callback",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 10,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 10,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 9,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90000,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 90250,
+          "main": 0,
+          "seconds": 30,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 90500,
+          "main": 0,
+          "seconds": 29,
+          "periods": 2,
+          "atMs": 90000
+        },
+        {
+          "ms": 120500,
+          "main": 0,
+          "seconds": 30,
+          "periods": 1,
+          "atMs": 120500
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 29,
+          "periods": 1,
+          "atMs": 120500
+        }
+      ]
+    },
+    {
+      "name": "no overtime",
+      "color": 2,
+      "own": true,
+      "initial": {
+        "main": 2,
+        "periods": 0,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 2,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 1,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": -1,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "period rollover",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58000,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58499,
+          "main": 0,
+          "seconds": 2,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 58500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59000,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 59500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 60999,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 61000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 119000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 120000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "main boundary",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 5,
+        "periods": 3,
+        "byoyomi": 60,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 5,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4499,
+          "main": 1,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4500,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4999,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5000,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5499,
+          "main": 0,
+          "seconds": 60,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 5500,
+          "main": 0,
+          "seconds": 59,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 6500,
+          "main": 0,
+          "seconds": 58,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "server zero",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 2,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 999,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 1000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 2,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "partial period",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 3,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 3,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 1,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 3500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 33000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 34000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "last period",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 1,
+        "byoyomi": 2,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 2,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 1,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2499,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        },
+        {
+          "ms": 4000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 1,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "late callback",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 0,
+        "periods": 3,
+        "byoyomi": 10,
+        "periodLength": 30,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 0,
+          "seconds": 10,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 0,
+          "seconds": 9,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90250,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 90500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 120500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        },
+        {
+          "ms": 121000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 3,
+          "atMs": 0
+        }
+      ]
+    },
+    {
+      "name": "no overtime",
+      "color": 2,
+      "own": false,
+      "initial": {
+        "main": 2,
+        "periods": 0,
+        "byoyomi": 0,
+        "periodLength": 60,
+        "at": 0
+      },
+      "ticks": [
+        {
+          "ms": 0,
+          "main": 2,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 500,
+          "main": 1,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 1500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 2500,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        },
+        {
+          "ms": 3000,
+          "main": 0,
+          "seconds": 0,
+          "periods": 0,
+          "atMs": 0
+        }
+      ]
+    }
+  ]
+}

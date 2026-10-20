@@ -152,7 +152,10 @@ export class Controller {
     )
       return;
     this.clockTimer = setTimeout(() => {
-      this.emit({ type: "clock.tick", now: Date.now() / 1000 });
+      const time = Date.now() / 1000;
+      if (this.session.tickClock(time))
+        this.emit({ type: "session.updated", session: this.snapshot() });
+      this.emit({ type: "clock.tick", now: time });
       this.audio();
       this.scheduleClock();
     }, 250);

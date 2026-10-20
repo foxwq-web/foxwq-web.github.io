@@ -126,10 +126,10 @@ test("disconnect preserves overtime periods and reconnect without clock data res
     session.clocks[2] = { main: 0, periods: 3, byoyomi: 20, periodLength: 60, at: 100 };
     context.mock.timers.tick(25000);
     notice(503, offline);
-    assert.deepEqual(session.clocks[2], { main: 0, periods: 2, byoyomi: 55, periodLength: 60, at: 125 });
+    assert.deepEqual(session.clocks[2], { main: 0, periods: 3, byoyomi: 0, periodLength: 60, at: 125 });
     context.mock.timers.tick(40000);
     notice(504, { 1: 533712957 });
-    assert.deepEqual(session.clocks[2], { main: 0, periods: 2, byoyomi: 55, periodLength: 60, at: 165 });
+    assert.deepEqual(session.clocks[2], { main: 0, periods: 3, byoyomi: 0, periodLength: 60, at: 165 });
     notice(109, { 2: { 2: 0, 3: 2, 4: 53, 5: 533712957 } });
     assert.deepEqual(session.clocks[2], { main: 0, periods: 2, byoyomi: 53, periodLength: 60, at: 165 });
   } finally { session.close(); }

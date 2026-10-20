@@ -808,7 +808,7 @@ export class Session {
         const timing = op === 109 ? m.sub(2) : m;
         if (timing.has(5)) {
           const color = timing.number(5) === this.uid ? this.color : 3 - this.color;
-          this.readClock(color, timing);
+          this.readClock(color, timing, true);
         }
       } else if (
         op === 503 && this.phase === "playing" &&
@@ -818,7 +818,7 @@ export class Session {
         // OpponentOfflineNotify: player ID, remaining allowance in seconds.
         const color = 3 - this.color, clock = this.clocks[color];
         if (clock && this.opponentDisconnectDeadline == null && this.board.turn === color) {
-          const remaining = clockReading(clock, Math.max(0, now() - clock.at));
+          const remaining = clockReading(clock, Math.max(0, now() - clock.at), 60, false);
           Object.assign(clock, {
             main: remaining.main,
             periods: remaining.periods,
@@ -991,16 +991,46 @@ export class Session {
     this.readClock(color, m);
     if (this.clocks[3 - color]) this.clocks[3 - color].at = now();
   }
-  readClock(color: number, m: Message) {
-    if (m.has(2))
+  tickClock(time = now()) {
+    if (this.phase !== "playing" || this.pending || this.counting || this.pendingConfirmation ||
+        this.board.turn !== this.color) return false;
+    const clock = this.clocks[this.color];
+    if (!clock) return false;
+    const reading = clockReading(clock, time - clock.at);
+    if (reading.periods !== clock.periods) {
+      clock.periods = reading.periods;
+      if (reading.periods > 0) Object.assign(clock, {
+        main: reading.main, byoyomi: reading.seconds, at: time,
+      });
+      return true;
+    }
+    return false;
+  }
+  readClock(color: number, m: Message, countdown = false) {
+    if (m.has(2)) {
+      const time = now();
+      const previous = this.clocks[color];
+      const control = this.board.timeControl ?? this.matchSettings;
+      let byoyomi = m.number(4);
+      // 0080c930 clamps a full initial-period countdown notification to the
+      // already displayed seconds. Move confirmations still reset the period.
+      if (countdown && previous && control && m.number(2) === 0 &&
+          m.number(3) > 0 && m.number(3) === control.periods &&
+          byoyomi > 0 && byoyomi === control.byoyomi) {
+        const elapsed = this.board.turn === color && !this.pending && !this.counting &&
+          !this.pendingConfirmation && !(color !== this.color && this.opponentDisconnectDeadline != null)
+          ? time - previous.at : 0;
+        byoyomi = Math.min(byoyomi, clockReading(previous, elapsed, 60, color === this.color).seconds);
+      }
       this.clocks[color] = {
         main: m.number(2),
         periods: m.number(3),
-        byoyomi: m.number(4),
+        byoyomi,
         periodLength:
           this.clocks[color]?.periodLength || this.matchSettings?.byoyomi || 60,
-        at: now(),
+        at: time,
       };
+    }
   }
   setResult(m: Message) {
     const winner = m.number(2),

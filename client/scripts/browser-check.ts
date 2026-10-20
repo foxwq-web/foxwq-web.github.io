@@ -6,13 +6,14 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import type { CDPSession } from 'playwright';
 import assert from 'node:assert/strict';
 import { DEV_SCREENS } from '../src/dev-screens.ts';
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
-const quietURL = value => { const target = new URL(value); target.searchParams.set('mute', '1'); return target.href; };
+const quietURL = (value: string) => { const target = new URL(value); target.searchParams.set('mute', '1'); return target.href; };
 const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
-const browserErrors = [];
+const browserErrors: string[] = [];
 let websocketCount = 0;
 try {
   const context = await browser.newContext();
@@ -27,25 +28,25 @@ try {
   cdp.on('Runtime.exceptionThrown', ({ exceptionDetails }) => {
     browserErrors.push(exceptionDetails.exception?.description || exceptionDetails.text);
   });
-  const call = async (method, params = {}) => {
-    let timer;
+  const call: CDPSession['send'] = async (method, params) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        cdp.send(method, method === 'Page.navigate' ? { ...params, url: quietURL(params.url) } : params),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`CDP ${method} timed out`)), 20000); })
+        cdp.send(method, method === 'Page.navigate' && params && 'url' in params && typeof params.url === 'string' ? { ...params, url: quietURL(params.url) } : params),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error(`CDP ${method} timed out`)), 20000); })
       ]);
     } finally { clearTimeout(timer); }
   };
-  const js = async expression => {
+  const js = async <T = any>(expression: string): Promise<T> => {
     const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
     if (result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result.value;
   };
-  const wait = async expression => {
+  const wait = async (expression: string) => {
     for (let i = 0; i < 200; i++) { if (await js(expression)) return; await pause(100); }
     throw Error(`Browser condition timed out: ${expression}`);
   };
-  const clickControl = async selector => {
+  const clickControl = async (selector: string) => {
     const { x, y } = await js(`(() => {
       const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
       return {x:r.x+r.width/2,y:r.y+r.height/2};
@@ -69,9 +70,9 @@ try {
   await call('Runtime.enable');
   await call('Network.enable');
   if (process.argv.includes('--audio-only')) {
-    const waitForEvent = method => new Promise((resolve, reject) => {
+    const waitForEvent = (method: 'Tracing.tracingComplete') => new Promise<{ stream?: string }>((resolve, reject) => {
       const timer = setTimeout(() => { cdp.off(method, listener); reject(Error(`CDP ${method} timed out`)); }, 20000);
-      const listener = params => { clearTimeout(timer); resolve(params); };
+      const listener = (params: { stream?: string }) => { clearTimeout(timer); resolve(params); };
       cdp.once(method, listener);
     });
     const { checkAudio } = await import('./audio-browser-check.ts');
@@ -273,7 +274,7 @@ try {
     if (inBoard) assert.deepEqual(await js("['black','white'].map(name=>document.getElementById(name+'-player-name').textContent)"),
       ['StoneRiver (3d)','BambooMoon (2d)'], fixture.id);
     if (['playing', 'finished'].includes(fixture.phase)) {
-      const geometry = await js(`(() => {
+      const geometry = await js<{ id: string; x: number; y: number; width: number; height: number; sidebarWidth: number; boxed: boolean; visible: boolean }[]>(`(() => {
         const bar = document.querySelector('aside').getBoundingClientRect();
         return [...document.querySelectorAll('#primary-actions > button, #resign')].map(button => {
           const r = button.getBoundingClientRect();
@@ -345,7 +346,7 @@ try {
     if (fixture.id === 'score-estimation') {
       const spacing = await js(`(() => {
         const panel = document.getElementById('estimation-panel');
-        const text = document.getElementById('${fixture.id === 'score-estimation-loading' ? 'estimation-status' : 'estimation-lead'}');
+        const text = document.getElementById('estimation-lead');
         const box = panel.getBoundingClientRect(), content = text.getBoundingClientRect();
         const style = getComputedStyle(text);
         return {marginTop:style.marginTop, marginBottom:style.marginBottom,
@@ -579,7 +580,7 @@ try {
   assert.equal(await js("document.getElementById('white-captures').textContent"), 'Captures: 0 + 7.5');
   assert.equal(await js("document.getElementById('black-time').textContent"), '—');
   assert.equal(await js("document.getElementById('white-periods')"), null);
-  const pointerAt = async (x, y, type = 'pointermove') => js(`(() => {
+  const pointerAt = async (x: number, y: number, type = 'pointermove') => js(`(() => {
     const board = document.getElementById('board'), rect = board.getBoundingClientRect(), view = board.viewBox.baseVal;
     board.dispatchEvent(new MouseEvent('${type}', {clientX: rect.left + (48 + ${x} * 744 / 18 - view.x) * rect.width / view.width,
       clientY: rect.top + (48 + ${y} * 744 / 18 - view.y) * rect.height / view.height, bubbles: true}));
@@ -795,11 +796,13 @@ try {
   await js(`(async()=>{const audio=foxSoundDemo.sounds;audio.stopVoice();window.soundCalls=[];
     const {ByoyomiAnnouncements}=await import('/src/clock.ts');
     const speaker=new ByoyomiAnnouncements(name=>audio.play(name));
-    const state={phase:'playing',gameId:'audio-check',color:1,turn:1,pending:false,moves:0,
-      clocks:{1:{main:2,periods:3,byoyomi:30,periodLength:30,at:0}}};
-    speaker.update(state,0);speaker.update(state,2);speaker.update(state,2.25);
+    const {Session}=await import('/src/session.ts');
+    const session=new Session();session.phase='playing';session.color=1;
+    session.clocks[1]={main:2,periods:3,byoyomi:30,periodLength:30,at:0};
+    const tick=time=>{session.tickClock(time);speaker.update(session.snapshot(),time)};
+    tick(0);tick(2);tick(2.25);
     const voice=audio.voice;audio.play('count-9');window.announcementProtected=voice===audio.voice;
-    speaker.update(state,32);speaker.update(state,62);
+    tick(32.5);tick(63);session.close();
   })()`);
   assert.equal(await js('window.announcementProtected'), true);
   assert.deepEqual(await js('window.soundCalls'), ['byoyomi-start','count-9','periods-2','periods-1']);
@@ -816,7 +819,7 @@ try {
   assert.deepEqual(await js('window.soundCalls'), ['stone','stone']);
 
 
-  for (const [count, name] of [[1,'stone-capture-small'],[2,'stone-capture-small'],[3,'stone-capture-medium'],[15,'stone-capture-medium'],[16,'stone-capture-large']]) {
+  for (const [count, name] of [[1,'stone-capture-small'],[2,'stone-capture-small'],[3,'stone-capture-medium'],[15,'stone-capture-medium'],[16,'stone-capture-large']] as const) {
     await js(`document.getElementById('reset').click();document.getElementById('reject').checked=false;window.soundCalls=[];
       (()=>{const b=foxSoundDemo.session.board;b.captures[1]=100;
         for(let x=1;x<=${count};x++){b.stones[19+x]=2;b.stones[x]=1;if(x!==1)b.stones[38+x]=1;}
@@ -1142,6 +1145,10 @@ try {
   assert.equal((await playerStats())[1].captures,'Captures: 6');
   await js(`matchSession.phase='playing';matchSession.board.turn=2;
     matchSession.clocks[2].at=Date.now()/1000-31;matchSession.changed()`);
+  await wait("document.querySelector('#white-time .clock-text').textContent==='00:00'");
+  assert.equal(await js("document.getElementById('white-periods').textContent"), '2/3');
+  await js(`(async()=>{const {encode,decode}=await import('/src/wire.ts');
+    matchSession.gameMessage(108,decode(encode({2:0,3:1,4:29,5:matchSession.uid+1})))})()`);
   await wait("document.getElementById('white-periods').textContent==='1/3'");
   const liveStats = await playerStats();
   assert.equal(liveStats[0].time,'00:01:30');
@@ -1158,6 +1165,11 @@ try {
     matchSession.clocks[1].at=Date.now()/1000;matchSession.changed()`);
   await wait("document.getElementById('black-time-label').textContent==='Main time'");
   await wait("document.getElementById('black-time-label').textContent==='Byoyomi: 3/3'");
+  await js(`matchSession.clocks[1]={main:0,periods:3,byoyomi:1,periodLength:30,at:Date.now()/1000-0.6};
+    matchSession.changed()`);
+  await wait("document.querySelector('#black-time .clock-text').textContent==='00:00'");
+  assert.equal(await js("document.getElementById('black-periods').textContent"), '3/3');
+  await wait("document.getElementById('black-periods').textContent==='2/3'");
   for (const width of [1280,800,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
     await pause(150);

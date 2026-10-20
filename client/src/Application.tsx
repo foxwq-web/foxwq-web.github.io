@@ -32,7 +32,7 @@ function Player({ state, color }: { state: UIState; color: number }) {
     !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
       ? Math.max(0, state.now - clock.at)
       : 0;
-  const reading = clock ? clockReading(clock, elapsed) : null;
+  const reading = clock ? clockReading(clock, elapsed, 60, color === s.color) : null;
   const seconds = reading
     ? Math.ceil(reading.overtime ? reading.seconds : reading.main)
     : 0;

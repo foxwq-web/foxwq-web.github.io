@@ -259,3 +259,28 @@ test("gameplay assets start once after login, including a directly restored game
     } finally { controller.dispose(); }
   }
 });
+
+test('controller persists the native rollover anchor before rendering and announcing it', context => {
+  context.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
+  const controller = new Controller(), voices: string[] = [];
+  context.mock.method(controller.sounds, 'play', (name: string) => { voices.push(name); });
+  try {
+    const session = controller.session;
+    session.phase = 'playing'; session.color = 1;
+    session.clocks[1] = { main: 0, periods: 3, byoyomi: 1, periodLength: 30, at: 0 };
+    controller.emit({ type: 'initialize', state: { ...initial(session), now: 0 } });
+    controller.audio(); controller.scheduleClock();
+    context.mock.timers.tick(500);
+    assert.equal(session.clocks[1].periods, 3, 'zero still belongs to the current period');
+    assert.deepEqual(voices, ['count-1']);
+    context.mock.timers.tick(1000);
+    assert.equal(controller.state.session.clocks[1].periods, 2);
+    assert.equal(controller.state.session.clocks[1].byoyomi, 30);
+    assert.equal(controller.state.session.clocks[1].at, 1.5);
+    assert.equal(controller.state.now, 1.5);
+    assert.deepEqual(voices, ['count-1', 'periods-2']);
+    context.mock.timers.tick(500);
+    assert.equal(session.clocks[1].at, 1.5, 'ordinary ticks do not restart the anchor');
+    assert.deepEqual(voices, ['count-1', 'periods-2']);
+  } finally { controller.dispose(); }
+});

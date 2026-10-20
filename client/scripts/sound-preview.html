@@ -56,6 +56,7 @@ document.querySelector('#countdown').onclick=async()=>{
   session.clocks[1]={main:3,periods:3,byoyomi:10,periodLength:12,at:Date.now()/1000};
 };
 setInterval(()=>{
+  session.tickClock();
   const state=session.snapshot();speaker.update(state);
   if(state.clocks[1]&&!state.pending){const c=clockReading(state.clocks[1],Date.now()/1000-state.clocks[1].at);status.textContent=`${c.periods} periods left · ${c.seconds}s. Place a stone to stop counting.`;}
 },100);
