@@ -17,7 +17,7 @@ const scored = decodeEstimate({ ret: 0, board_size: 19,
   white_penalty: expected.white_penalty }, board, 7.5);
 const production = process.argv.includes('--score-production');
 const productionWorker = production ? (await readdir(new URL('../../client/dist/assets', import.meta.url)))
-  .find(name => /^fox-score-worker-[\w-]+\.js$/.test(name)) : null;
+  .find(name => /^fox-score-worker-(?!client-)[\w-]+\.js$/.test(name)) : null;
 
 for (const [name, engine] of Object.entries({ chromium, firefox, webkit }).filter(([name]) =>
   !process.env.FOX_BROWSER_ENGINES || process.env.FOX_BROWSER_ENGINES.split(',').includes(name))) {

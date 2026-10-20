@@ -38,6 +38,14 @@ npm run test:browser
 
 The [CI workflow](../.github/workflows/ci.yml) runs verification on pushes and pull requests. Offline tests and previews do not establish current Fox server availability or compatibility with every live game path.
 
+## GitHub Pages
+
+The app is configured for https://foxwq-web.github.io/ in the `foxwq-web/foxwq-web.github.io` repository. In **Settings → Pages → Build and deployment → Source**, select **GitHub Actions**.
+
+[Publish GitHub Pages](../.github/workflows/pages.yml) runs on pushes to `main` and can also be started manually from the Actions tab on `main`. It installs the pinned Node/npm dependencies, uses the checked-in scoring WASM, builds the client, and uploads only `client/dist/` for deployment. Vite uses `/` as the asset base. Client build output is ignored by Git; commit source changes and push to `main` to publish. No generated bundles, branch build commits, or `.nojekyll` file are needed. Edit CSS in `client/public/style.css`.
+
+The Pages workflow deploys the static app independently of Verify. Build-time `VITE_*` settings are embedded in the app; an optional repository Actions variable `VITE_FOX_PROXY_URL` overrides the default production proxy URL. If deploying the Worker into a different Cloudflare account, set this variable to the resulting `wss://<worker>.<subdomain>.workers.dev/proxy` URL and rerun the Pages workflow; the deployment script's `.env.local` file exists only on the CI runner.
+
 ## Logs
 
 Network logs are stored locally across page reloads using bounded browser storage, with an in-memory fallback when storage is unavailable. Downloads contain timestamps, source/destination, base64 payloads, and build metadata. Login/session traffic is redacted by the logging code; remaining entries can contain game and account identifiers. SGF and network-log downloads are generated in the browser.

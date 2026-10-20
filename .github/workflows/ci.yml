@@ -29,9 +29,28 @@ jobs:
         env:
           CLIENT_BUILD_SHA: ${{ github.sha }}
       - run: npm run proxy:check
-      - run: npm run test:browser:install
-      - run: npm run test:browser
-      - run: npm run test:browser -- --audio-only
-      - run: npm run test:browser -- --score-engines
-      - run: npm run test:browser -- --score-production
-      - run: npm run test:browser -- --production-shortcuts
+
+  deploy-proxy:
+    name: Deploy Cloudflare proxy
+    needs: verify
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: cloudflare-production
+    concurrency:
+      group: cloudflare-proxy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - run: npm ci
+      - name: Deploy proxy, set access token, and check health
+        run: npm run proxy:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

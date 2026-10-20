@@ -5,6 +5,7 @@ import { resolveBuildSha } from './scripts/build-metadata.ts';
 export default defineConfig({
   worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
   root: import.meta.dirname,
+  base: "/",
   envDir: fileURLToPath(new URL('../', import.meta.url)),
   define: {
     __CLIENT_BUILD__: JSON.stringify({ gitSha: resolveBuildSha() })

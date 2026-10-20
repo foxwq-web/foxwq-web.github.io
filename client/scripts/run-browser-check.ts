@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, build, preview } from 'vite';
 
-const configFile = fileURLToPath(new URL('../vite.config.js', import.meta.url));
+const configFile = fileURLToPath(new URL('../vite.config.ts', import.meta.url));
 const args = process.argv.slice(2);
 const production = args.includes('--score-production') || args.includes('--production-shortcuts');
 async function availablePort() {
