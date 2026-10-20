@@ -4,6 +4,23 @@ import { Board } from '../src/board.ts';
 import { Session } from '../src/session.ts';
 import { DEV_SCREENS, applyDevScreen } from '../src/dev-screens.ts';
 
+test('offline player cards load recent games for the requested player', async () => {
+  const session = new Session();
+  try {
+    await applyDevScreen(session, 'board-black');
+    for (const [uid, name] of [[42, 'StoneRiver'], [43, 'BambooMoon']] as const) {
+      session.playerInfo.open(uid, name);
+      await new Promise(resolve => setImmediate(resolve));
+      const info = session.playerInfo.current!;
+      assert.equal(info.loading, false);
+      assert.equal(info.error, '');
+      assert.equal(info.summaryError, '');
+      assert.equal(info.name, name);
+      assert.equal(info.games.length, 20);
+    }
+  } finally { session.close(); }
+});
+
 test('all offline fixtures cover session phases, have valid histories and forbid real login', async () => {
   assert.equal(new Set(DEV_SCREENS.map(screen => screen.id)).size, DEV_SCREENS.length);
   assert.deepEqual(new Set(DEV_SCREENS.map(screen => screen.phase)), new Set([

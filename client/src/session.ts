@@ -1,3 +1,4 @@
+import { PlayerInfoStore, PLAYER_INFO_SERVICE } from "./player-info";
 import { Buffer } from "buffer";
 import SparkMD5 from "spark-md5";
 import * as game from "./game.ts";
@@ -51,6 +52,7 @@ export interface SessionOptions {
     options: TransportOptions,
   ) => Promise<Transport>;
   estimationFetcher?: Estimator;
+  historyFetcher?: typeof fetch;
   onSound?: (name: string) => void;
   onChange?: (state: SessionState) => void;
 }
@@ -82,6 +84,7 @@ export class Session {
   estimateController: AbortController | null;
   players: SessionState["players"];
   account: SessionState["account"] = null;
+  playerInfo: PlayerInfoStore;
   board: Board;
   komi: number;
   result: string;
@@ -149,6 +152,7 @@ export class Session {
     preferredTimeControl = null,
     connectionFactory = Connection.open,
     estimationFetcher = localEstimate,
+    historyFetcher,
     onSound = (_name) => {},
     onChange = (_state) => {},
   }: SessionOptions = {}) {
@@ -163,6 +167,8 @@ export class Session {
       onSound,
       onChange,
     });
+    this.playerInfo = new PlayerInfoStore(fields => this.send(PLAYER_INFO_SERVICE, 1001, fields),
+      () => this.changed(), () => this, historyFetcher);
     this.connection = null;
     this.gateway = null;
     this.timer = null;
@@ -248,6 +254,7 @@ export class Session {
       quitRequested: this.quitRequested,
       players: this.players,
       account: this.account,
+      playerInfo: this.playerInfo.current,
       clocks: this.clocks,
       opponentDisconnectDeadline: this.opponentDisconnectDeadline,
       gameId: Object.values(this.roomKey).join(":"),
@@ -263,6 +270,7 @@ export class Session {
   }
   close() {
     try {
+      this.playerInfo.reset();
       clearTimeout(this.reconnectTimer);
       this.reconnectBoard = null;
       this.opponentDisconnectDeadline = null;
@@ -382,6 +390,7 @@ export class Session {
         this.reconnectBoard ??= this.snapshot();
         this.clearEstimate();
         this.rollbackMove();
+        this.playerInfo.reset();
         // Invalidate callbacks before closing either transport.
         this.generation++;
         clearTimeout(this.timer ?? undefined);
@@ -548,7 +557,9 @@ export class Session {
       const [header, m] = game.unpack(packet.payload),
         service = header.number(7),
         op = header.number(1);
-      if (service === game.GATEWAY) {
+      if (service === PLAYER_INFO_SERVICE && op === 1001) {
+        this.playerInfo.receive(m);
+      } else if (service === game.GATEWAY) {
         if (op === 1) {
           if (signed(m.one(1))) {
             this.failed(generation, `Gateway login status ${signed(m.one(1))}`);
@@ -592,6 +603,7 @@ export class Session {
     try {
       if (op === 100008) {
         if (signed(m.one(1))) throw Error("Room manager login failed");
+        this.preloadPlayerInfo();
         for (const operation of [100145, 100115, 100150])
           this.send(game.ROOM, operation);
         this.fieldPlayersRequestedAt = Math.floor(performance.now());
@@ -673,6 +685,16 @@ export class Session {
     } finally {
       this.changed();
     }
+  }
+  private preloadPlayerInfo() {
+    const generation = this.generation;
+    queueMicrotask(() => {
+      if (generation !== this.generation || !this.gateway || this.gateway.closed || !this.token.length) return;
+      if (this.account) this.playerInfo.prefetch(this.uid, this.account.name, this.account.rank);
+      for (const player of Object.values(this.players)) {
+        if (player.id) this.playerInfo.prefetch(player.id, player.name, player.rank);
+      }
+    });
   }
   discoveryReady() {
     if (!this.fieldsLoaded || !this.gameLockChecked) return;
@@ -879,6 +901,10 @@ export class Session {
               : "Counting result needs your confirmation";
         }
       } else if ([402, 403, 405].includes(op)) {
+        if (!this.gameOver) {
+          this.playerInfo.invalidate();
+          this.preloadPlayerInfo();
+        }
         this.opponentDisconnectDeadline = null;
         this.rollbackMove();
         this.pending = false;
@@ -987,6 +1013,7 @@ export class Session {
         rank: this.players[color].rank || this.account?.rank || "",
       };
     }
+    this.preloadPlayerInfo();
   }
   announceStart(resuming: boolean) {
     const room = Object.values(this.roomKey).join(":");

@@ -13,10 +13,54 @@ function equalSecret(a: string | null | undefined, b: string | null | undefined)
   for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return difference === 0;
 }
+async function readLimited(stream: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array | null> {
+  if (!stream) return null;
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = []; let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) { await reader.cancel(); return null; }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(length); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health' && request.method === 'GET') return Response.json({ ok: true });
+    if (url.pathname === '/fox/chessbook/TXWQFetchChessList') {
+      const origin = request.headers.get('Origin');
+      if (!origin || !list(env.ALLOWED_ORIGINS).includes(origin)) return new Response('Origin forbidden', { status: 403 });
+      const headers = {
+        'Access-Control-Allow-Origin': origin, 'Vary': 'Origin',
+        'Cache-Control': 'no-store',
+      };
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: {
+        ...headers, 'Access-Control-Allow-Methods': 'GET',
+        'Access-Control-Allow-Headers': 'Authorization',
+      } });
+      const reply = (message: string, status: number) => new Response(message, { status, headers });
+      if (request.method !== 'GET') return reply('GET required', 405);
+      if (!equalSecret(request.headers.get('Authorization'), `Bearer ${env.PROXY_TOKEN ?? ''}`) || !env.PROXY_TOKEN) return reply('Unauthorized', 401);
+      // Fixed destination; forward the client's Fox query unchanged. The client
+      // owns the account token, source UID, timestamp and signature.
+      const target = new URL('https://newframe.foxwq.com/chessbook/TXWQFetchChessList');
+      target.search = url.search;
+      try {
+        const upstream = await fetch(target, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
+        const bytes = await readLimited(upstream.body, LIMIT);
+        if (!bytes) return reply('Invalid or oversized Fox response', 502);
+        return new Response(bytes, { status: upstream.status, headers: { ...headers,
+          'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json; charset=utf-8',
+        } });
+      } catch { return reply('Fox game history failed', 502); }
+    }
     if (url.pathname !== '/proxy') return new Response('Not found', { status: 404 });
     if (request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('WebSocket required', { status: 426 });
     const protocols = list(request.headers.get('Sec-WebSocket-Protocol'));

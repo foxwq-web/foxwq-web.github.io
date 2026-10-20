@@ -69,6 +69,11 @@ if (!process.env.FOX_BROWSER_URL) {
   process.exit(process.exitCode ?? 0);
 }
 
+if (process.argv.includes('--player-info')) {
+  await import('./player-info-browser-check.ts');
+  process.exit(0);
+}
+
 if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
   await import('../../score-estimator/scripts/score-engine-browser-check.ts');
   process.exit(0);
@@ -255,6 +260,14 @@ try {
     }
     assert.equal(await js("document.getElementById('dev-screens')"), null, fixture.id);
     assert.equal(await js("document.querySelector('fieldset')"), null, fixture.id);
+    if (fixture.playerName) {
+      await wait(`document.querySelector(${JSON.stringify(fixture.playerName)})?.getAttribute('aria-expanded') === 'true' && document.querySelectorAll('.player-info-games tbody tr').length === 10`);
+      const expectedName = fixture.id === 'board-white-player-info' ? 'BambooMoon' : 'StoneRiver';
+      assert.equal(await js("document.querySelector('.player-info').getAttribute('aria-label')"), `${expectedName} player information`, fixture.id);
+      assert.equal(await js("document.querySelectorAll('.player-info').length"), 1, fixture.id);
+      await page.keyboard.press('Escape');
+      await wait("document.querySelector('.player-info') === null");
+    }
     if (fixture.id === 'matchmaking') {
       assert.equal(await js("document.getElementById('time-controls').getAttribute('role')"), 'radiogroup');
       assert.equal(await js("document.getElementById('time-controls').getAttribute('aria-label')"), 'Time control');
@@ -564,7 +577,7 @@ try {
   assert.match(await js("document.getElementById('username').placeholder"), /username/i);
   assert.match(await js("document.getElementById('password').placeholder"), /password/i);
   assert.equal(await js("document.getElementById('login').textContent"), 'Log in');
-  assert.equal(await js("getComputedStyle(document.getElementById('connection-menu')).borderTopWidth"), '0px');
+  assert.equal(await js("getComputedStyle(document.getElementById('connection-menu')).borderTopWidth"), '1px');
   assert.equal(await js("document.querySelector('#connection-menu > legend, .player-turn, #events')"), null);
   assert.equal(await js("document.querySelector('label[for=username]').textContent"), '');
   assert.equal(await js("document.querySelector('label[for=password]').textContent"), '');
@@ -1295,3 +1308,5 @@ try {
 } finally {
   await browser.close();
 }
+
+if (!process.argv.includes('--production-shortcuts')) await import('./player-info-browser-check.ts');

@@ -1,3 +1,5 @@
+import type { PlayerInfo } from "./player-info";
+
 export interface TimeControl {
   id: number;
   size: number;
@@ -51,6 +53,7 @@ export interface SessionState {
     | { phase: "loading" }
     | { phase: "error"; error: string }
     | { phase: "result"; lead: number; ownership: number[]; stones: number[] };
+  playerInfo?: PlayerInfo | null;
   gatewayAvailable: boolean;
   koStones: number[] | null;
 }

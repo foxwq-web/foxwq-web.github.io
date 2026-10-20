@@ -13,7 +13,7 @@ createRoot(document.getElementById("root")!).render(
 );
 if (import.meta.env.DEV) {
   const screen = new URLSearchParams(location.search).get("dev-screen");
-  if (screen && ["all", "index"].includes(screen)) {
+  if (screen) {
     const { mountDevNavigation } = await import("./dev-screens.ts");
 
     const mount = () =>

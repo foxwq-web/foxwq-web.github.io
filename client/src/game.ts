@@ -85,6 +85,12 @@ export function rankLabel(rank: number) {
   if (rank < 36) return `${rank - 26}p`;
   return "";
 }
+export function resultLabel(winner: unknown, points: number | null, ending: "R" | "T" | "F" | "Void" | "" = "") {
+  if (ending === "Void") return "Void";
+  if (winner === 3) return "0";
+  if (winner !== 1 && winner !== 2) return "";
+  return `${winner === 1 ? "B" : "W"}+${ending || (points ?? "")}`;
+}
 export function plain(message: Message): Fields {
   return Object.fromEntries(
     [...message].map(([key, values]) => [

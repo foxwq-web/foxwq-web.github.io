@@ -15,6 +15,8 @@ Open the URL printed by Vite, normally `http://127.0.0.1:5173`. The app uses the
 
 Enter your Fox account in the login dialog and select a time control after connecting. An existing game can be restored on login. **Remember credentials** stores the username and password in a JavaScript-readable cookie for 30 days. The app also remembers the selected time control in a cookie.
 
+Hover a player name during a game or in matchmaking to see their rank progress, up to 20 results at their current rank, and last 10 games. Keyboard focus or tapping the name also opens the card; Escape dismisses it. Details use Fox's authenticated gateway, while the game list uses one HTTP request signed in the client with the logged-in UID and login token; the proxy forwards that request to Fox unchanged. Both requests start in parallel in the background after login and when players join a game, and refresh after the game ends. Hover reuses pending requests and cached results; completed cards open immediately. Cached data stays visible while refreshing after a minute. The Worker must include the `/fox/chessbook/TXWQFetchChessList` route.
+
 Press **F** to enter or leave full screen when you are not typing in a form field.
 
 For offline UI previews, open `/?dev-screen=all&mute=1` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.

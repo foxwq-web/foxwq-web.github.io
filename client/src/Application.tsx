@@ -1,3 +1,4 @@
+import { PlayerName } from "./PlayerInfo";
 import {
   useEffect,
   useLayoutEffect,
@@ -22,7 +23,7 @@ import { bindAudioUnlock } from "./sound.ts";
 
 const DevMenu = import.meta.env.DEV ? lazy(() => import("./DevMenu")) : null;
 
-function Player({ state, color }: { state: UIState; color: number }) {
+function Player({ state, color, controller }: { state: UIState; color: number; controller: Controller }) {
   const s = state.session,
     name = color === 1 ? "black" : "white",
     player = s.players[color];
@@ -50,13 +51,8 @@ function Player({ state, color }: { state: UIState; color: number }) {
     >
       <p id={`${name}-player-title`} className="player-title">
         <span className={`player-stone ${name}`} />
-        <span id={`${name}-player-name`}>
-          {player?.name
-            ? `${player.name}${player.rank ? ` (${player.rank})` : ""}`
-            : color === 1
-              ? "Black"
-              : "White"}
-        </span>
+        <PlayerName controller={controller} id={`${name}-player-name`} uid={player?.id}
+          name={player?.name || (color === 1 ? "Black" : "White")} rank={player?.rank} />
       </p>
       <p
         id={`${name}-captures`}
@@ -355,9 +351,10 @@ export function App({ controller: c }: { controller: Controller }) {
               <Player
                 key={3 - bottomColor}
                 state={state}
+                controller={c}
                 color={3 - bottomColor}
               />
-              <Player key={bottomColor} state={state} color={bottomColor} />
+              <Player key={bottomColor} state={state} controller={c} color={bottomColor} />
               <div className="primary-actions-slot">
                 <div
                   id="primary-actions"
@@ -559,7 +556,8 @@ export function App({ controller: c }: { controller: Controller }) {
             the <a id="fox-server" href="https://foxwq.com" target="_blank" rel="noopener noreferrer">Fox go server</a>.
           </p>
           <p id="matchmaking-player" className="login-intro login-copy" hidden={loginStep}>
-            Playing as {s.account?.name || state.form.username}{s.account?.rank ? ` (${s.account.rank})` : ""}.
+            Playing as <PlayerName controller={c} uid={loginStep ? undefined : c.session.uid}
+              name={s.account?.name || state.form.username} rank={s.account?.rank} />.
           </p>
           {/* Retire the credential form after login, before game downloads. */}
           {loginStep && <form

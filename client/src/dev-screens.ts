@@ -1,3 +1,4 @@
+import { PlayerInfoStore, PLAYER_INFO_SERVICE } from "./player-info";
 
 import type { Session } from "./session.ts";
 import { promptForAction, type Command, type Prompt } from "./state";
@@ -22,6 +23,7 @@ type Screen = {
   stage: Stage;
   phase: string;
   reach: string;
+  playerName?: string;
   run?: (scenario: Scenario) => void | Promise<void>;
 };
 const screen = (id: string, label: string, group: string, stage: Stage,
@@ -77,12 +79,15 @@ export const DEV_SCREENS: Screen[] = [
   screen("login-error", "Login or connection error", "Connection", "authenticating", "error", "Fox rejects credentials; transport failures use this same error screen"),
 
   screen("matchmaking", "Choose time control", "Matchmaking", "discovery", "ready", "Login completes; populations include unknown, zero, one and many players"),
+  { ...screen("matchmaking-player-info", "Your player info", "Matchmaking", "discovery", "ready", "Hover your player name in matchmaking"), playerName: "#matchmaking-player .player-name" },
   screen("matching", "Searching", "Matchmaking", "matching", "matching", "Play; Fox accepts the search"),
   screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(100130, { 1: -1 })),
   screen("joining", "Joining a room", "Matchmaking", "joining", "joining", "A match is found; game environment is pending"),
   screen("room-left", "Ready for the next game", "Matchmaking", "playing", "ready", "Finished game → Quit room; return to matchmaking", s => { finishedResignation(s); s.session.quitRoom(); }),
 
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
+  { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Hover Black’s player name in the main view"), playerName: "#black-player-name" },
+  { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "Game starts as White; Black plays", blackMove),
   screen("opponent-turn", "Opponent’s turn", "Playing", "playing", "playing", "Black plays; White is next", blackMove),
   screen("move-pending", "Action awaiting confirmation", "Playing", "playing", "playing", "Play a stone; Fox confirmation is pending. Pass and counting answers share these disabled controls", s => s.session.play(10, 10)),
@@ -151,6 +156,24 @@ export async function applyDevScreen(session: Session, id: string) {
   const message = (service: number, op: number, fields: Fields = {}) => session.receive(
     session.generation, { command: 26200, flags: 0,
       payload: game.envelope(42, service, op, fields, 63) });
+  // Hover cards use the same store and wire response path in offline previews.
+  session.playerInfo = new PlayerInfoStore(fields => {
+    const uid = Number(fields[1]);
+    queueMicrotask(() => message(PLAYER_INFO_SERVICE, 1001, {
+      1: 0, 2: fields[3], 3: uid, 7: 20, 8: { 5: uid === 43 ? "BambooMoon" : "StoneRiver" },
+      9: { 1: { 1: 9, 2: 13, 3: 10 }, 2: "-+--++-+-++--++-+--++" }, 16: [{ 1: 0, 2: 128, 3: 104 }],
+    }));
+  }, () => session.changed(), () => session, async input => {
+    const uid = Number(new URL(String(input)).searchParams.get("uid"));
+    return Response.json({ result: 0, chesslist: Array.from({ length: 20 }, (_, i) => ({
+      chessid: String(1791872071030044736n + BigInt(i)),
+      blackuid: uid, whiteuid: 44, blackenname: uid === 43 ? "BambooMoon" : "StoneRiver",
+      // Ten wide letters stress the chosen-name limit; generated names can reach eleven.
+      whiteenname: i % 2 ? "WWWWWWWWWW" : "V2000518658", whitedan: 19,
+      gamestarttime: String(1791872071 - i * 3600), winner: i % 3 ? 1 : 2,
+      reason: i % 2 ? 3 : 1, point: i % 2 ? -1 : 325, movenum: 80 + i * 9,
+    })) });
+  });
   const scenario: Scenario = {
     session,
     room: (op, fields) => message(game.ROOM, op, fields),
@@ -239,6 +262,12 @@ function sampleEstimate(stones: string) {
 }
 
 export function mountDevNavigation(id: string) {
+  const playerName = DEV_SCREENS.find(screen => screen.id === id)?.playerName;
+  if (playerName) {
+    // Focus opens the real hover card and keeps it visible for inspection.
+    document.querySelector<HTMLElement>(playerName)?.focus();
+    return;
+  }
   if (!["all", "index"].includes(id)) return;
   const section = document.createElement("section");
   section.id = "dev-screens";

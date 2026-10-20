@@ -115,7 +115,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit }).filte
     const primary = await calculate();
     assert.equal(engineRequests.filter(request => /\.wasm$/.test(request)).length, downloadsBeforeEstimate,
       `${name}: estimation reuses the precompiled module`);
-    assert.deepEqual(primary.result, { phase: 'result', ...scored }, `${name}: full native estimate`);
+    assert.deepEqual(primary.result, { phase: 'result', stones: board.stones, ...scored }, `${name}: full native estimate`);
     assertEngineDownloads();
     assert.equal(primary.preserved, true); assert.equal(primary.resumed, true);
 

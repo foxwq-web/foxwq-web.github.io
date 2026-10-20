@@ -16,6 +16,8 @@ On pushes to `main`, the proxy deploys only after the entire `verify` job succee
 
 For local proxy development, put the matching `PROXY_TOKEN` in `proxy/.dev.vars`, set `VITE_FOX_PROXY_URL=ws://127.0.0.1:8787/proxy` in `.env.local`, and run `npm run proxy:dev` alongside the client.
 
+`GET /fox/chessbook/TXWQFetchChessList` relays the query to the same path on `https://newframe.foxwq.com`. The client supplies its signed-in Fox UID, base64 login token, timestamp and signature. The Worker forwards them unchanged and adds CORS headers; it does not generate Fox credentials or guest requests. The route requires the same allowed origin and proxy access token as the WebSocket relay.
+
 ## Verification
 
 From the repository root, run `npm run proxy:check` to perform a deployment dry run without publishing the Worker.
