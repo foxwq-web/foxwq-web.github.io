@@ -5,6 +5,7 @@ import { clockReading } from "./clock.ts";
 import { Board } from "./board.ts";
 import { placementSound } from "./sound.ts";
 import { Connection } from "./transport.ts";
+import { NetworkLog } from "./network-log.ts";
 import { encode, decode, signed, type Message, type Fields } from "./wire.ts";
 
 export function loginRequest(
@@ -69,6 +70,7 @@ export class Session {
   phase: string;
   status: string;
   gameOver: boolean;
+  networkLog: NetworkLog;
   players: SessionState["players"];
   account: SessionState["account"] = null;
   board: Board;
@@ -133,6 +135,7 @@ export class Session {
     this.phase = "disconnected";
     this.status = "Disconnected";
     this.gameOver = false;
+    this.networkLog = new NetworkLog();
     this.players = {};
     this.board = new Board();
     this.komi = 7.5;

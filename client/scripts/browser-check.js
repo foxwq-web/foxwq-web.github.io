@@ -75,6 +75,29 @@ try {
     assert.deepEqual(browserErrors, []);
   } else {
 
+  await wait("typeof window.downloadNetworkLog === 'function'");
+  await js(`localStorage.setItem('fox-network-log', JSON.stringify([
+    ['2020-01-01T00:00:00.000Z:fixture:0000000000000000','client:fixture:1','fox.example:10000','AA==']
+  ]))`);
+  await js('window.networkReloadMarker=true');
+  await call('Page.reload');
+  await wait("!window.networkReloadMarker && typeof window.downloadNetworkLog === 'function'");
+  const consoleLog = await js(`(async()=>{
+    let saved; const create = URL.createObjectURL;
+    URL.createObjectURL = blob => {saved = blob; return create(blob);};
+    try { downloadNetworkLog(); } finally { URL.createObjectURL = create; }
+    return saved.text();
+  })()`);
+  assert.deepEqual(JSON.parse(consoleLog), [{
+    timestamp:'2020-01-01T00:00:00.000Z', source:'client:fixture:1', destination:'fox.example:10000', payload:'AA=='
+  }]);
+  await js('window.networkReloadMarker=true');
+  await call('Page.reload');
+  await wait("!window.networkReloadMarker && typeof window.downloadNetworkLog === 'function'");
+  assert.equal(await js("JSON.parse(localStorage.getItem('fox-network-log')).length"), 1);
+  await js("localStorage.removeItem('fox-network-log')");
+  console.log('Browser network log passed: console download and retention across reloads');
+
   for (const screen of ['matchmaking', 'board-black', 'unknown']) {
     const shortcut = new URL(url); shortcut.searchParams.set('dev-screen', screen);
     await js('window.shortcutPageMarker=true');
@@ -147,6 +170,7 @@ try {
       await js("document.getElementById('dev-menu').open=true");
       assert.equal(await js("document.querySelectorAll('#dev-screen-tools li a').length"), DEV_SCREENS.length);
       assert.equal(await js("[...document.querySelectorAll('#dev-screen-tools a')].every(a=>new URL(a.href).searchParams.get('mute')==='1')"), true);
+      assert.equal(await js("document.getElementById('save-network-log').checkVisibility() && typeof window.downloadNetworkLog === 'function'"), true);
       await js("document.getElementById('dev-menu').open=false");
     }
     assert.equal(await js("document.getElementById('dev-screens')"), null, fixture.id);
@@ -555,6 +579,15 @@ try {
   })()`);
   assert.match(sgf, /PB\[Black\]PW\[White\]/);
   assert.match(sgf, /RE\[B\+R\]/); assert.match(sgf, /;B\[dd\];W\[\];B\[\]/);
+  const networkLog = await js(`(async()=>{
+    let saved;const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
+    document.getElementById('save-network-log').click();URL.createObjectURL=create;return saved.text();
+  })()`);
+  assert.ok(Array.isArray(JSON.parse(networkLog)));
+  assert.equal(networkLog.includes('"kind":"ui"'), false);
+  assert.equal(networkLog.includes('"event":'), false);
+  assert.equal(networkLog.includes('\n'), false);
+
   console.log('Browser checks passed: SVG, responsive sizing, preview/placement, triangle, komi, passing, resignation, SGF');
 
   await js(`const Session=window.CheckSession;Session.prototype.login=function(){this.close();this.phase='connecting';this.status='Connecting to Fox...';window.checkSession=this;};checkSession.close()`);

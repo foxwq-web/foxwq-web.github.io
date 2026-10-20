@@ -100,6 +100,7 @@ test("subscribers receive the controller state without replaying transitions", (
     unsubscribe();
     controller.emit({ type: "board.hover", point: null });
     assert.notEqual(controller.state, rendered);
+    assert.deepEqual(JSON.parse(controller.session.networkLog.serialize()), []);
   } finally {
     controller.dispose();
   }
@@ -121,6 +122,7 @@ test("opponent-turn actions are ignored without prompts or sending commands", ()
       controller.command(command);
       assert.equal(controller.state.prompt, null);
       assert.equal(controller.state.error, "");
+      assert.deepEqual(JSON.parse(session.networkLog.serialize()), []);
     }
     session.board.turn = 2;
     controller.session.changed();
@@ -138,7 +140,7 @@ test("opponent-turn actions are ignored without prompts or sending commands", ()
   }
 });
 
-test("login submissions retain live credentials", () => {
+test("login submissions retain live credentials without adding them to the network log", () => {
   const controller = new Controller();
   try {
     controller.preview = true;
@@ -163,7 +165,15 @@ test("login submissions retain live credentials", () => {
     controller.command("login");
     assert.equal(controller.state.form.passwordLength, "private-test-password".length);
     assert.equal(controller.password, "private-test-password");
+    assert.ok(
+      !controller.session.networkLog
+        .serialize()
+        .includes("private-test-password"),
+    );
+    for (const username of ["RememberedPlayer", "TestPlayer"])
+      assert.equal(controller.session.networkLog.serialize().includes(username), false);
     assert.equal(controller.state.form.username, "TestPlayer");
+    assert.deepEqual(JSON.parse(controller.session.networkLog.serialize()), []);
   } finally {
     controller.dispose();
   }

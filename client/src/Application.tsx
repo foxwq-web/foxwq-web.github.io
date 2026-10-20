@@ -468,7 +468,7 @@ export function App({ controller: c }: { controller: Controller }) {
                     <button
                       id="save-sgf"
                       className="secondary"
-                      onClick={() => c.saveSgf()}
+                      onClick={() => c.save("sgf")}
                     >
                       Download SGF
                     </button>
@@ -640,7 +640,7 @@ export function App({ controller: c }: { controller: Controller }) {
       </div>
       {DevMenu && (
         <Suspense fallback={null}>
-          <DevMenu />
+          <DevMenu controller={c} />
         </Suspense>
       )}
     </>

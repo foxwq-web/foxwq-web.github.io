@@ -1,6 +1,9 @@
+import type { Controller } from "./controller";
 import { DEV_SCREENS } from "./dev-screens.ts";
 
-export default function DevMenu() {
+export default function DevMenu({ controller: c }: {
+  controller: Controller;
+}) {
   const screenURL = (id: string | null) => {
     const url = new URL(location.href);
     if (id) url.searchParams.set("dev-screen", id);
@@ -10,6 +13,12 @@ export default function DevMenu() {
   return (
     <details id="dev-menu">
       <summary id="dev-menu-toggle">Dev menu</summary>
+      <section>
+        <h2 id="network-log-title">Network log</h2>
+        <button id="save-network-log" onClick={() => c.save("network-log")}>
+          Save Network Log
+        </button>
+      </section>
       <section id="dev-screen-tools">
         <h2>Dev screens</h2>
         <p><a href={screenURL("all")}>All screen previews</a></p>

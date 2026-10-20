@@ -1,6 +1,6 @@
 # Client
 
-A browser client for Fox Go. The React/TypeScript client handles login, matchmaking, gameplay, clocks, counting requests, and SGF export. A Cloudflare Worker relays binary WebSocket traffic to Fox's TCP servers; it does not implement the game protocol.
+A browser client for Fox Go. The React/TypeScript client handles login, matchmaking, gameplay, clocks, counting requests, SGF export, and downloadable network logs. A Cloudflare Worker relays binary WebSocket traffic to Fox's TCP servers; it does not implement the game protocol.
 
 ## Development
 
@@ -37,3 +37,7 @@ npm run test:browser
 ```
 
 The [CI workflow](../.github/workflows/ci.yml) runs verification on pushes and pull requests. Offline tests and previews do not establish current Fox server availability or compatibility with every live game path.
+
+## Logs
+
+Network logs are stored locally across page reloads using bounded browser storage, with an in-memory fallback when storage is unavailable. Downloads contain timestamps, source/destination, base64 payloads, and build metadata. Login/session traffic is redacted by the logging code; remaining entries can contain game and account identifiers. SGF and network-log downloads are generated in the browser.

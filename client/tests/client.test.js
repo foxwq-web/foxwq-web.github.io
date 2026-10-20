@@ -239,6 +239,28 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
     s.play(3,3);await wait(()=>s.board.moves.length===2);assert.equal(s.sync,2);
     s.passTurn();await wait(()=>s.board.moves.length===3);s.send(31000,501,{},63);await wait(()=>s.status==='Game synchronized');
     assert.deepEqual(s.board.moves,[[1,3,3],[2,15,15],[1,null,null]]);s.resign();await wait(()=>s.phase==='finished');assert.equal(s.result,'W+R');assert.match(s.board.sgf(s.result),/RE\[W\+R\]/);
+    const log = JSON.parse(s.networkLog.serialize());
+    assert.ok(Array.isArray(log));
+    assert.ok(!s.networkLog.serialize().includes('a'.repeat(43)), 'proxy access token is excluded');
+    assert.deepEqual([...new Set(log.filter(e => e.source.startsWith('client:')).map(e => e.destination))],
+      ['43.132.13.39:10000', '119.91.247.46:3001']);
+    const packets = (client, inbound) => {
+      const chunks = log.filter(e => (inbound ? e.destination : e.source) === client);
+      let stream = Buffer.concat(chunks.map(e => Buffer.from(e.payload, 'base64')));
+      const result = [];
+      while (stream.length) { const [packet, size] = decodeOne(stream); result.push(packet); stream = stream.subarray(size); }
+      return result;
+    };
+    const firstClient = log.find(e => e.source.startsWith('client:')).source;
+    const secondClient = log.find(e => e.source.startsWith('client:') && e.source !== firstClient).source;
+    assert.ok(!packets(firstClient, false).some(p => p.command === 2000));
+    assert.ok(!packets(firstClient, true).some(p => p.command === 2005));
+    assert.ok(log.some(e => !e.payload));
+    for (const entry of log)
+      assert.ok(!Buffer.from(entry.payload, 'base64').includes(Buffer.from('private-token')));
+    assert.ok(packets(secondClient, false).some(p => game.unpack(p.payload)[0].one(1) === 100130));
+    assert.ok(packets(secondClient, true).some(p => game.unpack(p.payload)[0].one(1) === 402));
+    assert.ok(log.every(e => Object.keys(e).join(',') === 'timestamp,source,destination,payload' && !Number.isNaN(Date.parse(e.timestamp))));
   } finally {s.close();globalThis.WebSocket=Original;}
 });
 test('late asynchronous login cannot overwrite a disconnected session', async () => {

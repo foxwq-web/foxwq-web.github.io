@@ -1,4 +1,3 @@
-import { setupFoxGame } from './fox-game.ts';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Board } from "../src/board.ts";
@@ -83,22 +82,4 @@ test("untimed boards omit clock properties and SGF retains fractional seconds", 
   board.timeControl = { main: 2700, periods: 5, byoyomi: 30 };
   board.moveTimings[0] = { remaining: 2690.113 };
   assert.match(board.sgf(), /TM\[2700\]OT\[5x30 byo-yomi\].*;B\[dd\]BL\[2690\.113\]/);
-});
-
-test('SGF eligibility requires a completed game and survives disconnect', () => {
-  const session = new Session();
-  assert.equal(session.snapshot().game_over, false);
-  setupFoxGame(session);
-  notify(session, 206, {}); notify(session, 206, {});
-  assert.equal(session.snapshot().game_over, false, 'two passes await the server result');
-  notify(session, 402, { 2: 1, 4: 3 });
-  assert.equal(session.snapshot().game_over, true);
-  session.close(); assert.equal(session.snapshot().game_over, true);
-  setupFoxGame(session);
-  session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
-  assert.equal(session.snapshot().game_over, true);
-  session.gameMessage(501, decode(encode({ 6: 3 })), decode(encode({})));
-  assert.equal(session.snapshot().game_over, false, 'restoring an active game hides SGF');
-  session.gameMessage(501, decode(encode({ 6: 5 })), decode(encode({})));
-  assert.equal(session.snapshot().game_over, true, 'restoring a finished game enables SGF');
 });

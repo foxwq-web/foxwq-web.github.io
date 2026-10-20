@@ -2,6 +2,7 @@ import { Buffer } from "buffer";
 import { encode, decodeOne, MAX_SIZE } from "./framing.ts";
 
 import type { Frame } from "./framing.ts";
+import type { NetworkLog } from "./network-log.ts";
 export interface Transport {
   closed?: boolean;
   send(command: number, payload: Uint8Array): void;
@@ -11,9 +12,12 @@ export interface Transport {
 export interface TransportOptions {
   proxyUrl: string;
   proxyToken: string;
+  networkLog?: NetworkLog;
 }
 
 export class Connection {
+  networkLog?: NetworkLog;
+  connectionId?: number;
   ws: WebSocket;
   closed: boolean;
   buffer: Buffer;
@@ -26,7 +30,7 @@ export class Connection {
     port: number,
     receive: (frame: Frame) => void,
     failed: (reason: string) => void,
-    { proxyUrl, proxyToken }: TransportOptions,
+    { proxyUrl, proxyToken, networkLog }: TransportOptions,
   ) {
     const url = new URL(proxyUrl);
     if (!["wss:", "ws:"].includes(url.protocol))
@@ -42,10 +46,15 @@ export class Connection {
     url.search = "";
     url.searchParams.set("host", host);
     url.searchParams.set("port", String(port));
+    const connectionId = networkLog?.connection(host, port);
+
 
     const ws = new WebSocket(url, ["tcp-proxy", proxyToken]);
     ws.binaryType = "arraybuffer";
-    const connection = new Connection(ws, receive, failed);
+    const connection = new Connection(ws, receive, failed, {
+      networkLog,
+      connectionId,
+    });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         connection.close();
@@ -73,7 +82,13 @@ export class Connection {
     ws: WebSocket,
     receive: (frame: Frame) => void,
     failed: (reason: string) => void,
+    {
+      networkLog,
+      connectionId,
+    }: { networkLog?: NetworkLog; connectionId?: number } = {},
   ) {
+    this.networkLog = networkLog;
+    this.connectionId = connectionId;
     this.ws = ws;
     this.closed = false;
     this.buffer = Buffer.alloc(0);
@@ -89,6 +104,11 @@ export class Connection {
       try {
         if (!(data instanceof ArrayBuffer))
           throw Error("Proxy sent a nonbinary message");
+        this.networkLog?.traffic(
+          this.connectionId!,
+          "inbound",
+          Buffer.from(data),
+        );
         this.buffer = Buffer.concat([this.buffer, Buffer.from(data)]);
         if (this.buffer.length > MAX_SIZE + 65536)
           throw Error("receive buffer limit exceeded");
@@ -123,12 +143,14 @@ export class Connection {
     if (this.ws.bufferedAmount + packet.length > MAX_SIZE)
       throw Error("send buffer limit exceeded");
     this.ws.send(packet);
+    this.networkLog?.traffic(this.connectionId!, "outbound", packet);
   }
   close() {
     if (this.closed) return;
     this.closed = true;
     this.queued = [];
     this.buffer = Buffer.alloc(0);
+    if (this.connectionId !== undefined) this.networkLog?.closeConnection(this.connectionId);
     this.ws.close();
   }
 }
