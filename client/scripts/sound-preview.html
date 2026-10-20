@@ -16,6 +16,7 @@ import { clockReading, ByoyomiAnnouncements } from '../src/clock.ts';
 const sounds = new FoxSounds(), speaker = new ByoyomiAnnouncements(name => sounds.play(name));
 const session = new Session({ onSound: name => sounds.play(name) });
 
+sounds.preload();
 window.foxSoundDemo = { sounds, session };
 const board = document.querySelector('canvas'), ctx = board.getContext('2d'), status = document.querySelector('output');
 let reply;

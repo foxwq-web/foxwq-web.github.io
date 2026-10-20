@@ -1,6 +1,6 @@
 
 if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
-  await import('../../score-estimator/scripts/score-engine-browser-check.js');
+  await import('../../score-estimator/scripts/score-engine-browser-check.ts');
   process.exit(0);
 }
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -772,6 +772,7 @@ try {
           constructor(){super(1,57600,48000);}
         };
         audio=new FoxSounds({muted});
+        audio.preload();
       } finally { window.AudioContext=NativeContext; }
       await audio.loading;
       Object.defineProperty(audio.context,'state',{get:()=> 'running'});

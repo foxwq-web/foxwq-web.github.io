@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileScoreWasm } from '../src/fox-score-wasm.ts';
 import { estimateInWorker, localEstimate, supportsLocalEstimate,
-  ESTIMATOR_LOAD_ERROR, UNSUPPORTED_ESTIMATOR, type EstimatorWorker } from '../src/local-score-estimation.ts';
+  ESTIMATOR_LOAD_ERROR, UNSUPPORTED_ESTIMATOR, type EstimatorWorker, type EstimatorRequest } from '../src/local-score-estimation.ts';
 
 const status = '0'.repeat(361);
 class FakeWorker implements EstimatorWorker {
   onmessage: EstimatorWorker['onmessage'] = null;
   onerror: EstimatorWorker['onerror'] = null;
   onmessageerror: EstimatorWorker['onmessageerror'] = null;
-  sent: string[] = [];
+  sent: EstimatorRequest[] = [];
   terminated = 0;
-  postMessage(data: string) { this.sent.push(data); }
+  postMessage(data: EstimatorRequest) { this.sent.push(data); }
   terminate() { this.terminated++; }
 }
 
@@ -75,4 +75,33 @@ test('standalone WASM loads as buffered bytes and propagates asset/compile failu
   assert.deepEqual(loaded, ['engine']);
   await assert.rejects(compileScoreWasm('engine', async () => { throw Error('offline'); }), /offline/);
   await assert.rejects(compileScoreWasm('engine', async () => Uint8Array.of(1)), WebAssembly.CompileError);
+});
+
+test('a precompiled module is sent to the scoring worker with the board', async () => {
+  const worker = new FakeWorker();
+  const module = new WebAssembly.Module(Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0));
+  const pending = estimateInWorker(status, new AbortController().signal, () => worker, module);
+  await Promise.resolve();
+  assert.deepEqual(worker.sent, [{ status, module }]);
+  const result = { ret: 0, board_size: 19, judge_status: status };
+  worker.onmessage!({ data: { result } } as MessageEvent);
+  assert.deepEqual(await pending, result);
+  assert.equal(worker.terminated, 1);
+});
+
+test('cancellation and the deadline also cover a pending module download', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const cancel of [true, false]) {
+    const worker = new FakeWorker(), controller = new AbortController();
+    let loaded!: (module: WebAssembly.Module) => void;
+    const module = new Promise<WebAssembly.Module>(resolve => { loaded = resolve; });
+    const pending = estimateInWorker(status, controller.signal, () => worker, module);
+    const rejected = assert.rejects(pending, cancel ? { name: 'AbortError' } : /timed out/);
+    if (cancel) controller.abort(); else context.mock.timers.tick(20000);
+    await rejected;
+    loaded(new WebAssembly.Module(Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0)));
+    await Promise.resolve();
+    assert.deepEqual(worker.sent, []);
+    assert.equal(worker.terminated, 1);
+  }
 });

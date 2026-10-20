@@ -5,6 +5,7 @@ import {
   rememberedTimeControl,
   rememberTimeControl,
 } from "./time-preference.ts";
+import { preloadLocalEstimate } from "../../score-estimator/src/local-score-estimation.ts";
 import { FoxSounds } from "./sound.ts";
 import { ByoyomiAnnouncements } from "./clock.ts";
 import {
@@ -46,6 +47,7 @@ export class Controller {
   private clockTimer?: ReturnType<typeof setTimeout>;
   private errorTimer?: ReturnType<typeof setTimeout>;
   private suppress = false;
+  private assetsStarted = false;
 
   constructor() {
     this.session = new Session({
@@ -100,7 +102,14 @@ export class Controller {
         },
       },
     });
+    this.preloadGameplayAssets(session);
     this.scheduleClock();
+  }
+  private preloadGameplayAssets(session: SessionState) {
+    if (this.assetsStarted || !["ready", "matching", "joining", "playing", "finished", "reconnecting"].includes(session.phase)) return;
+    this.assetsStarted = true;
+    this.sounds.preload();
+    void preloadLocalEstimate().catch(() => {});
   }
   emit(event: UIEvent) {
     if (this.suppress) return;
@@ -123,6 +132,7 @@ export class Controller {
         this.emit({ type: "form.remember", value: true });
       }
     }
+    this.preloadGameplayAssets(session);
     this.audio();
     this.scheduleClock();
   }

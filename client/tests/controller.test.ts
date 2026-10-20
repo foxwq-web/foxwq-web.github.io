@@ -236,3 +236,26 @@ test("reconnection ignores game commands and keeps the board visible without all
     assert.equal(controller.state.prompt, null);
   } finally { controller.dispose(); }
 });
+
+test("gameplay assets start once after login, including a directly restored game", () => {
+  for (const destination of ["ready", "playing"]) {
+    const controller = new Controller();
+    try {
+      let preloads = 0;
+      controller.sounds.preload = () => { preloads++; };
+      controller.emit({ type: "initialize", state: initial(controller.session) });
+      for (const phase of ["connecting", "authenticating", "bootstrap", "gateway", "resuming", "error"]) {
+        controller.session.phase = phase;
+        controller.session.changed();
+        controller.session.flushChanges();
+        assert.equal(preloads, 0, phase);
+      }
+      for (const phase of [destination, "matching", "playing", "disconnected", "ready"]) {
+        controller.session.phase = phase;
+        controller.session.changed();
+        controller.session.flushChanges();
+        assert.equal(preloads, 1, phase);
+      }
+    } finally { controller.dispose(); }
+  }
+});

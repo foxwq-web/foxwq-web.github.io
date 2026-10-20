@@ -66,6 +66,10 @@ export class FoxSounds {
       this.idleAnalyser.fftSize = 32;
       this.output.connect(this.idleAnalyser);
     }
+  }
+  preload() {
+    this.prepare();
+    if (!this.context) return;
     this.loading ??= Promise.all(
       this.names.map(async (name) => {
         try {
