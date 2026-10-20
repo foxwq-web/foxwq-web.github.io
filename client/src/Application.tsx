@@ -1,0 +1,641 @@
+import {
+  useEffect,
+  useLayoutEffect,
+  useSyncExternalStore,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
+import { BoardView } from "./BoardView";
+import { Controller } from "./controller";
+import {
+  boardAvailable,
+  actionsBlocked,
+  promptForAction,
+  type UIState,
+  type Command,
+  type Prompt,
+} from "./state";
+import { timeLabel } from "./game.ts";
+import { clockInputValue, clockReading } from "./clock.ts";
+
+const DevMenu = import.meta.env.DEV ? lazy(() => import("./DevMenu")) : null;
+
+function Player({ state, color }: { state: UIState; color: number }) {
+  const s = state.session,
+    name = color === 1 ? "black" : "white",
+    player = s.players[color];
+  const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
+  const clock = s.clocks[color];
+  const elapsed =
+    clock && !state.frozen && s.phase === "playing" && s.turn === color
+      ? Math.max(0, state.now - clock.at)
+      : 0;
+  const reading = clock ? clockReading(clock, elapsed) : null;
+  const seconds = reading
+    ? Math.ceil(reading.overtime ? reading.seconds : reading.main)
+    : 0;
+  const total =
+    s.matchFields.find((field) => field.id === s.fieldId)?.periods ?? 3;
+  const clockId = color === (s.color === 2 ? 2 : 1) ? "hours" : `${name}-hours`;
+  const clockValue = clockInputValue(seconds);
+  const clockText = seconds < 3600 ? clockValue.slice(3) : clockValue;
+  return (
+    <section
+      id={`${name}-player`}
+      aria-labelledby={`${name}-player-title`}
+      className={`player-panel${s.phase === "playing" && s.turn === color ? " to-play" : ""}`}
+    >
+      <p id={`${name}-player-title`} className="player-title">
+        <span className={`player-stone ${name}`} />
+        <span id={`${name}-player-name`}>
+          {player?.name
+            ? `${player.name}${player.rank ? ` (${player.rank})` : ""}`
+            : color === 1
+              ? "Black"
+              : "White"}
+        </span>
+      </p>
+      <p
+        id={`${name}-captures`}
+        className="player-captures"
+      >{`Captures: ${s.captures[color]}${komi ? ` + ${komi}` : ""}`}</p>
+      <dl className="player-clock">
+        <div>
+          <dt id={`${name}-time-label`}>
+            {reading?.overtime && clock?.periods
+              ? <>Byoyomi: <span id={`${name}-periods`}>{reading.periods}/{total}</span></>
+              : "Main time"}
+          </dt>
+          <dd id={`${name}-time`} className={`remaining-time${clock ? "" : " no-clock"}`}>
+            {clock
+              ? <span className="clock-display">
+                <input
+                  type="time"
+                  id={clockId}
+                  list="popularHours"
+                  step="1"
+                  value={clockValue}
+                  tabIndex={-1}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={(event) => event.preventDefault()}
+                  onKeyDown={(event) => event.preventDefault()}
+                  onBeforeInput={(event) => event.preventDefault()}
+                  onChange={(event) => { event.currentTarget.value = clockValue; }}
+                />
+                <span className="clock-text">{clockText}</span>
+              </span>
+              : "—"}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+function countingText(s: UIState["session"]) {
+  if (s.confirmationKind !== "counting-result") return "";
+  const score = s.countingResult;
+  if (score?.winner === "Draw") return "Draw";
+  if (!score?.winner) return "Unknown";
+  const margin = [score.black, score.white, score.komi].every(Number.isFinite)
+    ? Math.abs(score.black! - score.white! - score.komi!)
+    : null;
+  return `${score.winner === "Black wins" ? "B" : "W"}+${margin ?? ""}`;
+}
+
+export function App({ controller: c }: { controller: Controller }) {
+  const state = useSyncExternalStore(c.subscribe, c.getState);
+  const s = state.session,
+    playing = s.phase === "playing";
+  const available = boardAvailable(s),
+    showMenu = !available || state.roomMenuOpen;
+  const loginStep =
+    [
+      "disconnected",
+      "error",
+      "connecting",
+      "authenticating",
+      "bootstrap",
+      "gateway",
+      "resuming",
+    ].includes(s.phase);
+  const resignConfirm = state.prompt?.action === "resign";
+  const loginPending = [
+    "connecting",
+    "authenticating",
+    "bootstrap",
+    "gateway",
+    "resuming",
+  ].includes(s.phase);
+  const disabled = actionsBlocked(s) || s.pending || !!state.prompt,
+    yourTurn = s.color === s.turn,
+    countingOpen = !!s.confirmationKind?.startsWith("counting-");
+  const menu = useRef<HTMLDivElement>(null),
+    dialog = useRef<HTMLDialogElement>(null),
+    passwordInput = useRef<HTMLInputElement>(null);
+  const previous = useRef<{
+    menu: boolean;
+    login: boolean;
+    prompt: Prompt | null;
+    counting: boolean;
+  } | null>(null);
+  const statusError = !!state.menuError || s.phase === "error";
+  const statusHidden =
+    !state.menuError &&
+    (s.phase === "disconnected" ||
+      (["ready", "finished"].includes(s.phase) && s.matchFields.length > 0));
+  const promptCounting = playing && s.passes >= 2 && !disabled && !s.counting && !s.confirmation;
+  const gameMessage =
+    playing &&
+    (s.counting ||
+      /passed|counting|rejected|failed|leaving/i.test(s.status));
+  const countingRequested =
+    s.counting && s.status === "Counting requested; waiting for opponent";
+  const gameHidden =
+    !s.game_over &&
+    !promptCounting &&
+    (s.counting || s.pending || !gameMessage || s.confirmation || !!state.prompt);
+  const boardStatus = s.game_over
+    ? `Result: ${s.result || "Unknown"}`
+    : s.pending && !s.counting && !s.quitRequested
+      ? "Waiting to confirm action"
+      : s.status;
+  const ask = (command: Command) => {
+    const prompt = promptForAction(command);
+    if (prompt) c.emit({ type: "prompt.open", prompt });
+  };
+  const command = (name: Command) => c.command(name);
+
+  useLayoutEffect(() => {
+    document.body.classList.toggle("board-unavailable", !available);
+    if (dialog.current) {
+      if (countingOpen && !dialog.current.open) dialog.current.show();
+      if (!countingOpen && dialog.current.open) dialog.current.close();
+    }
+    if (countingOpen && !previous.current?.counting)
+      document.getElementById("counting-reject")?.focus();
+    else if (state.prompt && state.prompt !== previous.current?.prompt)
+      document.getElementById(state.prompt.action === "resign" ? "resign" : "action-cancel")?.focus();
+    else if (
+      showMenu &&
+      (!previous.current?.menu || previous.current.login !== loginStep)
+    ) {
+      const match = document.getElementById("match") as HTMLButtonElement;
+      (loginStep
+        ? menu.current
+        : match?.disabled
+          ? menu.current
+          : match
+      )?.focus();
+    } else if (
+      showMenu &&
+      (document.activeElement as HTMLButtonElement)?.disabled &&
+      menu.current?.contains(document.activeElement)
+    ) {
+      menu.current?.focus();
+    } else if (!showMenu && previous.current?.menu)
+      document.getElementById("board")?.focus();
+    const focused = (document.activeElement as HTMLElement)?.id || null;
+    if (focused !== c.state.focused)
+      c.emit({ type: "focus.changed", id: focused });
+    previous.current = {
+      menu: showMenu,
+      login: loginStep,
+      prompt: state.prompt,
+      counting: countingOpen,
+    };
+  }, [
+    available,
+    countingOpen,
+    state.prompt,
+    showMenu,
+    loginStep,
+    s.phase,
+    state.focused,
+    c,
+  ]);
+  useLayoutEffect(() => {
+    if (passwordInput.current)
+      passwordInput.current.value = c.password;
+  }, [state.form.passwordLength, c]);
+  useEffect(() => {
+    const clear = () => {
+      if (c.state.preview !== null)
+        c.emit({ type: "board.hover", point: null });
+    };
+    const focus = (event: FocusEvent) => {
+      if ((event.target as Element)?.closest("#dev-menu"))
+        return;
+      const id = (event.target as HTMLElement)?.id || null;
+      if (id !== c.state.focused) c.emit({ type: "focus.changed", id });
+    };
+    const key = (event: KeyboardEvent) => {
+      const current = c.state,
+        menuShown = !boardAvailable(current.session) || current.roomMenuOpen;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (event.type !== "keydown" || event.repeat) return;
+        if (menuShown) {
+          event.stopImmediatePropagation();
+          if (current.roomMenuOpen && boardAvailable(current.session))
+            c.emit({ type: "room-menu.close" });
+          return;
+        }
+        if (current.prompt) c.emit({ type: "prompt.close" });
+        else if (current.session.confirmationKind?.startsWith("counting-"))
+          c.command("confirm", { accept: false });
+        else if (current.session.phase === "finished")
+          c.emit({ type: "room-menu.open" });
+      }
+      if (
+        !menuShown ||
+        event.type !== "keydown" ||
+        event.key !== "Tab"
+      )
+        return;
+      const controls = [
+        ...(menu.current?.querySelectorAll<HTMLElement>(
+          'button, input, [tabindex="0"]',
+        ) ?? []),
+        ...document.querySelectorAll<HTMLElement>(
+          "#dev-menu summary, #dev-menu button, #dev-menu input, #dev-menu a",
+        ),
+      ].filter(
+        (control) =>
+          !(control as HTMLButtonElement).disabled &&
+          control.getClientRects().length &&
+          control.checkVisibility(),
+      );
+      const first = controls[0],
+        last = controls.at(-1);
+      if (!first) {
+        event.preventDefault();
+        menu.current?.focus();
+      } else if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !controls.includes(document.activeElement as HTMLElement))
+      ) {
+        event.preventDefault();
+        last?.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !controls.includes(document.activeElement as HTMLElement))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    for (const type of ["blur", "resize", "scroll"])
+      window.addEventListener(type, clear, true);
+    document.addEventListener("focusin", focus);
+    document.addEventListener("keydown", key, true);
+    document.addEventListener("keyup", key, true);
+    const hide = () => c.dispose();
+    window.addEventListener("pagehide", hide);
+    return () => {
+      for (const type of ["blur", "resize", "scroll"])
+        window.removeEventListener(type, clear, true);
+      document.removeEventListener("focusin", focus);
+      document.removeEventListener("keydown", key, true);
+      document.removeEventListener("keyup", key, true);
+      window.removeEventListener("pagehide", hide);
+    };
+  }, [c]);
+  const status = (
+    <span
+      id="status"
+      hidden={statusHidden}
+      className={statusError ? "is-error" : ""}
+    >
+      {!statusHidden && `${statusError ? "Error: " : ""}${statusError ? state.menuError || s.status : s.status}`}
+    </span>
+  );
+  const bottomColor = s.color === 2 ? 2 : 1;
+  return (
+    <>
+      <main
+        inert={showMenu}
+      >
+        <div className="layout">
+          <section className="board-wrap">
+            <BoardView
+              state={state}
+              hover={(point) => {
+                if (point !== c.state.preview)
+                  c.emit({ type: "board.hover", point });
+              }}
+              play={(p) =>
+                c.command("play", { x: p % 19, y: Math.floor(p / 19) })
+              }
+            />
+          </section>
+          <aside>
+            <div id="sidebar-content">
+              <Player
+                key={3 - bottomColor}
+                state={state}
+                color={3 - bottomColor}
+              />
+              <Player key={bottomColor} state={state} color={bottomColor} />
+              <div className="primary-actions-slot">
+                <div
+                  id="primary-actions"
+                  hidden={!playing && s.phase !== "finished"}
+                >
+                  <button
+                    id="pass"
+                    className="secondary"
+                    disabled={disabled || !yourTurn}
+                    onClick={() => command("pass")}
+                  >
+                    Pass
+                  </button>
+                  <button
+                    id="request-score"
+                    className="secondary"
+                    disabled={disabled || !yourTurn || s.counting}
+                    onClick={() => command("request-score")}
+                  >
+                    {countingRequested ? "Waiting for opponent..." : "Request Counting"}
+                  </button>
+                  <div className="resign-actions">
+                    <button
+                      id="resign"
+                      className={resignConfirm ? "secondary resign-confirm" : "secondary"}
+                      disabled={actionsBlocked(s)}
+                      onClick={() => resignConfirm ? command("resign") : ask("resign")}
+                    >
+                      {resignConfirm ? "Confirm Resignation" : "Resign"}
+                    </button>
+                    <button
+                      id="resign-cancel"
+                      className="secondary"
+                      hidden={!resignConfirm}
+                      onClick={() => c.emit({ type: "prompt.close" })}
+                    >X</button>
+                  </div>
+                </div>
+              </div>
+              <div id="sidebar-quests">
+                <section
+                  id="action-panel"
+                  className="quest-panel"
+                  hidden={!state.prompt || resignConfirm}
+                >
+                  <p id="action-title">{state.prompt?.title}</p>
+                  <p id="action-description" hidden={!state.prompt?.description}>
+                    {state.prompt?.description}
+                  </p>
+                  <div className="actions">
+                    <button
+                      id="action-cancel"
+                      className="secondary"
+                      onClick={() => c.emit({ type: "prompt.close" })}
+                    >
+                      {state.prompt?.action ? "Cancel" : state.prompt?.label}
+                    </button>
+                    <button
+                      id="action-confirm"
+                      hidden={!state.prompt?.action}
+                      onClick={() => {
+                        const action = c.state.prompt?.action;
+                        if (action) command(action);
+                      }}
+                    >
+                      {state.prompt?.label}
+                    </button>
+                  </div>
+                </section>
+                <dialog
+                  ref={dialog}
+                  className="quest-panel"
+                  id="counting-dialog"
+                >
+                  <p id="counting-title">
+                    {s.confirmationKind === "counting-result"
+                      ? <>Counting result: <span id="counting-result">{countingText(s)}</span></>
+                      : "Opponent requested counting"}
+                  </p>
+                  <div className="actions">
+                    <button
+                      id="counting-accept"
+                      disabled={s.pending || !!state.prompt}
+                      onClick={() => c.command("confirm", { accept: true })}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      id="counting-reject"
+                      className="secondary"
+                      disabled={s.pending || !!state.prompt}
+                      onClick={() => c.command("confirm", { accept: false })}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </dialog>
+                <section
+                  id="game-state-panel"
+                  className="quest-panel"
+                  hidden={gameHidden}
+                >
+                  <p id="game-state-title" hidden={!s.game_over && !promptCounting}>
+                    {s.game_over
+                      ? "Game over"
+                      : promptCounting
+                        ? "Both players passed"
+                        : ""}
+                  </p>
+                  <p
+                    id="board-status"
+                    hidden={promptCounting || !boardStatus}
+                    className={
+                      /failed|rejected|error/i.test(s.status) ? "is-error" : ""
+                    }
+                  >
+                    {boardStatus}
+                  </p>
+                  <div id="game-downloads" hidden={!s.game_over}>
+                    <button
+                      id="save-sgf"
+                      className="secondary"
+                      onClick={() => c.saveSgf()}
+                    >
+                      Download SGF
+                    </button>
+                  </div>
+                  <button
+                    id="quit-room"
+                    className="secondary"
+                    hidden={s.phase !== "finished"}
+                    disabled={s.pending || s.quitRequested}
+                    onClick={() =>
+                      playing ? ask("quit-room") : command("quit-room")
+                    }
+                  >
+                    Quit Room
+                  </button>
+                </section>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+      <datalist id="popularHours">
+        {s.matchFields.map(field => (
+          <option key={field.id} value={clockInputValue(field.main)} />
+        ))}
+      </datalist>
+      <div
+        id="connection-layer"
+        hidden={!showMenu}
+      >
+        <div
+          ref={menu}
+          id="connection-menu"
+          tabIndex={-1}
+        >
+          <h2 id="menu-title">{loginStep ? "Foxwq-web" : "Matchmaking"}</h2>
+          <p className="login-intro login-copy" hidden={!loginStep}>
+            <a id="github-source" href="https://github.com/foxwq-web/foxwq-web.github.io" target="_blank" rel="noopener noreferrer">A web client</a> for {" "}
+            the <a id="fox-server" href="https://foxwq.com" target="_blank" rel="noopener noreferrer">Fox go server</a>.
+          </p>
+          <p id="matchmaking-player" className="login-intro login-copy" hidden={loginStep}>
+            Playing as {s.account?.name || state.form.username}{s.account?.rank ? ` (${s.account.rank})` : ""}.
+          </p>
+          <form
+            id="login-form"
+            noValidate
+            hidden={!loginStep}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const username = (
+                form.elements.namedItem("username") as HTMLInputElement
+              ).value;
+              if (username !== c.state.form.username)
+                c.emit({ type: "form.username", value: username });
+              c.editPassword(
+                (form.elements.namedItem("password") as HTMLInputElement).value,
+              );
+              c.remember(
+                (form.elements.namedItem("remember") as HTMLInputElement)
+                  .checked,
+              );
+              command("login");
+            }}
+          >
+            <label htmlFor="username">
+              <input
+                id="username"
+                name="username"
+                placeholder="Username"
+                autoComplete="username"
+                required
+                disabled={loginPending}
+                value={state.form.username}
+                onChange={(e) =>
+                  c.emit({ type: "form.username", value: e.target.value })
+                }
+              />
+            </label>
+            <label htmlFor="password">
+              <input
+                ref={passwordInput}
+                id="password"
+                name="password"
+                placeholder="Password"
+                type="password"
+                autoComplete="current-password"
+                required
+                disabled={loginPending}
+                defaultValue={c.password}
+                onChange={(e) => c.editPassword(e.target.value)}
+              />
+            </label>
+            <div className="login-options login-copy">
+              <label className="remember">
+                <input
+                  id="remember"
+                  name="remember"
+                  type="checkbox"
+                  disabled={loginPending}
+                  checked={state.form.remember}
+                  onChange={(e) => c.remember(e.target.checked)}
+                />
+                Remember me
+              </label>
+              <a href="https://account.foxwq.com/reg/foreign.html" target="_blank" rel="noopener noreferrer">Sign up</a>
+            </div>
+            <button
+              id="login"
+              type="submit"
+              disabled={!state.form.username.trim() || state.form.passwordLength === 0 || loginPending}
+            >
+              {statusHidden || statusError ? "Log in" : null}
+              {loginStep && !statusError && status}
+            </button>
+            {loginStep && statusError && status}
+          </form>
+          <div id="matchmaking" hidden={loginStep}>
+            <section id="time-settings" aria-label="Time control">
+              <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">
+                {s.matchFields.map((field) => (
+                  <label key={field.id} className="time-option">
+                    <input
+                      type="radio"
+                      id={`time-control-${field.id}`}
+                      name="time-control"
+                      value={field.id}
+                      checked={s.fieldId === field.id}
+                      disabled={!["ready", "finished"].includes(s.phase)}
+                      onChange={() =>
+                        c.command("select-time", { id: field.id })
+                      }
+                    />
+                    <span>
+                      <span>19,{timeLabel(field)}</span>
+                      <span
+                        className="field-population"
+                        data-field-id={field.id}
+                      >
+                        {s.fieldPlayers[field.id] == null
+                          ? "(— players)"
+                          : `(${s.fieldPlayers[field.id]} ${s.fieldPlayers[field.id] === 1 ? "player" : "players"})`}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
+            <button
+              id="match"
+              disabled={
+                !(
+                  ["ready", "finished"].includes(s.phase) &&
+                  s.fieldId !== null &&
+                  s.gatewayAvailable
+                )
+              }
+              onClick={() => command("match")}
+            >
+              {statusHidden || statusError ? "Play" : null}
+              {!loginStep && !statusError && status}
+            </button>
+            {!loginStep && statusError && status}
+          </div>
+        </div>
+      </div>
+      <div id="error" hidden={!state.error}>
+        {state.error}
+      </div>
+      {DevMenu && (
+        <Suspense fallback={null}>
+          <DevMenu />
+        </Suspense>
+      )}
+    </>
+  );
+}

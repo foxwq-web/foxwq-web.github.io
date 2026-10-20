@@ -1,11 +1,11 @@
-analysis/ghidra/
-analysis/*.log
-analysis/brew-before.txt
+research/analysis/ghidra/
+research/analysis/*.log
+research/analysis/brew-before.txt
+research/analysis/live/
 __pycache__/
 .DS_Store
 creds
 creds.*
-analysis/live/
 node_modules/
 dist/
 .wrangler/
@@ -13,8 +13,8 @@ dist/
 .env.*
 !.env.example
 .dev.vars
-proxy/.dev.vars
 cloudflare-creds
+proxy/worker-configuration.d.ts
 
 # Local reverse-engineering exports
 /analysis/

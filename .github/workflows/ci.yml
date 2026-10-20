@@ -1,0 +1,32 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          CLIENT_BUILD_SHA: ${{ github.sha }}
+      - run: npm run proxy:check
+      - run: npm run test:browser:install
+      - run: npm run test:browser
+      - run: npm run test:browser -- --production-shortcuts

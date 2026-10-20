@@ -4,25 +4,47 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "26.11.0",
+    "npm": "12.2.0"
   },
   "scripts": {
-    "start": "vite --host 127.0.0.1",
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.js",
+    "start": "vite --config client/vite.config.js --host localhost",
+    "dev": "vite --config client/vite.config.js --host 127.0.0.1",
+    "build": "vite build --config client/vite.config.js",
+    "preview": "vite preview --config client/vite.config.js --host 127.0.0.1",
+    "test": "node --import tsx --test client/tests/*.test.js client/tests/*.test.ts proxy/tests/*.test.ts",
+    "test:client": "node --import tsx --test client/tests/*.test.js client/tests/*.test.ts",
+    "test:proxy": "node --import tsx --test proxy/tests/*.test.ts",
+    "test:browser": "node --import tsx client/scripts/run-browser-check.js",
     "proxy:dev": "wrangler dev --config proxy/wrangler.jsonc",
-    "proxy:deploy": "node scripts/deploy-worker.js"
+    "proxy:check": "cd proxy && wrangler deploy --dry-run --config wrangler.jsonc --outdir dist",
+    "proxy:deploy": "node --import tsx proxy/scripts/deploy-worker.ts",
+    "proxy:types": "wrangler types proxy/worker-configuration.d.ts --config proxy/wrangler.jsonc --env-interface ProxyBindings --strict-vars=false",
+    "typecheck": "tsc --noEmit -p client/tsconfig.json && npm run proxy:types && tsc --noEmit -p proxy/tsconfig.json && tsc --noEmit -p proxy/tsconfig.node.json",
+    "test:browser:install": "playwright install --with-deps chromium firefox webkit"
   },
   "dependencies": {
     "buffer": "^6.0.3",
     "fflate": "^0.8.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "spark-md5": "^3.0.2"
   },
   "devDependencies": {
-    "miniflare": "^5.20261006.0-alpha",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/spark-md5": "^3.0.5",
+    "esbuild": "^0.28.2",
+    "miniflare": "^5.20261006.1-alpha",
+    "playwright": "1.64.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
     "vite": "^7.0.0",
     "wrangler": "^4.148.0"
-  }
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  },
+  "packageManager": "npm@12.2.0"
 }
