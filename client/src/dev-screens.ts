@@ -4,6 +4,7 @@ import { promptForAction, type Command, type Prompt } from "./state";
 import * as game from "./game.ts";
 import { encode, type Fields } from "./wire.ts";
 import { Buffer } from "buffer";
+import { localEstimate } from '../../score-estimator/src/local-score-estimation.ts';
 
 type Stage = "login" | "connecting" | "authenticating" | "bootstrap" |
   "gateway" | "discovery" | "matching" | "joining" | "started" | "playing";
@@ -100,6 +101,13 @@ export const DEV_SCREENS: Screen[] = [
   screen("counting-rejected", "Counting rejected", "Counting", "playing", "playing", "Request counting → opponent rejects", s => { countingAcknowledged(s); s.notify(306, { 1: 0, 2: 1 }); }),
   screen("counting-error", "Counting failed", "Counting", "playing", "playing", "Request counting → Fox reports a failure", s => { countingAcknowledged(s); s.notify(303, { 1: -1, 2: 1 }); }),
 
+  screen("score-estimation", "Score estimate", "Estimation", "playing", "playing", "Estimate score → display sample ownership", s => s.session.estimateScore()),
+  screen("score-estimation-local", "Local GoStar estimate", "Estimation", "playing", "playing", "Estimate score → complete local engine calculation", s => {
+    s.session.estimationFetcher = localEstimate;
+    return s.session.estimateScore();
+  }),
+  screen("score-estimation-loading", "Estimate pending", "Estimation", "playing", "playing", "Estimate score; calculation is pending", s => { s.session.estimationFetcher = () => new Promise(() => {}); void s.session.estimateScore(); }),
+
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
   screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → confirm → Fox ends the game (W+R)", finishedResignation),
   screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(403, { 2: 0, 4: 8 })),
@@ -134,6 +142,7 @@ export async function applyDevScreen(session: Session, id: string) {
   session.proxyUrl = "ws://offline.invalid";
   session.proxyToken = "offline-preview";
   session.preferredTimeControl = null;
+  session.estimationFetcher = async ({ payload }) => sampleEstimate(payload.status);
   const sound = session.onSound;
   session.onSound = () => {};
   let prompt: Prompt | null = null, menuError = "", boardError = "";
@@ -220,6 +229,14 @@ export async function applyDevScreen(session: Session, id: string) {
 }
 
 
+
+function sampleEstimate(stones: string) {
+  const ownership = [...stones].map((_, p) => {
+    const x = p % 19, y = Math.floor(p / 19);
+    return x === 9 ? "0" : x + y < 22 ? "1" : "2";
+  });
+  return { ret: 0, board_size: 19, judge_status: ownership.join("") };
+}
 
 export function mountDevNavigation(id: string) {
   if (!["all", "index"].includes(id)) return;

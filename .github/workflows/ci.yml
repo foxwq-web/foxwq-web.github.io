@@ -21,6 +21,8 @@ jobs:
       - name: Select pinned npm
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
+      - name: Rebuild scoring WASM and compare checked-in artifacts
+        run: npm run score-estimator:build -- --check
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
@@ -30,4 +32,6 @@ jobs:
       - run: npm run test:browser:install
       - run: npm run test:browser
       - run: npm run test:browser -- --audio-only
+      - run: npm run test:browser -- --score-engines
+      - run: npm run test:browser -- --score-production
       - run: npm run test:browser -- --production-shortcuts

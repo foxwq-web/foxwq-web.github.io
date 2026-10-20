@@ -6,6 +6,11 @@ import { Board } from "./board.ts";
 import { placementSound } from "./sound.ts";
 import { Connection } from "./transport.ts";
 import { NetworkLog } from "./network-log.ts";
+import {
+  decodeEstimate,
+  type Estimator,
+} from "../../score-estimator/src/score-estimation.ts";
+import { localEstimate } from "../../score-estimator/src/local-score-estimation.ts";
 import { encode, decode, signed, type Message, type Fields } from "./wire.ts";
 
 export function loginRequest(
@@ -45,6 +50,7 @@ export interface SessionOptions {
     failed: (reason: string) => void,
     options: TransportOptions,
   ) => Promise<Transport>;
+  estimationFetcher?: Estimator;
   onSound?: (name: string) => void;
   onChange?: (state: SessionState) => void;
 }
@@ -60,6 +66,7 @@ export class Session {
   proxyToken!: string;
   preferredTimeControl!: Omit<TimeControl, "id"> | null;
   connectionFactory!: NonNullable<SessionOptions["connectionFactory"]>;
+  estimationFetcher!: Estimator;
   onSound!: (name: string) => void;
   onChange!: (state: SessionState) => void;
   connection: Transport | null;
@@ -71,6 +78,8 @@ export class Session {
   status: string;
   gameOver: boolean;
   networkLog: NetworkLog;
+  estimation: SessionState["estimation"];
+  estimateController: AbortController | null;
   players: SessionState["players"];
   account: SessionState["account"] = null;
   board: Board;
@@ -115,6 +124,7 @@ export class Session {
     proxyToken = "",
     preferredTimeControl = null,
     connectionFactory = Connection.open,
+    estimationFetcher = localEstimate,
     onSound = (_name) => {},
     onChange = (_state) => {},
   }: SessionOptions = {}) {
@@ -125,6 +135,7 @@ export class Session {
       proxyToken,
       preferredTimeControl,
       connectionFactory,
+      estimationFetcher,
       onSound,
       onChange,
     });
@@ -136,6 +147,8 @@ export class Session {
     this.status = "Disconnected";
     this.gameOver = false;
     this.networkLog = new NetworkLog();
+    this.estimation = null;
+    this.estimateController = null;
     this.players = {};
     this.board = new Board();
     this.komi = 7.5;
@@ -206,12 +219,14 @@ export class Session {
       counting: this.counting,
       confirmationKind: this.pendingConfirmation?.[0] ?? null,
       countingResult: this.pendingConfirmation?.[2] ?? null,
+      estimation: this.estimation,
       gatewayAvailable: !!this.gateway,
       koStones: this.board.history.at(-1) ?? null,
     });
   }
   close() {
     try {
+      this.clearEstimate();
       this.rollbackMove();
       this.generation++;
       clearTimeout(this.bootstrapTimer);
@@ -589,6 +604,8 @@ export class Session {
       const confirmsMove = op === 203 && this.pendingMove &&
         this.pendingMove.color === m.number(3) &&
         this.pendingMove.x === m.number(1) && this.pendingMove.y === m.number(2);
+      if ([107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove)
+        this.clearEstimate();
       if (op === 105) {
         if (signed(m.one(1))) throw Error("Game room rejected entry");
       } else if (op === 107) {
@@ -663,6 +680,7 @@ export class Session {
             this.pendingAction = 201;
           } else {
             this.rollbackMove();
+            if (op === 201) this.clearEstimate();
             if (op !== 201 || this.pendingAction !== 311) this.pending = false;
           }
           this.status = `Action ${op} rejected: ${signed(m.one(1))}`;
@@ -883,8 +901,72 @@ export class Session {
     }
     this.status = `Result: ${this.result || "Unknown"}`;
   }
+  clearEstimate() {
+    this.estimateController?.abort();
+    this.estimateController = null;
+    this.estimation = null;
+  }
   get awaitingMove() {
     return this.pending && this.pendingAction === 201 && !!this.pendingMove;
+  }
+  estimateScore() {
+    if (
+      this.phase !== "playing" ||
+      !Object.keys(this.roomKey).length ||
+      ![1, 2].includes(this.color)
+    )
+      throw Error("Score estimation requires an active game");
+    if ((this.pending && !this.awaitingMove) ||
+      (this.pendingConfirmation?.[0] !== "counting-request" &&
+        (this.counting || this.pendingConfirmation)))
+      throw Error("Finish the pending game action first");
+    if (this.estimation && this.estimation.phase !== "error")
+      throw Error("An estimate is already open");
+    const board = this.board.clone(),
+      komi = this.komi,
+      payload = { status: board.stones.join("") };
+    this.clearEstimate();
+    const controller = new AbortController();
+    this.estimateController = controller;
+    this.estimation = { phase: "loading" };
+    this.changed();
+    const timer = setTimeout(() => controller.abort("timeout"), 20000);
+    timer.unref?.();
+    return (async () => {
+      try {
+        const response = await this.estimationFetcher({
+          payload,
+          signal: controller.signal,
+        });
+        if (this.estimateController !== controller) return;
+        if (controller.signal.aborted)
+          throw Error("Score estimation timed out");
+        this.estimation = {
+          phase: "result",
+          ...decodeEstimate(response, board, komi),
+        };
+      } catch (error) {
+        if (this.estimateController !== controller) return;
+        this.estimation = {
+          phase: "error",
+          error: controller.signal.aborted
+            ? "Score estimation timed out"
+            : error instanceof Error
+              ? error.message
+              : String(error),
+        };
+      } finally {
+        clearTimeout(timer);
+        if (this.estimateController === controller) {
+          this.estimateController = null;
+          this.changed();
+        }
+      }
+    })();
+  }
+  returnToGame() {
+    this.clearEstimate();
+    this.changed();
   }
   requestCounting() {
     try {
@@ -908,6 +990,8 @@ export class Session {
         throw Error("No pending counting confirmation");
       if (this.phase !== "playing")
         throw Error("No active game");
+
+      this.clearEstimate();
 
       this.onlineAction(304, {
         1: accept,
@@ -942,6 +1026,7 @@ export class Session {
         this.fieldId === null
       )
         throw Error("Log in and wait for server discovery first");
+      this.clearEstimate();
       this.send(game.ROOM, 100130, { 1: this.fieldId, 2: false });
       this.players = {};
       this.board = new Board();
@@ -1014,6 +1099,7 @@ export class Session {
         ![1, 2].includes(this.color)
       )
         throw Error("No active game");
+      if (this.estimation) throw Error("Return to the game before playing");
       if (this.pending && !(op === 311 && this.awaitingMove))
         throw Error("Waiting to confirm the previous action");
       this.send(game.GAME, op, fields, this.roomKey[2]);

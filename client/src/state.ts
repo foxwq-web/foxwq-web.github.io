@@ -45,6 +45,11 @@ export interface SessionState {
     white?: number;
     komi?: number;
   } | null;
+  estimation:
+    | null
+    | { phase: "loading" }
+    | { phase: "error"; error: string }
+    | { phase: "result"; lead: number; ownership: number[] };
   gatewayAvailable: boolean;
   koStones: number[] | null;
 }
@@ -55,6 +60,8 @@ export type Command =
   | "select-time"
   | "match"
   | "cancel"
+  | "estimate-score"
+  | "return-game"
   | "request-score"
   | "confirm"
   | "play"
@@ -106,12 +113,13 @@ export function blocked(s: SessionState): boolean {
     s.phase !== "playing" ||
     s.pending ||
     s.counting ||
-    s.confirmation
+    s.confirmation ||
+    !!s.estimation
   );
 }
 
 export function actionsBlocked(s: SessionState): boolean {
-  return s.phase !== "playing" || (s.pending && !s.pendingMove) ||
+  return s.phase !== "playing" || (s.pending && !s.pendingMove) || !!s.estimation ||
     (s.confirmationKind !== "counting-request" && (s.counting || s.confirmation));
 }
 

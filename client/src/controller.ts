@@ -195,6 +195,12 @@ export class Controller {
         case "cancel":
           this.session.cancelMatch();
           break;
+        case "estimate-score":
+          void this.session.estimateScore();
+          break;
+        case "return-game":
+          this.session.returnToGame();
+          break;
         case "request-score":
           this.session.requestCounting();
           break;

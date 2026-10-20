@@ -1,6 +1,6 @@
 # Client
 
-A browser client for Fox Go. The React/TypeScript client handles login, matchmaking, gameplay, clocks, counting requests, SGF export, and downloadable network logs. A Cloudflare Worker relays binary WebSocket traffic to Fox's TCP servers; it does not implement the game protocol.
+A browser client for Fox Go. The React/TypeScript client handles login, matchmaking, gameplay, clocks, counting requests, score estimation, SGF export, and downloadable network logs. A Cloudflare Worker relays binary WebSocket traffic to Fox's TCP servers; it does not implement the game protocol.
 
 ## Development
 

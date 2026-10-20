@@ -1,0 +1,9 @@
+.venv
+build
+artifacts
+tests
+analysis
+docs
+**/__pycache__
+.DS_Store
+dll

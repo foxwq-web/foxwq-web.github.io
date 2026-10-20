@@ -154,7 +154,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const gameHidden =
     !s.game_over &&
     !promptCounting &&
-    (s.counting || s.pending || !gameMessage || s.confirmation || !!state.prompt);
+    (s.counting || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
   const boardStatus = s.game_over
     ? `Result: ${s.result || "Unknown"}`
     : s.pending && !s.counting && !s.quitRequested
@@ -319,7 +319,8 @@ export function App({ controller: c }: { controller: Controller }) {
       {!statusHidden && `${statusError ? "Error: " : ""}${statusError ? state.menuError || s.status : s.status}`}
     </span>
   );
-  const bottomColor = s.color === 2 ? 2 : 1;
+  const bottomColor = s.color === 2 ? 2 : 1,
+    estimate = s.estimation;
   return (
     <>
       <main
@@ -383,6 +384,14 @@ export function App({ controller: c }: { controller: Controller }) {
                       onClick={() => c.emit({ type: "prompt.close" })}
                     >X</button>
                   </div>
+                  <button
+                    id="estimate-score"
+                    className="secondary"
+                    disabled={!playing || !!state.prompt || (!estimate && actionsBlocked(s))}
+                    onClick={() => command(estimate ? "return-game" : "estimate-score")}
+                  >
+                    {estimate ? "Return to Game" : "Estimate Score"}
+                  </button>
                 </div>
               </div>
               <div id="sidebar-quests">
@@ -444,6 +453,29 @@ export function App({ controller: c }: { controller: Controller }) {
                   </div>
                 </dialog>
                 <section
+                  id="estimation-panel"
+                  className="quest-panel"
+                  hidden={!estimate || estimate.phase === "loading"}
+                >
+                  <p id="estimation-status" hidden={estimate?.phase !== "error"}>
+                    {estimate?.phase === "error" ? estimate.error : ""}
+                  </p>
+                  <p id="estimation-lead" hidden={estimate?.phase !== "result"}>
+                    {estimate?.phase === "result"
+                      ? estimate.lead === 0
+                        ? "Estimated draw"
+                        : `${estimate.lead > 0 ? "Black" : "White"} leads by ${Math.abs(estimate.lead)} points`
+                      : ""}
+                  </p>
+                  <button
+                    id="estimation-retry"
+                    hidden={estimate?.phase !== "error"}
+                    onClick={() => command("estimate-score")}
+                  >
+                    Try Again
+                  </button>
+                </section>
+                <section
                   id="game-state-panel"
                   className="quest-panel"
                   hidden={gameHidden}
@@ -477,7 +509,7 @@ export function App({ controller: c }: { controller: Controller }) {
                     id="quit-room"
                     className="secondary"
                     hidden={s.phase !== "finished"}
-                    disabled={s.pending || s.quitRequested}
+                    disabled={s.pending || s.quitRequested || !!estimate}
                     onClick={() =>
                       playing ? ask("quit-room") : command("quit-room")
                     }

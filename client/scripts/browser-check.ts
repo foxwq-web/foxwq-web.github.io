@@ -1,4 +1,8 @@
 
+if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
+  await import('../../score-estimator/scripts/score-engine-browser-check.js');
+  process.exit(0);
+}
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
@@ -232,7 +236,7 @@ try {
       assert.equal(await js("document.getElementById('game-state-title').textContent"), 'Game over', fixture.id);
       assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), `Result: ${result}`, fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
-      assert.equal(await js("['pass','request-score','resign'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
+      assert.equal(await js("['pass','request-score','resign','estimate-score'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
     }
     if (fixture.id === 'finished') {
       const record = await js(`(async()=>{
@@ -256,7 +260,7 @@ try {
             sidebarWidth:bar.width, boxed:!!button.closest('fieldset,.quest-panel'), visible:!!button.getClientRects().length};
         });
       })()`);
-      assert.deepEqual(geometry.map(b => b.id), ['pass','request-score','resign'], fixture.id);
+      assert.deepEqual(geometry.map(b => b.id), ['pass','request-score','resign','estimate-score'], fixture.id);
       for (const [i, button] of geometry.entries()) {
         assert.equal(button.visible, true, fixture.id);
         assert.equal(button.boxed, false, fixture.id);
@@ -280,7 +284,7 @@ try {
     }
     if (fixture.id === 'resign-confirm') {
       assert.equal(await js("document.getElementById('resign').textContent"), 'Confirm Resignation');
-      assert.equal(await js("['pass','request-score'].every(id=>document.getElementById(id).disabled)"), true);
+      assert.equal(await js("['pass','request-score','estimate-score'].every(id=>document.getElementById(id).disabled)"), true);
       assert.equal(await js("document.getElementById('resign').disabled"), false);
       assert.equal(await js("document.getElementById('resign-cancel').hidden"), false);
       assert.equal(await js("(()=>{const r=document.getElementById('resign-cancel').getBoundingClientRect();return r.width===r.height})()"), true);
@@ -298,13 +302,17 @@ try {
       assert.equal(await js("document.getElementById('game-state-panel').hidden"), true, fixture.id);
       assert.equal(await js("document.getElementById('pass').disabled"), true, fixture.id);
       assert.equal(await js("document.getElementById('resign').disabled"), false, fixture.id);
+      assert.equal(await js("document.getElementById('estimate-score').disabled"), false, fixture.id);
+      await js("document.getElementById('estimate-score').click()");
+      await wait("!document.getElementById('estimation-lead').hidden");
+      await js("document.getElementById('estimate-score').click()");
       await js("document.getElementById('resign').click()");
       assert.equal(await js("document.getElementById('resign').disabled"), false, fixture.id);
       await js("document.getElementById('resign').click()");
       await wait("document.getElementById('resign').disabled");
       assert.equal(await js("document.getElementById('error').hidden"), true, fixture.id);
     }
-    if (process.env.FOX_BROWSER_SCREENSHOTS && ['matchmaking','board-black','counting-request','counting-result','finished','resign-confirm'].includes(fixture.id)) {
+    if (process.env.FOX_BROWSER_SCREENSHOTS && ['matchmaking','board-black','counting-request','counting-result','score-estimation','finished','resign-confirm'].includes(fixture.id)) {
       await mkdir(process.env.FOX_BROWSER_SCREENSHOTS, {recursive:true});
       await call('Emulation.setDeviceMetricsOverride', {width:1280,height:900,deviceScaleFactor:1,mobile:false});
       const { data } = await call('Page.captureScreenshot', {captureBeyondViewport:true});
@@ -312,8 +320,29 @@ try {
       await call('Emulation.clearDeviceMetricsOverride');
     }
 
+    assert.equal(await js("document.getElementById('estimation-panel').hidden"), !fixture.id.startsWith('score-estimation') || fixture.id === 'score-estimation-loading', fixture.id);
+    if (fixture.id === 'score-estimation') {
+      const spacing = await js(`(() => {
+        const panel = document.getElementById('estimation-panel');
+        const text = document.getElementById('${fixture.id === 'score-estimation-loading' ? 'estimation-status' : 'estimation-lead'}');
+        const box = panel.getBoundingClientRect(), content = text.getBoundingClientRect();
+        const style = getComputedStyle(text);
+        return {marginTop:style.marginTop, marginBottom:style.marginBottom,
+          alignment:style.textAlign, top:content.top-box.top-parseFloat(getComputedStyle(panel).borderTopWidth), bottom:box.bottom-content.bottom-parseFloat(getComputedStyle(panel).borderBottomWidth)};
+      })()`);
+      assert.equal(spacing.marginTop, '0px', fixture.id);
+      assert.equal(spacing.marginBottom, '0px', fixture.id);
+      assert.equal(spacing.alignment, 'left', fixture.id);
+      assert.equal(spacing.top, spacing.bottom, fixture.id);
+    }
     if (fixture.id === 'counting-request') {
+      assert.equal(await js("document.getElementById('estimate-score').disabled"), false);
       assert.equal(await js("document.getElementById('resign').disabled"), false);
+      await js("document.getElementById('estimate-score').click()");
+      await wait("!document.getElementById('estimation-lead').hidden");
+      assert.equal(await js("document.getElementById('counting-dialog').open"), true);
+      await js("document.getElementById('estimate-score').click()");
+      await wait("document.getElementById('estimation-panel').hidden");
       assert.equal(await js("document.getElementById('counting-dialog').open"), true);
       await js("document.getElementById('resign').click()");
       await wait("!document.getElementById('resign-cancel').hidden");
@@ -341,6 +370,49 @@ try {
     await wait("document.querySelector('#dev-screens li') != null");
     assert.equal(await js("document.querySelectorAll('#dev-screens li').length"), DEV_SCREENS.length);
     assert.equal(await js("[...document.querySelectorAll('#dev-screens a')].every(a => new URL(a.href).searchParams.get('mute') === '1')"), true);
+  }
+  if (!production) {
+    const target = new URL(url); target.searchParams.set('dev-screen', 'score-estimation');
+    await js('window.previewPageMarker=true');
+    await call('Page.navigate', { url: target.href });
+    await wait("!window.previewPageMarker && document.getElementById('pass') != null");
+    assert.ok(await js("document.querySelectorAll('.territory-black').length") > 0);
+    assert.ok(await js("document.querySelectorAll('.territory-white').length") > 0);
+    assert.equal(await js("[...document.querySelectorAll('.board-stones .stone')].every(stone=>getComputedStyle(stone).opacity==='1')"), true);
+    assert.ok(await js("document.getElementById('estimation-lead').textContent.includes('Black leads')"));
+    assert.equal(await js("['pass','request-score','resign'].every(id=>document.getElementById(id).disabled)"), true);
+    assert.equal(await js("document.getElementById('estimate-score').disabled"), false);
+    assert.equal(await js("document.getElementById('estimate-score').textContent"), 'Return to Game');
+    assert.equal(await js("[...document.getElementById('estimation-panel').children].filter(el=>el.getClientRects().length).map(el=>el.id).join(',')"), 'estimation-lead');
+    assert.ok(await js("document.querySelector('#board polygon') != null"));
+    const position = await js("document.querySelector('#board').innerHTML");
+    await js("document.getElementById('estimate-score').click()");
+    await wait("document.getElementById('estimation-panel').hidden");
+    assert.equal(await js("document.querySelectorAll('.estimated-territory rect').length"), 0);
+    assert.equal(await js("document.getElementById('pass').disabled"), false);
+    assert.ok(await js("document.querySelector('#board polygon') != null"));
+    await js("document.getElementById('estimate-score').click()");
+    await wait("!document.getElementById('estimation-panel').hidden && document.getElementById('estimation-status').textContent === ''");
+    assert.equal(await js("document.querySelector('#board').innerHTML"), position, 'Estimate round trip must restore identical markers and stones');
+
+    await js("document.getElementById('estimate-score').click()");
+    await js(`(async()=>{
+      const source=await (await fetch('/src/controller.ts')).text();
+      const sessionPath=source.match(/from ["']([^"']*session[.]ts[^"']*)["']/)[1];
+      const {Session}=await import(sessionPath);
+      const estimate=Session.prototype.estimateScore;
+      Session.prototype.estimateScore=function(){
+        Session.prototype.estimateScore=estimate;
+        const fetch=this.estimationFetcher;
+        this.estimationFetcher=async()=>({ret:109045});
+        const done=estimate.call(this);this.estimationFetcher=fetch;return done;
+      };
+    })()`);
+    await js("document.getElementById('estimate-score').click()");
+    await wait("document.getElementById('estimation-status').textContent.includes('109045')");
+    await js("document.getElementById('estimation-retry').click()");
+    await wait("document.getElementById('estimation-status').textContent === ''");
+    assert.ok(await js("document.querySelectorAll('.estimated-territory rect').length") > 0);
   }
   assert.equal(websocketCount, 0, 'Offline previews must never open an application WebSocket');
   console.log(`Browser offline previews passed: ${DEV_SCREENS.length} states, reloads, index, production gating`);
@@ -907,7 +979,7 @@ try {
   await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape'});
   await wait("document.getElementById('connection-layer').hidden");
   assert.equal(await js("document.querySelector('main').inert"), false);
-  for (const id of ['quit-room','pass','request-score','resign','save-sgf'])
+  for (const id of ['quit-room','pass','request-score','resign','estimate-score','save-sgf'])
     assert.equal(await js(`document.getElementById('${id}').checkVisibility()`), true);
   assert.equal(await js("document.getElementById('board-status').textContent"), 'Result: B+R');
   await js("document.getElementById('quit-room').click()");

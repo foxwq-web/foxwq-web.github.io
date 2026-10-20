@@ -100,7 +100,9 @@ export function BoardView({
   hover: (p: number | null) => void;
   play: (p: number) => void;
 }) {
-  const s = state.session;
+  const s = state.session,
+    ownership =
+      s.estimation?.phase === "result" ? s.estimation.ownership : null;
   const preview = playablePoint(state, state.preview);
   const last = s.last_move;
   const marker =
@@ -215,6 +217,29 @@ export function BoardView({
             fill={last?.[0] === 1 ? "#fff" : "#000"}
           />
         )}
+      </g>
+      <g
+        className="estimated-territory"
+        pointerEvents="none"
+      >
+        {ownership?.map((color, p) => {
+          if (!color || s.stones[p] === color) return null;
+          const side = step * 0.28,
+            { cx, cy } = location(p);
+          return (
+            <rect
+              key={p}
+              className={`territory-${color === 1 ? "black" : "white"}`}
+              x={cx - side / 2}
+              y={cy - side / 2}
+              width={side}
+              height={side}
+              fill={color === 1 ? "#111" : "#fff"}
+              stroke={color === 1 ? "#fff" : "#111"}
+              strokeWidth={0.7}
+            />
+          );
+        })}
       </g>
       <g className="stone-preview" opacity={0.4} pointerEvents="none">
         {preview !== null && <Stone point={preview} color={s.turn} />}

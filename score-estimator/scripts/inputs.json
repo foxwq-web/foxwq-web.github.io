@@ -1,0 +1,7 @@
+{
+  "installer_url": "https://tclould.foxwq.com/WeiqiPC/FoxWeiQi.exe",
+  "dll_sha256": {
+    "SE.dll": "52833c1d75e11b16e4b8db03207aecdc4722136fe44ad675eebb6611a3e1e921",
+    "GoStar5M.dll": "a3db40c7c59294f96df2dca1a9c45a72140309aa64fa7922c188758afc979f60"
+  }
+}

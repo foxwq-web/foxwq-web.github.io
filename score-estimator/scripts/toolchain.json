@@ -1,0 +1,17 @@
+{
+  "platform": "linux/amd64",
+  "downloads": [
+    {
+      "name": "wasi-sdk",
+      "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-30/wasi-sdk-30.0-x86_64-linux.tar.gz",
+      "sha256": "0507679dff16814b74516cd969a9b16d2ced1347388024bc7966264648c78bfb",
+      "directory": "wasi-sdk-30.0-x86_64-linux"
+    },
+    {
+      "name": "binaryen",
+      "url": "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz",
+      "sha256": "2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489",
+      "directory": "binaryen-version_133"
+    }
+  ]
+}

@@ -35,7 +35,7 @@ test('Worker authenticates upgrades and relays opaque binary chunks in both dire
     const endpoint = `http://localhost/proxy?host=127.0.0.1&port=${port}`;
     assert.equal((await mf.dispatchFetch('http://localhost/health')).status, 200);
     for (const method of ['GET', 'POST', 'OPTIONS']) {
-      assert.equal((await mf.dispatchFetch('http://localhost/unknown', { method })).status, 404);
+      assert.equal((await mf.dispatchFetch('http://localhost/estimate', { method })).status, 404);
     }
 
     assert.equal((await mf.dispatchFetch(endpoint)).status, 426);
