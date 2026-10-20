@@ -236,6 +236,25 @@ export function App({ controller: c }: { controller: Controller }) {
       if (id !== c.state.focused) c.emit({ type: "focus.changed", id });
     };
     const key = (event: KeyboardEvent) => {
+      if (
+        event.type === "keydown" &&
+        event.key.toLowerCase() === "f" &&
+        !event.repeat &&
+        !event.isComposing &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !(event.target instanceof HTMLElement &&
+          (event.target.isContentEditable ||
+            event.target.closest("input, textarea, select")))
+      ) {
+        event.preventDefault();
+        const toggle = document.fullscreenElement
+          ? document.exitFullscreen()
+          : document.documentElement.requestFullscreen?.();
+        void toggle?.catch(() => {});
+        return;
+      }
       const current = c.state,
         menuShown = !boardAvailable(current.session) || current.roomMenuOpen;
       if (event.key === "Escape") {

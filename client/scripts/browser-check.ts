@@ -80,6 +80,27 @@ try {
   } else {
 
   await wait("typeof window.downloadNetworkLog === 'function'");
+  await js('document.activeElement?.blur()');
+  await page.keyboard.press('f');
+  await wait('document.fullscreenElement === document.documentElement');
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', {key:'f', repeat:true, bubbles:true}))`);
+  assert.equal(await js('document.fullscreenElement === document.documentElement'), true);
+  await page.keyboard.press('Shift+F');
+  await wait('document.fullscreenElement === null');
+  for (const attributes of ['type="text"', 'contenteditable="true"']) {
+    await js(`(() => {
+      const field = document.createElement(${JSON.stringify(attributes.startsWith('type') ? 'input' : 'div')});
+      field.id = 'fullscreen-typing-check';
+      field.setAttribute(...${JSON.stringify(attributes.startsWith('type') ? ['type', 'text'] : ['contenteditable', 'true'])});
+      document.body.append(field); field.focus();
+    })()`);
+    await page.keyboard.press('f');
+    assert.equal(await js('document.fullscreenElement'), null);
+    await js("document.getElementById('fullscreen-typing-check').remove()");
+  }
+  await page.keyboard.press('Control+f');
+  assert.equal(await js('document.fullscreenElement'), null);
+  console.log('Browser fullscreen passed: F toggles, typing, repeat, and modifier guards');
   await js(`localStorage.setItem('fox-network-log', JSON.stringify([
     ['2020-01-01T00:00:00.000Z:fixture:0000000000000000','client:fixture:1','fox.example:10000','AA==']
   ]))`);

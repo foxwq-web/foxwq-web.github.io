@@ -15,6 +15,8 @@ Open the URL printed by Vite, normally `http://127.0.0.1:5173`. The app uses the
 
 Enter your Fox account in the login dialog and select a time control after connecting. An existing game can be restored on login. **Remember credentials** stores the username and password in a JavaScript-readable cookie for 30 days. The app also remembers the selected time control in a cookie.
 
+Press **F** to enter or leave full screen when you are not typing in a form field.
+
 For offline UI previews, open `/?dev-screen=all&mute=1` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
 
 ## Build and verification
