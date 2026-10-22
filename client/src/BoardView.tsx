@@ -1,4 +1,4 @@
-import type { PointerEvent, MouseEvent } from "react";
+import React, { type PointerEvent, type MouseEvent } from "react";
 import { Board } from "./board.ts";
 import { blocked, boardAvailable, type UIState } from "./state";
 const extent = 840,
@@ -223,7 +223,9 @@ export function BoardView({
         pointerEvents="none"
       >
         {ownership?.map((color, p) => {
-          if (!color || s.stones[p] === color) return null;
+          // Keep the overlay fixed even as incoming moves change the live stones.
+          if (!color || (s.estimation?.phase === "result" && s.estimation.stones[p] === color))
+            return null;
           const side = step * 0.28,
             { cx, cy } = location(p);
           return (

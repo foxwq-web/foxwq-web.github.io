@@ -5,7 +5,10 @@ import assert from "node:assert/strict";
 import { Controller } from "../src/controller";
 import { Session } from "../src/session.ts";
 import type { UIState } from "../src/state";
-import { playablePoint } from "../src/BoardView";
+import { BoardView, playablePoint } from "../src/BoardView";
+import { Board } from "../src/board";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { applyDevScreen } from "../src/dev-screens";
 
 function initial(session = new Session()): UIState {
@@ -22,6 +25,27 @@ function initial(session = new Session()): UIState {
     form: { username: "", passwordLength: 0, remember: false },
   };
 }
+test("opponent stone appears while the rendered estimate markers stay unchanged", async () => {
+  const s = new Session();
+  try {
+    await applyDevScreen(s, "board-black");
+    s.board = new Board();
+    s.board.play(10, 9, s.color);
+    s.estimationFetcher = async () => ({ ret: 0, board_size: 19, judge_status: '2'.repeat(361) });
+    await s.estimateScore();
+    const render = () => renderToStaticMarkup(createElement(BoardView, {
+      state: initial(s), hover() {}, play() {},
+    }));
+    const before = render();
+    s.gameMessage(203, decode(encode({1: 10, 2: 10, 3: 3 - s.color})), decode(encode({})));
+    const after = render();
+    const markers = (svg: string) => svg.match(/<g class="estimated-territory"[^>]*>.*?<\/g>/)![0];
+    assert.equal(markers(after), markers(before));
+    assert.equal((after.match(/class="stone stone-white"/g) ?? []).length,
+      (before.match(/class="stone stone-white"/g) ?? []).length + 1);
+  } finally { s.close(); }
+});
+
 test("quitting a finished room preserves its result and history until matchmaking starts", async () => {
   const controller = new Controller();
   try {

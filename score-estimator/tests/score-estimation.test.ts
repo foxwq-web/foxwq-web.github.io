@@ -79,7 +79,38 @@ test('estimate, return and retry preserve the board and resume normal game actio
   s.returnToGame(); s.passTurn(); assert.equal(s.pending, true); s.close();
 });
 
-test('return, disconnect, a move, pass, counting, game end and synchronization invalidate late results', async () => {
+test('opponent moves and passes preserve completed and pending estimates of the original board', async () => {
+  for (const op of [203, 206]) for (const pending of [false, true]) {
+    const task = deferred(); let signal!: AbortSignal, calls = 0;
+    const s = await foxSession(options => { calls++; signal = options.signal; return task.promise; });
+    try {
+      s.board = new Board();
+      s.board.play(10, 9, s.color);
+      assert.equal(s.board.turn, 3 - s.color);
+      const board = s.board.clone(), map = Array(361).fill(2);
+      const expected = { phase: 'result', stones: board.stones, ...decodeEstimate(reply(map), board, s.komi) };
+      const done = s.estimateScore();
+      if (!pending) { task.resolve(reply(map)); await done; }
+      const estimate = s.estimation;
+      s.gameMessage(op, decode(encode(op === 203 ? {1:10,2:10,3:3 - s.color} : {})), decode(encode({})));
+      assert.equal(s.board.turn, s.color);
+      assert.equal(s.board.moves.length, board.moves.length + 1);
+      assert.equal(s.board.stones[200], op === 203 ? 3 - s.color : 0);
+      assert.equal(s.estimation, estimate);
+      assert.equal(signal.aborted, false);
+      if (pending) { task.resolve(reply(map)); await done; }
+      assert.deepEqual(s.snapshot().estimation, expected);
+      assert.equal(calls, 1);
+      assert.throws(() => s.play(11, 10), /Return to the game/);
+      s.returnToGame();
+      assert.equal(s.estimation, null);
+      s.play(11, 10);
+      assert.equal(s.board.stones[201], s.color);
+    } finally { s.close(); }
+  }
+});
+
+test('return, disconnect, own move or pass, counting, game end and synchronization invalidate late results', async () => {
   for (const action of [(s: Session) => s.returnToGame(), (s: Session) => s.close(),
     (s: Session) => s.gameMessage(203, decode(encode({1:10,2:10,3:1})), decode(encode({}))),
     (s: Session) => s.gameMessage(206, decode(encode({})), decode(encode({}))),

@@ -50,7 +50,7 @@ export interface SessionState {
     | null
     | { phase: "loading" }
     | { phase: "error"; error: string }
-    | { phase: "result"; lead: number; ownership: number[] };
+    | { phase: "result"; lead: number; ownership: number[]; stones: number[] };
   gatewayAvailable: boolean;
   koStones: number[] | null;
 }

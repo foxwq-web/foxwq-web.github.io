@@ -280,7 +280,7 @@ export function App({ controller: c }: { controller: Controller }) {
         return;
       const controls = [
         ...(menu.current?.querySelectorAll<HTMLElement>(
-          'button, input, [tabindex="0"]',
+          'a[href], button, input, [tabindex="0"]',
         ) ?? []),
         ...document.querySelectorAll<HTMLElement>(
           "#dev-menu summary, #dev-menu button, #dev-menu input, #dev-menu a",

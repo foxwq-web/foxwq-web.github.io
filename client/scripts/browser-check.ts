@@ -43,8 +43,9 @@ try {
     return result.result.value;
   };
   const wait = async (expression: string) => {
-    for (let i = 0; i < 200; i++) { if (await js(expression)) return; await pause(100); }
-    throw Error(`Browser condition timed out: ${expression}`);
+    // Playwright retries in the new execution context when navigation replaces the page.
+    const result = await page.waitForFunction(expression, undefined, { polling: 100, timeout: 20000 });
+    await result.dispose();
   };
   const clickControl = async (selector: string) => {
     const { x, y } = await js(`(() => {
@@ -471,14 +472,21 @@ try {
   await js("setLoginField('username', 'test');setLoginField('password', '')");
   assert.equal(await js("document.getElementById('login').disabled"), true);
   await js("setLoginField('username', '');document.getElementById('remember').focus()");
-  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
-  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  await page.keyboard.press('Tab');
+  assert.equal(await js('document.activeElement.textContent'), 'Sign up');
+  await page.keyboard.press('Tab');
   assert.equal(await js('document.activeElement.id'), 'dev-menu-toggle');
-  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
-  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  await page.keyboard.press('Tab');
+  assert.equal(await js('document.activeElement.id'), 'github-source');
+  await page.keyboard.press('Tab');
+  assert.equal(await js('document.activeElement.id'), 'fox-server');
+  await page.keyboard.press('Tab');
   assert.equal(await js('document.activeElement.id'), 'username');
-  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
-  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await js('document.activeElement.id'), 'fox-server');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await js('document.activeElement.id'), 'github-source');
+  await page.keyboard.press('Shift+Tab');
   assert.equal(await js('document.activeElement.id'), 'dev-menu-toggle');
   await assertEscapeIgnored();
   await call('Input.dispatchMouseEvent', {type:'mousePressed',x:2,y:2,button:'left',clickCount:1});
@@ -498,7 +506,7 @@ try {
   assert.equal(await js("document.cookie.includes('foxwq_credentials=')"), false);
   assert.match(await js("document.getElementById('username').placeholder"), /username/i);
   assert.match(await js("document.getElementById('password').placeholder"), /password/i);
-  assert.equal(await js("document.getElementById('login').textContent"), 'Login');
+  assert.equal(await js("document.getElementById('login').textContent"), 'Log in');
   assert.equal(await js("getComputedStyle(document.getElementById('connection-menu')).borderTopWidth"), '0px');
   assert.equal(await js("document.querySelector('#connection-menu > legend, .player-turn, #events')"), null);
   assert.equal(await js("document.querySelector('label[for=username]').textContent"), '');
@@ -711,7 +719,7 @@ try {
   await assertEscapeIgnored();
   await js("window.checkSession.failed(window.checkSession.generation,'Fox login rejected')");
   await wait("document.getElementById('status').textContent==='Error: Fox login rejected'");
-  assert.equal(await js("document.getElementById('login').textContent"), 'Login');
+  assert.equal(await js("document.getElementById('login').textContent"), 'Log in');
   assert.equal(await js("document.getElementById('status').parentElement.id"), 'login-form');
   assert.equal(await js("document.getElementById('status').getBoundingClientRect().top>=document.getElementById('login').getBoundingClientRect().bottom"), true);
   assert.equal(await js("document.getElementById('password').value"), 'retained-test-password');
@@ -1034,7 +1042,7 @@ try {
     window.reconnectStones = [...matchSession.snapshot().stones];
     matchSession.failed(matchSession.generation, 'Proxy connection closed');
   })()`);
-  await wait("document.getElementById('board-status').checkVisibility() && document.getElementById('board-status').textContent.includes('Connection lost. Reconnecting… (Attempt 1)')");
+  await wait("document.getElementById('board-status').checkVisibility() && document.getElementById('board-status').textContent.includes('Connection lost. Reconnecting... (Attempt 1)')");
   assert.equal(await js("document.getElementById('connection-layer').hidden"), true);
   assert.equal(await js("document.querySelector('main').inert"), false);
   for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {

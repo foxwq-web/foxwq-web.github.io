@@ -681,7 +681,9 @@ export class Session {
       const confirmsMove = op === 203 && this.pendingMove &&
         this.pendingMove.color === m.number(3) &&
         this.pendingMove.x === m.number(1) && this.pendingMove.y === m.number(2);
-      if ([107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove)
+      const opponentMove = (op === 203 && m.number(3) === 3 - this.color) ||
+        (op === 206 && this.board.turn === 3 - this.color);
+      if ([107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove && !opponentMove)
         this.clearEstimate();
       if (op === 105) {
         if (signed(m.one(1))) throw Error("Game room rejected entry");
@@ -1093,6 +1095,7 @@ export class Session {
           throw Error("Score estimation timed out");
         this.estimation = {
           phase: "result",
+          stones: board.stones,
           ...decodeEstimate(response, board, komi),
         };
       } catch (error) {
