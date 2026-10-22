@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Board } from '../src/board.ts';
 import { Session } from '../src/session.ts';
-import { placementSound, FoxSounds } from '../src/sound.ts';
+import { placementSound, FoxSounds, bindAudioUnlock } from '../src/sound.ts';
 import { encode, decode } from '../src/wire.ts';
 
 
@@ -120,6 +120,44 @@ function suspendedSounds() {
 }
 
 const flushAudio = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('touch completion and clicks unlock audio and are removed on cleanup', () => {
+  const target = new EventTarget();
+  let unlocks = 0;
+  const unbind = bindAudioUnlock({ unlock() { unlocks++; } }, target);
+  for (const event of ['pointerdown', 'touchend', 'click', 'keydown']) target.dispatchEvent(new Event(event));
+  assert.equal(unlocks, 4);
+  unbind();
+  for (const event of ['pointerdown', 'touchend', 'click', 'keydown']) target.dispatchEvent(new Event(event));
+  assert.equal(unlocks, 4);
+});
+
+test('a real gesture retries an autoplay-blocked resume instead of sharing it', async () => {
+  const s = suspendedSounds();
+  s.audio.play('stone');
+  assert.equal(s.resumeCalls(), 1);
+  s.audio.unlock();
+  assert.equal(s.resumeCalls(), 2);
+  s.finish(); await flushAudio();
+  assert.deepEqual(s.started, ['stone']);
+});
+
+test('unmuted gesture selects media playback; muted tests leave the audio session alone', async t => {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'audioSession');
+  const session = { type: 'auto' };
+  Object.defineProperty(navigator, 'audioSession', { configurable: true, value: session });
+  t.after(() => {
+    if (original) Object.defineProperty(navigator, 'audioSession', original);
+    else Reflect.deleteProperty(navigator, 'audioSession');
+  });
+  const muted = suspendedSounds();
+  muted.audio.unlock(); muted.finish(); await flushAudio();
+  assert.equal(session.type, 'auto');
+  const audible = suspendedSounds();
+  audible.audio.muted = false;
+  audible.audio.unlock(); audible.finish(); await flushAudio();
+  assert.equal(session.type, 'playback');
+});
 
 test('first effects wait for resume; gesture and playback share one resume request', async () => {
   const s = suspendedSounds();

@@ -18,6 +18,7 @@ import {
 } from "./state";
 import { timeLabel } from "./game.ts";
 import { clockInputValue, clockReading } from "./clock.ts";
+import { bindAudioUnlock } from "./sound.ts";
 
 const DevMenu = import.meta.env.DEV ? lazy(() => import("./DevMenu")) : null;
 
@@ -70,22 +71,13 @@ function Player({ state, color }: { state: UIState; color: number }) {
           </dt>
           <dd id={`${name}-time`} className={`remaining-time${clock ? "" : " no-clock"}`}>
             {clock
-              ? <span className="clock-display">
-                <input
-                  type="time"
+              ? <time
+                  className="clock-display"
                   id={clockId}
-                  list="popularHours"
-                  step="1"
-                  value={clockValue}
-                  tabIndex={-1}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={(event) => event.preventDefault()}
-                  onKeyDown={(event) => event.preventDefault()}
-                  onBeforeInput={(event) => event.preventDefault()}
-                  onChange={(event) => { event.currentTarget.value = clockValue; }}
-                />
-                <span className="clock-text">{clockText}</span>
-              </span>
+                  dateTime={`PT${seconds}S`}
+                >
+                  <span className="clock-text">{clockText}</span>
+              </time>
               : "—"}
           </dd>
         </div>
@@ -226,14 +218,11 @@ export function App({ controller: c }: { controller: Controller }) {
   useLayoutEffect(() => {
     if (passwordInput.current)
       passwordInput.current.value = c.password;
-  }, [state.form.passwordLength, c]);
+  }, [state.form.passwordLength, loginStep, c]);
   useEffect(() => {
     const clear = () => {
       if (c.state.preview !== null)
         c.emit({ type: "board.hover", point: null });
-    };
-    const unlock = () => {
-      c.sounds.unlock();
     };
     const focus = (event: FocusEvent) => {
       if ((event.target as Element)?.closest("#dev-menu"))
@@ -316,8 +305,7 @@ export function App({ controller: c }: { controller: Controller }) {
     };
     for (const type of ["blur", "resize", "scroll"])
       window.addEventListener(type, clear, true);
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("keydown", unlock);
+    const unbindAudio = bindAudioUnlock(c.sounds);
     document.addEventListener("focusin", focus);
     document.addEventListener("keydown", key, true);
     document.addEventListener("keyup", key, true);
@@ -326,8 +314,7 @@ export function App({ controller: c }: { controller: Controller }) {
     return () => {
       for (const type of ["blur", "resize", "scroll"])
         window.removeEventListener(type, clear, true);
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
+      unbindAudio();
       document.removeEventListener("focusin", focus);
       document.removeEventListener("keydown", key, true);
       document.removeEventListener("keyup", key, true);
@@ -533,6 +520,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   <div id="game-downloads" hidden={!s.game_over}>
                     <button
                       id="save-sgf"
+                      type="button"
                       className="secondary"
                       onClick={() => c.save("sgf")}
                     >
@@ -556,11 +544,6 @@ export function App({ controller: c }: { controller: Controller }) {
           </aside>
         </div>
       </main>
-      <datalist id="popularHours">
-        {s.matchFields.map(field => (
-          <option key={field.id} value={clockInputValue(field.main)} />
-        ))}
-      </datalist>
       <div
         id="connection-layer"
         hidden={!showMenu}
@@ -578,10 +561,10 @@ export function App({ controller: c }: { controller: Controller }) {
           <p id="matchmaking-player" className="login-intro login-copy" hidden={loginStep}>
             Playing as {s.account?.name || state.form.username}{s.account?.rank ? ` (${s.account.rank})` : ""}.
           </p>
-          <form
+          {/* Retire the credential form after login, before game downloads. */}
+          {loginStep && <form
             id="login-form"
             noValidate
-            hidden={!loginStep}
             onSubmit={(e) => {
               e.preventDefault();
               const form = e.currentTarget;
@@ -651,7 +634,7 @@ export function App({ controller: c }: { controller: Controller }) {
               {loginStep && !statusError && status}
             </button>
             {loginStep && statusError && status}
-          </form>
+          </form>}
           <div id="matchmaking" hidden={loginStep}>
             <section id="time-settings" aria-label="Time control">
               <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">

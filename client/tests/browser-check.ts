@@ -195,7 +195,7 @@ try {
       assert.equal(await js("document.getElementById('remember').checked"), remembered);
     } else if (screen === 'matchmaking') {
       assert.equal(await js("document.getElementById('matchmaking').hidden"), false);
-      assert.equal(await js("document.getElementById('login-form').hidden"), true);
+      assert.equal(await js("document.getElementById('login-form')"), null);
       assert.equal(await js("document.querySelectorAll('.time-option').length"), 4);
       assert.equal(await js("document.getElementById('match').disabled"), false);
       assert.equal(await js("document.querySelector('.field-population').textContent"), '(128 players)');
@@ -210,7 +210,7 @@ try {
     } else {
       assert.equal(await js("document.getElementById('connection-layer').hidden"), true);
       assert.equal(await js("document.querySelector('main').inert"), false);
-      assert.equal(await js("document.querySelector('#black-time input').value"), '00:07:05');
+      assert.equal(await js("document.querySelector('#black-time time').dateTime"), 'PT425S');
       await js("document.getElementById('pass').click()");
       assert.equal(await js("document.getElementById('pass').disabled"), true);
     }
@@ -270,12 +270,12 @@ try {
     }
     assert.equal(await js("[...document.querySelectorAll('a')].some(a => a.textContent.includes('All offline previews'))"), false, fixture.id);
     if (['board-black','board-white','byoyomi'].includes(fixture.id)) {
-      assert.equal(await js("document.querySelectorAll('input[type=time]').length"), 2);
+      assert.equal(await js("document.querySelectorAll('time.clock-display').length"), 2);
       assert.equal(await js("document.querySelectorAll('#hours').length"), 1);
       const color = fixture.id === 'board-white' ? 'white' : 'black';
       assert.equal(await js(`document.getElementById('hours').closest('dd').id`), `${color}-time`);
-      assert.equal(await js("[...document.querySelectorAll('input[type=time]')].every(input=>!input.readOnly && input.step==='1' && input.list?.id==='popularHours' && input.validity.valid)"), true);
-      if (fixture.id === 'byoyomi') assert.equal(await js("document.getElementById('hours').value"), '00:00:09');
+      assert.equal(await js("document.querySelector('input[type=time], #popularHours')"), null);
+      if (fixture.id === 'byoyomi') assert.equal(await js("document.getElementById('hours').dateTime"), 'PT9S');
     }
     const inBoard = ['playing','finished'].includes(fixture.phase);
     if (inBoard) {
@@ -632,11 +632,13 @@ try {
       const r = document.getElementById('board').getBoundingClientRect();
       return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};
     })()`);
-    assert.ok(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width && bounds.bottom <= height, JSON.stringify({width,height,bounds}));
+    assert.ok(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width, JSON.stringify({width,height,bounds}));
     assert.ok(Math.abs(bounds.width - bounds.height) < 1);
     const gap = await js("parseFloat(getComputedStyle(document.querySelector('.layout')).gap)");
-    assert.equal(bounds.top, gap);
-    assert.ok(bounds.bottom <= height - gap);
+    const padding = await js("parseFloat(getComputedStyle(document.querySelector('main')).paddingTop)");
+    assert.equal(bounds.top, padding);
+    if (width > 800) assert.ok(bounds.bottom <= height - gap);
+    else assert.equal(bounds.width, width);
   }
   await call('Emulation.setDeviceMetricsOverride', {width: 1280, height: 900, deviceScaleFactor: 1, mobile: false});
 
@@ -731,13 +733,17 @@ try {
   await wait("document.getElementById('board-status').textContent==='Result: B+R'");
   assert.equal(await js("document.getElementById('save-sgf').tagName"), 'BUTTON');
   assert.equal(await js("document.getElementById('save-sgf').textContent"), 'Download SGF');
+  assert.equal(await js("document.getElementById('save-sgf').type"), 'button');
+  assert.equal(await js("document.querySelector('#login-form, #username, #password')"), null);
   assert.deepEqual(await js("[...document.getElementById('game-downloads').children].map(el=>el.id)"), ['save-sgf']);
+  await js("window.downloadSubmissions=0;document.addEventListener('submit',()=>downloadSubmissions++,true)");
   const sgf = await js(`(async()=>{
     let saved='';const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
     document.getElementById('save-sgf').click();URL.createObjectURL=create;return saved.text();
   })()`);
   assert.match(sgf, /PB\[Black\]PW\[White\]/);
   assert.match(sgf, /RE\[B\+R\]/); assert.match(sgf, /;B\[dd\];W\[\];B\[\]/);
+  assert.equal(await js("downloadSubmissions"), 0);
   const networkLog = await js(`(async()=>{
     let saved;const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
     document.getElementById('save-network-log').click();URL.createObjectURL=create;return saved.text();
@@ -799,10 +805,13 @@ try {
   await assertEscapeIgnored();
   assert.equal(await js("document.getElementById('disconnect')"), null);
   assert.equal(await js("document.getElementById('status').classList.contains('is-error')"), false);
+  assert.equal(await js("document.querySelector('#login-form, #username, #password')"), null);
+  await js("checkSession.close()");
+  await wait("document.getElementById('password') != null");
   await js(`(async()=>{
     const Session=window.CheckSession;
     Session.prototype.login=function(){this.close();this.phase='resuming';this.status='Restoring test game';setTimeout(()=>{this.color=1;this.phase='playing';this.status='Game synchronized';this.changed();},600);};
-    checkSession.close();document.getElementById('password').value='test';document.getElementById('login-form').requestSubmit();
+    document.getElementById('password').value='test';document.getElementById('login-form').requestSubmit();
   })()`);
   assert.equal(await js("document.getElementById('menu-title').textContent"), 'Foxwq-web');
   assert.equal(await js("document.getElementById('matchmaking').hidden"), true);
@@ -959,7 +968,7 @@ try {
   assert.equal(await js("matchSession.quitRequested"), true);
   await js("gameNotice(311,{1:0});gameNotice(402,{1:0,2:2,3:-1,4:3})");
   await wait("!document.getElementById('connection-layer').hidden && !document.getElementById('matchmaking').hidden");
-  assert.equal(await js("document.getElementById('login-form').hidden"), true);
+  assert.equal(await js("document.getElementById('login-form')"), null);
   assert.equal(await js("document.getElementById('match').disabled"), false);
   assert.equal(await js("matchSession.gateway != null && matchSession.fieldId===102"), true);
   await js("document.getElementById('match').click();gameNotice(107,{6:24,7:203,9:[{1:42,6:1}]})");
@@ -978,15 +987,15 @@ try {
   await js("gameNotice(503,{1:43,2:90,3:1})");
   await wait("document.getElementById('opponent-connection-status').checkVisibility() && document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (1:30)'");
   await wait("document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (1:29)'");
-  assert.equal(await js("document.getElementById('white-hours').value"), '00:19:50');
+  assert.equal(await js("document.getElementById('white-hours').dateTime"), 'PT1190S');
   assert.equal(await js("document.getElementById('resign').disabled"), false);
   await js("matchSession.opponentDisconnectDeadline=Date.now()/1000-1;matchSession.changed()");
   await wait("document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (0:00)'");
   assert.equal(await js("document.getElementById('opponent-connection-status').checkVisibility()"), true);
   await js("gameNotice(109,{1:27,2:{1:0,2:1034,3:3,4:60,5:43,6:45}});gameNotice(504,{1:43})");
   await wait("!document.getElementById('opponent-connection-status').checkVisibility()");
-  await wait("document.getElementById('white-hours').value==='00:17:14'");
-  await wait("document.getElementById('white-hours').value==='00:17:13'");
+  await wait("document.getElementById('white-hours').dateTime==='PT1034S'");
+  await wait("document.getElementById('white-hours').dateTime==='PT1033S'");
   await js("matchSession.board.turn=1;matchSession.changed()");
   assert.equal(await js("document.getElementById('disconnect-board')"), null);
   assert.equal(await js("document.getElementById('disconnect')"), null);
@@ -1073,30 +1082,29 @@ try {
   assert.equal(await js("document.querySelector('.game-settings, #game-time')"), null);
   const playerStats = () => js(`['black','white'].map(name => ({
     captures:document.getElementById(name+'-captures').textContent,
-    time:document.querySelector('#'+name+'-time input').value,
+    time:document.querySelector('#'+name+'-time time').dateTime,
     label:document.getElementById(name+'-time-label').textContent,
     periods:document.getElementById(name+'-periods')?.textContent ?? null,
     active:document.getElementById(name+'-player').classList.contains('to-play')
   }))`);
   assert.deepEqual(await playerStats(),[
-    {captures:'Captures: 4',time:'00:01:30',label:'Main time',periods:null,active:false},
-    {captures:'Captures: 6 + 7.5',time:'00:00:30',label:'Byoyomi: 2/3',periods:'2/3',active:false}
+    {captures:'Captures: 4',time:'PT90S',label:'Main time',periods:null,active:false},
+    {captures:'Captures: 6 + 7.5',time:'PT30S',label:'Byoyomi: 2/3',periods:'2/3',active:false}
   ]);
   const clockText = () => js("[...document.querySelectorAll('.clock-text')].map(node=>node.textContent)");
   assert.deepEqual(await clockText(), ['00:30', '01:30']);
-  assert.equal(await js("document.getElementById('hours').hasAttribute('readonly')"), false);
-  assert.equal(await js("getComputedStyle(document.getElementById('hours')).pointerEvents"), 'none');
+  assert.equal(await js("document.getElementById('hours').tagName"), 'TIME');
   await js("document.activeElement.blur();document.getElementById('hours').scrollIntoView({block:'center'})");
-  const clockIcon = await js(`(() => {const r=document.getElementById('hours').getBoundingClientRect();
+  const clockPoint = await js(`(() => {const r=document.getElementById('hours').getBoundingClientRect();
     return {x:r.right-12,y:r.y+r.height/2};})()`);
-  await call('Input.dispatchMouseEvent', {type:'mousePressed',...clockIcon,button:'left',clickCount:1});
-  await call('Input.dispatchMouseEvent', {type:'mouseReleased',...clockIcon,button:'left',clickCount:1});
+  await call('Input.dispatchMouseEvent', {type:'mousePressed',...clockPoint,button:'left',clickCount:1});
+  await call('Input.dispatchMouseEvent', {type:'mouseReleased',...clockPoint,button:'left',clickCount:1});
   assert.equal(await js("document.activeElement.id==='hours'"), false);
-  assert.equal(await js("document.getElementById('hours').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}))"), false);
+  assert.equal(await js("document.querySelector('input[type=time]')"), null);
   await js("document.getElementById('hours').focus()");
   await call('Input.dispatchKeyEvent', {type:'keyDown',key:'ArrowUp',code:'ArrowUp',windowsVirtualKeyCode:38});
   await call('Input.dispatchKeyEvent', {type:'keyUp',key:'ArrowUp',code:'ArrowUp',windowsVirtualKeyCode:38});
-  assert.equal((await playerStats())[0].time, '00:01:30');
+  assert.equal((await playerStats())[0].time, 'PT90S');
   await js('matchSession.clocks[1].main=3600;matchSession.changed()');
   await wait("document.querySelector('#black-time .clock-text').textContent==='01:00:00'");
   await js('matchSession.clocks[1].main=3599;matchSession.changed()');
@@ -1115,9 +1123,9 @@ try {
     matchSession.gameMessage(108,decode(encode({2:0,3:1,4:29,5:matchSession.uid+1})))})()`);
   await wait("document.getElementById('white-periods').textContent==='1/3'");
   const liveStats = await playerStats();
-  assert.equal(liveStats[0].time,'00:01:30');
+  assert.equal(liveStats[0].time,'PT90S');
   assert.equal(liveStats[0].active,false);
-  assert.match(liveStats[1].time,/^00:00:2[0-9]$/);
+  assert.match(liveStats[1].time,/^PT2[0-9]S$/);
   assert.equal(liveStats[1].active,true);
   await js(`window.staticMutations=0;window.staticObserver=new MutationObserver(records=>staticMutations+=records.length);
     for (const id of ['menu-title','black-captures','white-captures','white-time-label'])
@@ -1134,9 +1142,27 @@ try {
   await wait("document.querySelector('#black-time .clock-text').textContent==='00:00'");
   assert.equal(await js("document.getElementById('black-periods').textContent"), '3/3');
   await wait("document.getElementById('black-periods').textContent==='2/3'");
-  for (const width of [1280,800,390]) {
+  for (const width of [1280,800,390,320]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
     await pause(150);
+    for (const seconds of [0,9,3599,3600,86399]) {
+      await js(`matchSession.phase='finished';matchSession.clocks[1].main=${seconds};matchSession.clocks[1].byoyomi=0;matchSession.changed()`);
+      await wait(`document.getElementById('hours').dateTime==='PT${seconds}S'`);
+      assert.equal(await js(`[...document.querySelectorAll('time.clock-display')].every(clock=>{
+        const r=clock.getBoundingClientRect(), panel=clock.closest('.player-panel').getBoundingClientRect();
+        const text=clock.querySelector('.clock-text').getBoundingClientRect();
+        const label=clock.closest('dl').querySelector('dt').getBoundingClientRect();
+        return r.left>=panel.left && r.right<=panel.right && r.top>=panel.top && r.bottom<=panel.bottom &&
+          text.left>=r.left && text.right<=r.right && label.right<=r.left;
+      })`), true, `Clock overflow at ${width}px and ${seconds}s`);
+      assert.equal(await js(`[...document.querySelectorAll('time.clock-display')].every(clock=>{
+        const r=clock.getBoundingClientRect(), panel=clock.closest('.player-panel').getBoundingClientRect();
+        const text=clock.querySelector('.clock-text').getBoundingClientRect();
+        return Math.abs((panel.right-r.right)-(panel.bottom-r.bottom))<0.5 &&
+          Math.abs((text.top-r.top)-(r.bottom-text.bottom))<0.5 &&
+          Math.abs((text.left-r.left)-(r.right-text.right))<0.5;
+      })`), true, `Asymmetric clock spacing at ${width}px and ${seconds}s`);
+    }
     const panels = await js(`['black','white'].map(name=>{
       const panel=document.getElementById(name+'-player'),r=panel.getBoundingClientRect();
       return {left:r.left,right:r.right,width:r.width,scroll:panel.scrollWidth};
@@ -1146,13 +1172,24 @@ try {
       assert.ok(panel.scroll<=panel.width,JSON.stringify({width,panel}));
     }
     assert.equal(await js(`[...document.querySelectorAll('.player-panel')].every(panel=>{
-      const rows=[...panel.children].map(row=>row.getBoundingClientRect());
-      return rows.length===3 && Math.abs((rows[1].top-rows[0].bottom)-(rows[2].top-rows[1].bottom))<1 &&
-        Math.abs((rows[1].top-rows[0].top)-(rows[2].top-rows[1].top))<1;
+      const rows=['.player-title','.player-captures','dt'].map(selector=>panel.querySelector(selector).getBoundingClientRect());
+      return rows.length===3 && rows[0].bottom<=rows[1].top && rows[1].bottom<=rows[2].top;
     })`), true);
+    assert.equal(await js(`[...document.querySelectorAll('.player-panel')].every(panel=>{
+      const title=panel.querySelector('.player-title'), captures=panel.querySelector('.player-captures');
+      const label=panel.querySelector('dt');
+      const rows=[title,captures,label].map(node=>node.getBoundingClientRect());
+      const clock=panel.querySelector('.clock-display').getBoundingClientRect();
+      const expected=innerWidth<=800?20:28;
+      return getComputedStyle(label).fontSize===getComputedStyle(captures).fontSize &&
+        getComputedStyle(label).lineHeight===getComputedStyle(captures).lineHeight &&
+        parseFloat(getComputedStyle(label).minHeight)===expected &&
+        parseFloat(getComputedStyle(captures).minHeight)===expected &&
+        rows[1].right<=clock.left && rows[2].right<=clock.left;
+    })`), true, `Expanded player label spacing or inconsistent fonts at ${width}px`);
     assert.equal(await js(`['black','white'].every(name=>{
-      const time=document.getElementById(name+'-time'), input=time.querySelector('input');
-      const r=input.getBoundingClientRect(), row=time.getBoundingClientRect();
+      const time=document.getElementById(name+'-time'), display=time.querySelector('time');
+      const r=display.getBoundingClientRect(), row=time.getBoundingClientRect();
       return Math.abs(r.right-row.right)<1 && r.width<=row.width &&
         r.width<time.closest('.player-panel').getBoundingClientRect().width &&
         time.parentElement===time.closest('dl').lastElementChild;
@@ -1162,7 +1199,7 @@ try {
     await js(`matchSession.color=${color};matchSession.changed()`);
     const expected=color===1?['white-player','black-player']:['black-player','white-player'];
     await wait(`JSON.stringify([...document.querySelectorAll('#sidebar-content > .player-panel')].map(panel=>panel.id))===${JSON.stringify(JSON.stringify(expected))}`);
-    const positions=await js(`[...document.querySelectorAll('#sidebar-content > .player-panel')].map(panel=>panel.getBoundingClientRect().top)`);
+    const positions=await js(`[...document.querySelectorAll('#sidebar-content > .player-panel')].map(panel=>panel.getBoundingClientRect().left)`);
     assert.ok(positions[0]<positions[1]);
     await js('matchSession.board.turn=3-matchSession.board.turn;matchSession.changed()');
     assert.deepEqual(await js("[...document.querySelectorAll('#sidebar-content > .player-panel')].map(panel=>panel.id)"),expected);
@@ -1171,16 +1208,20 @@ try {
   console.log('Browser player panels passed: captures, zero/reverse komi, main/byoyomi clocks, periods, active player, responsive player sections');
 
 
-  const sidebarBounds = () => js(`['black-player','white-player','black-captures','white-captures',
-    'black-time','white-time'].map(id=>{
+  // Clock contents resize the capture column; keep the panels and label anchors stable.
+  const sidebarBounds = () => js(`['black-player','white-player','black-captures','white-captures'].map(id=>{
       const node=document.getElementById(id);
-      const r=(id.endsWith('-time') ? node.parentElement : node).getBoundingClientRect();
-      return {id,x:r.x,y:r.y-document.querySelector('aside').getBoundingClientRect().y,width:r.width,height:r.height};
+      const r=node.getBoundingClientRect();
+      const bounds={id,x:r.x,y:r.y-document.querySelector('aside').getBoundingClientRect().y,height:r.height};
+      return id.endsWith('-captures') ? bounds : {...bounds,width:r.width};
     })`);
   for (const width of [1280,800,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
     await js(`matchSession.phase='playing';matchSession.board.turn=1;
-      matchSession.status='Stable sidebar baseline';matchSession.result='';matchSession.clocks={};
+      matchSession.status='Stable sidebar baseline';matchSession.result='';
+      matchSession.board.captures={1:120,2:450};matchSession.komi=7.5;
+      matchSession.clocks={1:{main:600,periods:3,byoyomi:30,periodLength:30,at:Date.now()/1000},
+                           2:{main:0,periods:2,byoyomi:30,periodLength:30,at:Date.now()/1000}};
       matchSession.gameOver=false;matchSession.pendingConfirmation=null;matchSession.changed()`);
     await wait("document.getElementById('board-status').textContent==='Stable sidebar baseline'");
     const before = await sidebarBounds();
@@ -1220,9 +1261,9 @@ try {
         assert.equal(await js("getComputedStyle(document.getElementById('white-player')).borderTopWidth"), '1px');
         const activeColor = await js("getComputedStyle(document.querySelector('#white-player .clock-text')).color");
         assert.equal(await js("getComputedStyle(document.getElementById('white-player')).borderTopColor"), activeColor);
-        assert.equal(await js("getComputedStyle(document.querySelector('#white-player .clock-display input')).borderTopColor"), activeColor);
+        assert.equal(await js("getComputedStyle(document.querySelector('#white-player .clock-display')).borderTopColor"), activeColor);
         assert.equal(await js("getComputedStyle(document.getElementById('black-player')).borderTopColor"), 'rgb(98, 98, 98)');
-        assert.equal(await js("getComputedStyle(document.querySelector('#black-player .clock-display input')).borderTopColor"), 'rgb(98, 98, 98)');
+        assert.equal(await js("getComputedStyle(document.querySelector('#black-player .clock-display')).borderTopColor"), 'rgb(98, 98, 98)');
       }
     }
   }

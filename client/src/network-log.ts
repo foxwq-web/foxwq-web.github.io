@@ -21,7 +21,8 @@ interface Stream {
 }
 
 export class NetworkLog {
-  private readonly pageId = crypto.randomUUID();
+  private readonly pageId = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    byte => byte.toString(16).padStart(2, "0")).join("");
   private sequence = 0;
   private connections = new Map<number, { client: string; server: string }>();
   private streams = new Map<string, Stream>();

@@ -89,15 +89,29 @@ export class FoxSounds {
   }
   unlock() {
     this.prepare();
-    void this.resumeContext().catch(() => {});
+    // iOS otherwise treats Web Audio as ambient/ringer audio, which is silent
+    // with the phone's Silent switch enabled. Request media playback on a tap.
+    const session = (globalThis.navigator as Navigator & {
+      audioSession?: { type: string };
+    } | undefined)?.audioSession;
+    try {
+      if (!this.muted && session && session.type !== "playback")
+        session.type = "playback";
+    } catch { /* Older browsers may expose an unavailable audio session. */ }
+    // A resume requested outside a gesture can stay pending indefinitely.
+    // Retry inside this gesture rather than reusing that blocked request.
+    void this.resumeContext(true).catch(() => {});
   }
-  private resumeContext() {
+  private resumeContext(fromGesture = false) {
     if (!this.context || this.context.state === "closed")
       return Promise.reject(new Error("Audio context unavailable"));
     if (this.context.state === "running") return Promise.resolve();
-    if (this.resuming) return this.resuming;
-    this.resuming = this.context.resume().finally(() => { this.resuming = null; });
-    return this.resuming;
+    if (this.resuming && !fromGesture) return this.resuming;
+    const pending: Promise<void> = this.context.resume().finally(() => {
+      if (this.resuming === pending) this.resuming = null;
+    });
+    this.resuming = pending;
+    return pending;
   }
   play(name: string) {
     if (!this.context || this.context.state === "closed") return;
@@ -157,4 +171,16 @@ export class FoxSounds {
     this.voice?.stop();
     this.voice = null;
   }
+}
+
+export function bindAudioUnlock(sounds: Pick<FoxSounds, "unlock">, target: EventTarget = window) {
+  const unlock = () => sounds.unlock();
+  // A touch pointerdown does not activate audio on every Safari version.
+  // touchend/click run in the accepted tap gesture, before gameplay handlers.
+  const events = ["pointerdown", "touchend", "click", "keydown"];
+  const options = { capture: true, passive: true };
+  for (const event of events) target.addEventListener(event, unlock, options);
+  return () => {
+    for (const event of events) target.removeEventListener(event, unlock, options);
+  };
 }
