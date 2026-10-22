@@ -28,7 +28,7 @@ function Player({ state, color }: { state: UIState; color: number }) {
   const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
   const clock = s.clocks[color];
   const elapsed =
-    clock && !state.frozen && s.phase === "playing" && s.turn === color &&
+    clock && !state.frozen && !s.counting && s.phase === "playing" && s.turn === color &&
     !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
       ? Math.max(0, state.now - clock.at)
       : 0;

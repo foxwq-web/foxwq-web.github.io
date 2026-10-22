@@ -165,3 +165,49 @@ test('Fox full-period sync guard preserves countdown voice cadence near the end'
     ]);
   } finally { session.close(); }
 });
+
+test('counting freezes the current reading and resumes without charging the waiting time', context => {
+  context.mock.timers.enable({ apis: ['Date'], now: 0 });
+  for (const own of [true, false]) for (const main of [0, 120]) {
+    for (const exit of ['request-failed', 'rejected', 'answer-rejected', 'resume']) {
+      if (!own && exit === 'request-failed') continue;
+      context.mock.timers.setTime(0);
+      const session = new Session();
+      session.phase = 'playing'; session.color = 1; session.uid = 42;
+      session.board.turn = own ? 1 : 2;
+      session.roomKey = { 1: 31000, 2: 63, 3: 23, 4: 202 };
+      session.gateway = { send() {}, close() {} };
+      const color = session.board.turn;
+      session.clocks[color] = { main, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
+      const notify = (op: number, fields: Fields) =>
+        session.gameMessage(op, decode(encode(fields)), decode(encode({})));
+      try {
+        context.mock.timers.tick(7000);
+        const before = clockReading(session.clocks[color], 7, 60, own);
+        if (own) session.requestCounting();
+        else notify(303, { 1: 0, 2: 1 });
+        assert.deepEqual(clockReading(session.clocks[color], 0, 60, own), before);
+        if (exit !== 'request-failed' && own) notify(301, { 1: 0 });
+        context.mock.timers.tick(90000);
+        assert.equal(session.tickClock(), false);
+        assert.deepEqual(clockReading(session.clocks[color], 0, 60, own), before);
+        if (exit === 'request-failed') notify(301, { 1: -1 });
+        if (exit === 'rejected') notify(306, { 1: false, 2: 1 });
+        if (exit === 'answer-rejected') {
+          notify(303, { 1: 0, 2: 1 });
+          session.confirm(false);
+          notify(304, { 1: 0 });
+        }
+        if (exit === 'resume') notify(109, { 2: {
+          2: before.main, 3: before.periods, 4: before.seconds, 5: own ? 42 : 43,
+        } });
+        assert.equal(session.counting, false);
+        assert.deepEqual(clockReading(session.clocks[color], 0, 60, own), before);
+        context.mock.timers.tick(2000);
+        const after = clockReading(session.clocks[color], Date.now() / 1000 - session.clocks[color].at, 60, own);
+        assert.equal(main ? after.main : after.seconds, (main ? before.main : before.seconds) - 2);
+        assert.equal(after.periods, 3);
+      } finally { session.close(); }
+    }
+  }
+});

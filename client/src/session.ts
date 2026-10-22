@@ -113,7 +113,24 @@ export class Session {
   clocks: Record<string, Clock>;
   opponentDisconnectDeadline: number | null = null;
   pendingConfirmation: Confirmation | null;
-  counting: boolean;
+  private countingActive = false;
+  get counting() { return this.countingActive; }
+  set counting(active: boolean) {
+    if (active === this.countingActive) return;
+    const time = now(), color = this.board.turn, clock = this.clocks[color];
+    if (clock && this.phase === "playing") {
+      if (active && !(color !== this.color && this.opponentDisconnectDeadline != null)) {
+        const reading = clockReading(clock, time - clock.at, 60, color === this.color);
+        Object.assign(clock, {
+          main: reading.main, periods: reading.periods, byoyomi: reading.seconds,
+        });
+      }
+      // Preserve the displayed time on entry; exclude the counting interval
+      // when play resumes, including rejection paths without a timing packet.
+      clock.at = time;
+    }
+    this.countingActive = active;
+  }
   countingAnswer: { confirmation: Confirmation; accept: boolean } | null;
   changeQueued = false;
   lastChangeKey = "";
