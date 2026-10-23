@@ -188,7 +188,8 @@ test('estimate uses the optimistic move and survives confirmation, but clears on
   for (const rejected of [false, true]) {
     const s = new Session();
     try {
-      await applyDevScreen(s, 'move-pending');
+      await applyDevScreen(s, 'board-black');
+      s.play(10, 10);
       let payload;
       s.estimationFetcher = async options => { payload = options.payload; return reply(Array(361).fill(0)); };
       await s.estimateScore();

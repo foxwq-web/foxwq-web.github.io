@@ -1,13 +1,13 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, hasTouch: true });
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const screen of ['board-black', 'matchmaking']) {
-    await page.goto(`${url}/?dev-screen=${screen}&mute=1`);
+    await page.goto(`${url}/?dev-screen=${screen}`);
     const name = page.locator(screen === 'board-black' ? '#white-player-name' : '#matchmaking-player button');
     await name.hover();
     const card = page.locator('.player-info');
@@ -41,7 +41,7 @@ try {
   }
   for (const [width, height] of [[320, 640], [360, 640], [640, 360]]) {
     await page.setViewportSize({ width, height });
-    await page.goto(`${url}/?dev-screen=matchmaking&mute=1`);
+    await page.goto(`${url}/?dev-screen=matchmaking`);
     await page.locator('#matchmaking-player button').tap();
     const card = page.locator('.player-info');
     await card.waitFor();

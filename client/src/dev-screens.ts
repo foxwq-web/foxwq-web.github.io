@@ -88,14 +88,12 @@ export const DEV_SCREENS: Screen[] = [
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
   { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Hover Black’s player name in the main view"), playerName: "#black-player-name" },
   { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
-  screen("board-white", "Your turn as White", "Playing", "playing", "playing", "Game starts as White; Black plays", blackMove),
+  screen("board-white", "Your turn as White", "Playing", "playing", "playing", "AlphaGo vs Lee Sedol, game 2, after move 37"),
   screen("opponent-turn", "Opponent’s turn", "Playing", "playing", "playing", "Black plays; White is next", blackMove),
-  screen("move-pending", "Action awaiting confirmation", "Playing", "playing", "playing", "Play a stone; Fox confirmation is pending. Pass and counting answers share these disabled controls", s => s.session.play(10, 10)),
   screen("opponent-passed", "Opponent passed", "Playing", "playing", "playing", "Opponent’s turn → opponent passes", s => { blackMove(s); s.notify(206); }),
   screen("both-passed", "Both players passed", "Playing", "playing", "playing", "Pass → Fox confirms → opponent passes; counting is available", s => { s.session.passTurn(); s.notify(204, { 1: 0 }); s.notify(206); s.notify(206); }),
   screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(108, { 5: 42, 2: 0, 3: 1, 4: 9 })),
   screen("action-rejected", "Move rejected", "Playing", "playing", "playing", "Play a stone; Fox rejects it and rolls it back", s => { s.session.play(10, 10); s.notify(201, { 1: -1 }); }),
-  screen("board-error", "Illegal move", "Playing", "playing", "playing", "Click an occupied intersection", s => s.error(() => s.session.play(3, 3))),
 
   screen("resign-confirm", "Confirm resignation", "Questions", "playing", "playing", "Resign → inline confirmation with cancel; other actions disabled", s => s.ask("resign")),
 
@@ -106,8 +104,7 @@ export const DEV_SCREENS: Screen[] = [
   screen("counting-rejected", "Counting rejected", "Counting", "playing", "playing", "Request counting → opponent rejects", s => { countingAcknowledged(s); s.notify(306, { 1: 0, 2: 1 }); }),
   screen("counting-error", "Counting failed", "Counting", "playing", "playing", "Request counting → Fox reports a failure", s => { countingAcknowledged(s); s.notify(303, { 1: -1, 2: 1 }); }),
 
-  screen("score-estimation", "Score estimate", "Estimation", "playing", "playing", "Estimate score → display sample ownership", s => s.session.estimateScore()),
-  screen("score-estimation-local", "Local GoStar estimate", "Estimation", "playing", "playing", "Estimate score → complete local engine calculation", s => {
+  screen("score-estimation", "Score estimate", "Estimation", "playing", "playing", "Estimate score → complete local engine calculation", s => {
     s.session.estimationFetcher = localEstimate;
     return s.session.estimateScore();
   }),
@@ -120,11 +117,19 @@ export const DEV_SCREENS: Screen[] = [
 
 
 function position({ session, notify }: Scenario) {
+  // AlphaGo (Black) vs Lee Sedol, game 2, 2016-03-10, through move 37 (P10).
+  // https://media-iframe.britgo.org/files/2016/deepmind/alphago-leesedol2.sgf
   const moves = [
-    [1, 0], [0, 0], [0, 1], [15, 15], [3, 3], [15, 3], [3, 15],
-    [4, 3], [4, 4], [4, 2], [5, 3], [14, 15], [9, 9], [14, 3],
-    [10, 9], [15, 14], [9, 10], [14, 14],
+    [15, 3], [3, 15], [2, 3], [16, 15], [14, 15], [14, 16],
+    [13, 16], [15, 16], [2, 13], [5, 16], [12, 15], [16, 13],
+    [8, 2], [3, 9], [15, 14], [16, 14], [2, 15], [2, 16],
+    [1, 16], [2, 14], [1, 15], [1, 14], [3, 14], [1, 13],
+    [3, 16], [4, 15], [3, 17], [2, 12], [9, 15], [2, 6],
+    [4, 3], [16, 5], [16, 4], [15, 5], [13, 3], [15, 8],
+    [14, 9],
   ];
+  // Black-to-play previews include Lee Sedol’s reply, move 38 (P11).
+  if (session.color === 1) moves.push([14, 8]);
   moves.forEach(([x, y], i) => {
     const color = i % 2 + 1;
     if (session.color === color) {
@@ -138,6 +143,8 @@ function position({ session, notify }: Scenario) {
 export async function applyDevScreen(session: Session, id: string) {
   const fixture = DEV_SCREENS.find(screen => screen.id === id);
   if (!fixture) return null;
+  const blackUid = id === "board-white" ? 43 : 42;
+  const playerName = (uid: number) => uid === blackUid ? "Black" : "White";
   const transport = { send() {}, close() {} };
   const waiting = () => new Promise<never>(() => {});
   session.connectionFactory = async () => {
@@ -160,16 +167,16 @@ export async function applyDevScreen(session: Session, id: string) {
   session.playerInfo = new PlayerInfoStore(fields => {
     const uid = Number(fields[1]);
     queueMicrotask(() => message(PLAYER_INFO_SERVICE, 1001, {
-      1: 0, 2: fields[3], 3: uid, 7: 20, 8: { 5: uid === 43 ? "BambooMoon" : "StoneRiver" },
+      1: 0, 2: fields[3], 3: uid, 7: 35, 8: { 5: playerName(uid) },
       9: { 1: { 1: 9, 2: 13, 3: 10 }, 2: "-+--++-+-++--++-+--++" }, 16: [{ 1: 0, 2: 128, 3: 104 }],
     }));
   }, () => session.changed(), () => session, async input => {
     const uid = Number(new URL(String(input)).searchParams.get("uid"));
     return Response.json({ result: 0, chesslist: Array.from({ length: 20 }, (_, i) => ({
       chessid: String(1791872071030044736n + BigInt(i)),
-      blackuid: uid, whiteuid: 44, blackenname: uid === 43 ? "BambooMoon" : "StoneRiver",
+      blackuid: uid, whiteuid: 44, blackenname: playerName(uid),
       // Ten wide letters stress the chosen-name limit; generated names can reach eleven.
-      whiteenname: i % 2 ? "WWWWWWWWWW" : "V2000518658", whitedan: 19,
+      whiteenname: i % 2 ? "WWWWWWWWWW" : "V1234567890", whitedan: 35,
       gamestarttime: String(1791872071 - i * 3600), winner: i % 3 ? 1 : 2,
       reason: i % 2 ? 3 : 1, point: i % 2 ? -1 : 325, movenum: 80 + i * 9,
     })) });
@@ -198,11 +205,11 @@ export async function applyDevScreen(session: Session, id: string) {
   const setup = async () => {
     const { stage } = fixture;
     if (stage === "login") return;
-    session.login("StoneRiver", "sample-password");
+    session.login(playerName(42), "sample-password");
     if (stage === "connecting") return;
     await settled(() => !!session.connection);
     if (stage === "authenticating") return;
-    packet(2005, { 1: 0, 2: 42, 3: { 1: 42, 2: "StoneRiver", 3: "StoneRiver", 4: 20 }, 8: Buffer.from("sample-token") });
+    packet(2005, { 1: 0, 2: 42, 3: { 1: 42, 2: playerName(42), 3: playerName(42), 4: 35 }, 8: Buffer.from("sample-token") });
     if (stage === "bootstrap") return;
     packet(3005, { 3: [{ 1: 1, 21: "offline.invalid", 22: 10000 }] });
     if (stage === "gateway") return;
@@ -226,9 +233,9 @@ export async function applyDevScreen(session: Session, id: string) {
     scenario.room(100140, { 1: 0, 2: game.GAME, 3: 63, 4: 100, 7: 200 });
     if (stage === "joining") return;
     scenario.notify(107, { 1: { 7: 60 }, 6: 100, 7: 200, 9: [
-      { 1: id === "board-white" ? 43 : 42, 3: "StoneRiver", 4: 20,
+      { 1: id === "board-white" ? 43 : 42, 3: "Black", 4: 35,
         6: 1, 7: 425, 8: 3, 9: 60 },
-      { 1: id === "board-white" ? 42 : 43, 3: "BambooMoon", 4: 19,
+      { 1: id === "board-white" ? 42 : 43, 3: "White", 4: 35,
         6: 2, 7: 192, 8: 2, 9: 60 },
     ] });
     if (stage === "started") return;
@@ -278,7 +285,6 @@ export function mountDevNavigation(id: string) {
     const a = document.createElement("a"),
       url = new URL(location.href);
     url.searchParams.set("dev-screen", screen);
-    url.searchParams.set("mute", "1");
     a.href = url.href;
     a.textContent = label;
     a.tabIndex = 0;

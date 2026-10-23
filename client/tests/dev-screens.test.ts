@@ -4,11 +4,27 @@ import { Board } from '../src/board.ts';
 import { Session } from '../src/session.ts';
 import { DEV_SCREENS, applyDevScreen } from '../src/dev-screens.ts';
 
+test('playing previews include AlphaGo move 37 and preserve the player’s turn', async () => {
+  for (const [id, color, moveCount] of [['board-white', 2, 37], ['board-black', 1, 38]] as const) {
+    const session = new Session();
+    try {
+      await applyDevScreen(session, id);
+      assert.equal(session.board.moves.length, moveCount);
+      assert.deepEqual(session.board.moves[36], [1, 14, 9]); // P10, move 37.
+      assert.equal(session.board.stones[9 * 19 + 14], 1);
+      assert.equal(session.board.stones[8 * 19 + 14], color === 1 ? 2 : 0); // P11, reply 38.
+      assert.equal(session.color, color);
+      assert.equal(session.board.turn, color);
+      assert.equal(session.pending, false);
+    } finally { session.close(); }
+  }
+});
+
 test('offline player cards load recent games for the requested player', async () => {
   const session = new Session();
   try {
     await applyDevScreen(session, 'board-black');
-    for (const [uid, name] of [[42, 'StoneRiver'], [43, 'BambooMoon']] as const) {
+    for (const [uid, name] of [[42, 'Black'], [43, 'White']] as const) {
       session.playerInfo.open(uid, name);
       await new Promise(resolve => setImmediate(resolve));
       const info = session.playerInfo.current!;
@@ -16,6 +32,7 @@ test('offline player cards load recent games for the requested player', async ()
       assert.equal(info.error, '');
       assert.equal(info.summaryError, '');
       assert.equal(info.name, name);
+      assert.equal(info.rank, '9p');
       assert.equal(info.games.length, 20);
     }
   } finally { session.close(); }
@@ -73,6 +90,7 @@ test('previews preserve real pending, acknowledgement, rollback and pass semanti
       'counting-answer-pending', 'counting-accepted']) {
       const session = sessions[id] = new Session();
       const recipes: Partial<Record<string, (s: Session) => void>> = {
+        'move-pending': s => s.play(10, 10),
         'pass-pending': s => s.passTurn(),
         'counting-pending': s => s.requestCounting(),
         'counting-answer-pending': s => s.confirm(true),

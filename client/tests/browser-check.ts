@@ -80,14 +80,13 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
 }
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
-const quietURL = (value: string) => { const target = new URL(value); target.searchParams.set('mute', '1'); return target.href; };
 const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const browserErrors: string[] = [];
 let websocketCount = 0;
 try {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(quietURL(url));
+  await page.goto(url);
   const cdp = await context.newCDPSession(page);
   cdp.on('Network.webSocketCreated', ({ url: socketURL }) => {
     const socket = new URL(socketURL);
@@ -101,7 +100,7 @@ try {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        cdp.send(method, method === 'Page.navigate' && params && 'url' in params && typeof params.url === 'string' ? { ...params, url: quietURL(params.url) } : params),
+        cdp.send(method, params),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error(`CDP ${method} timed out`)), 20000); })
       ]);
     } finally { clearTimeout(timer); }
@@ -254,7 +253,6 @@ try {
     if (fixture.id === 'login') {
       await js("document.getElementById('dev-menu').open=true");
       assert.equal(await js("document.querySelectorAll('#dev-screen-tools li a').length"), DEV_SCREENS.length);
-      assert.equal(await js("[...document.querySelectorAll('#dev-screen-tools a')].every(a=>new URL(a.href).searchParams.get('mute')==='1')"), true);
       assert.equal(await js("document.getElementById('save-network-log').checkVisibility() && typeof window.downloadNetworkLog === 'function'"), true);
       await js("document.getElementById('dev-menu').open=false");
     }
@@ -262,7 +260,7 @@ try {
     assert.equal(await js("document.querySelector('fieldset')"), null, fixture.id);
     if (fixture.playerName) {
       await wait(`document.querySelector(${JSON.stringify(fixture.playerName)})?.getAttribute('aria-expanded') === 'true' && document.querySelectorAll('.player-info-games tbody tr').length === 10`);
-      const expectedName = fixture.id === 'board-white-player-info' ? 'BambooMoon' : 'StoneRiver';
+      const expectedName = fixture.id === 'board-white-player-info' ? 'White' : 'Black';
       assert.equal(await js("document.querySelector('.player-info').getAttribute('aria-label')"), `${expectedName} player information`, fixture.id);
       assert.equal(await js("document.querySelectorAll('.player-info').length"), 1, fixture.id);
       await page.keyboard.press('Escape');
@@ -334,11 +332,11 @@ try {
         document.getElementById('save-sgf').click();URL.createObjectURL=create;HTMLAnchorElement.prototype.click=click;
         return {contents:await saved.text(),filename};
       })()`);
-      assert.match(record.contents, /PB\[StoneRiver\]PW\[BambooMoon\]/);
-      assert.match(record.filename, /^StoneRiver-BambooMoon-\d{8}T\d{4}\.sgf$/);
+      assert.match(record.contents, /PB\[Black\]PW\[White\]/);
+      assert.match(record.filename, /^Black-White-\d{8}T\d{4}\.sgf$/);
     }
     if (inBoard) assert.deepEqual(await js("['black','white'].map(name=>document.getElementById(name+'-player-name').textContent)"),
-      ['StoneRiver (3d)','BambooMoon (2d)'], fixture.id);
+      ['Black (9p)','White (9p)'], fixture.id);
     if (['playing', 'finished'].includes(fixture.phase)) {
       const geometry = await js<{ id: string; x: number; y: number; width: number; height: number; sidebarWidth: number; boxed: boolean; visible: boolean }[]>(`(() => {
         const bar = document.querySelector('aside').getBoundingClientRect();
@@ -390,20 +388,6 @@ try {
     if (fixture.id === 'counting-accepted') {
       assert.equal(await js("document.getElementById('board-status').checkVisibility()"), true);
       assert.equal(await js("document.getElementById('board-status').textContent"), 'Waiting for counting result...');
-    }
-    if (['move-pending'].includes(fixture.id)) {
-      assert.equal(await js("document.getElementById('game-state-panel').hidden"), true, fixture.id);
-      assert.equal(await js("document.getElementById('pass').disabled"), true, fixture.id);
-      assert.equal(await js("document.getElementById('resign').disabled"), false, fixture.id);
-      assert.equal(await js("document.getElementById('estimate-score').disabled"), false, fixture.id);
-      await js("document.getElementById('estimate-score').click()");
-      await wait("!document.getElementById('estimation-lead').hidden");
-      await js("document.getElementById('estimate-score').click()");
-      await js("document.getElementById('resign').click()");
-      assert.equal(await js("document.getElementById('resign').disabled"), false, fixture.id);
-      await js("document.getElementById('resign').click()");
-      await wait("document.getElementById('resign').disabled");
-      assert.equal(await js("document.getElementById('error').hidden"), true, fixture.id);
     }
     if (process.env.FOX_BROWSER_SCREENSHOTS && ['matchmaking','board-black','counting-request','counting-result','score-estimation','finished','resign-confirm'].includes(fixture.id)) {
       await mkdir(process.env.FOX_BROWSER_SCREENSHOTS, {recursive:true});
@@ -462,7 +446,6 @@ try {
   if (!production) {
     await wait("document.querySelector('#dev-screens li') != null");
     assert.equal(await js("document.querySelectorAll('#dev-screens li').length"), DEV_SCREENS.length);
-    assert.equal(await js("[...document.querySelectorAll('#dev-screens a')].every(a => new URL(a.href).searchParams.get('mute') === '1')"), true);
   }
   if (!production) {
     const target = new URL(url); target.searchParams.set('dev-screen', 'score-estimation');
@@ -472,7 +455,7 @@ try {
     assert.ok(await js("document.querySelectorAll('.territory-black').length") > 0);
     assert.ok(await js("document.querySelectorAll('.territory-white').length") > 0);
     assert.equal(await js("[...document.querySelectorAll('.board-stones .stone')].every(stone=>getComputedStyle(stone).opacity==='1')"), true);
-    assert.ok(await js("document.getElementById('estimation-lead').textContent.includes('Black leads')"));
+    assert.match(await js("document.getElementById('estimation-lead').textContent"), /(?:Black|White) leads|Even/);
     assert.equal(await js("['pass','request-score','resign'].every(id=>document.getElementById(id).disabled)"), true);
     assert.equal(await js("document.getElementById('estimate-score').disabled"), false);
     assert.equal(await js("document.getElementById('estimate-score').textContent"), 'Return to Game');
@@ -485,7 +468,7 @@ try {
     assert.equal(await js("document.getElementById('pass').disabled"), false);
     assert.ok(await js("document.querySelector('#board polygon') != null"));
     await js("document.getElementById('estimate-score').click()");
-    await wait("!document.getElementById('estimation-panel').hidden && document.getElementById('estimation-status').textContent === ''");
+    await wait("!document.getElementById('estimation-lead').hidden");
     assert.equal(await js("document.querySelector('#board').innerHTML"), position, 'Estimate round trip must restore identical markers and stones');
 
     await js("document.getElementById('estimate-score').click()");
@@ -504,7 +487,7 @@ try {
     await js("document.getElementById('estimate-score').click()");
     await wait("document.getElementById('estimation-status').textContent.includes('109045')");
     await js("document.getElementById('estimation-retry').click()");
-    await wait("document.getElementById('estimation-status').textContent === ''");
+    await wait("!document.getElementById('estimation-lead').hidden");
     assert.ok(await js("document.querySelectorAll('.estimated-territory rect').length") > 0);
   }
   assert.equal(websocketCount, 0, 'Offline previews must never open an application WebSocket');

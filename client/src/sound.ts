@@ -8,7 +8,6 @@ export function placementSound(captures: number) {
 
 
 export class FoxSounds {
-  muted: boolean;
   output: GainNode | null;
   context: AudioContext | null;
   buffers: Map<string, AudioBuffer>;
@@ -20,11 +19,7 @@ export class FoxSounds {
   private resuming: Promise<void> | null = null;
   private voiceRevision = 0;
   private pendingVoiceName: string | null = null;
-  constructor({
-    muted = new URLSearchParams(globalThis.location?.search).get("mute") ===
-      "1",
-  } = {}) {
-    this.muted = muted;
+  constructor() {
     this.output = null;
     this.context = null;
     this.buffers = new Map();
@@ -54,7 +49,6 @@ export class FoxSounds {
     this.context ??= new Context({ latencyHint: "interactive" });
     if (!this.output) {
       this.output = this.context.createGain();
-      this.output.gain.value = this.muted ? 0 : 1;
       this.output.connect(this.context.destination);
     }
     if (!this.idleAnalyser) {
@@ -95,7 +89,7 @@ export class FoxSounds {
       audioSession?: { type: string };
     } | undefined)?.audioSession;
     try {
-      if (!this.muted && session && session.type !== "playback")
+      if (session && session.type !== "playback")
         session.type = "playback";
     } catch { /* Older browsers may expose an unavailable audio session. */ }
     // A resume requested outside a gesture can stay pending indefinitely.

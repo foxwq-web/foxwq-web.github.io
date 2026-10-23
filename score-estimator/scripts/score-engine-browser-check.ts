@@ -10,7 +10,7 @@ import { Board } from '../../client/src/board.ts';
 import { decodeEstimate } from '../src/score-estimation.ts';
 
 const base = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
-const url = new URL(base); url.searchParams.set('dev-screen', 'board-black'); url.searchParams.set('mute', '1');
+const url = new URL(base); url.searchParams.set('dev-screen', 'board-black');
 type ReferencePosition = { name: string; status: string; turn: number; ownership: string; black_penalty: number; white_penalty: number };
 const references: ReferencePosition[] = JSON.parse(await readFile(new URL('../tests/fixtures/fox-native-estimates.json', import.meta.url), 'utf8')).positions;
 const expected = references.find(p => p.name === 'game 1, 290 moves');
@@ -31,6 +31,14 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit }).filte
     context = await engine.launchPersistentContext(profile, {
       headless: true, ...(name === 'chromium' ? { args: ['--mute-audio'] } : {}),
       ...(name === 'firefox' && process.env.FOX_FIREFOX_EXECUTABLE ? { executablePath: process.env.FOX_FIREFOX_EXECUTABLE } : {}),
+    });
+    // Keep Web Audio processing active without sending sound to the speakers.
+    await context.addInitScript(() => {
+      const connect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function (this: AudioNode, ...args: Parameters<AudioNode['connect']>) {
+        if (args[0] instanceof AudioDestinationNode) return args[0];
+        return Reflect.apply(connect, this, args);
+      } as AudioNode['connect'];
     });
     const page = await context.newPage();
     const errors: string[] = [];
@@ -142,7 +150,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit }).filte
 
 
     await page.addInitScript(() => { Object.defineProperty(window, 'WebAssembly', { value: undefined, configurable: true }); });
-    const unavailableUrl = new URL(url); unavailableUrl.searchParams.set('dev-screen', 'score-estimation-local');
+    const unavailableUrl = new URL(url); unavailableUrl.searchParams.set('dev-screen', 'score-estimation');
     await page.goto(unavailableUrl.href);
     await page.waitForSelector('#estimation-retry:visible');
     assert.match(await page.locator('#estimation-status').innerText(), /unavailable in this browser/);

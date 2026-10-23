@@ -19,7 +19,7 @@ Hover a player name during a game or in matchmaking to see their rank progress, 
 
 Press **F** to enter or leave full screen when you are not typing in a form field.
 
-For offline UI previews, open `/?dev-screen=all&mute=1` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
+For offline UI previews, open `/?dev-screen=all` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
 
 ## Build and verification
 

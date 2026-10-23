@@ -99,7 +99,7 @@ test('capture effects overlap each other and never replace or stop voice announc
 });
 
 function suspendedSounds() {
-  const audio = new FoxSounds({ muted: true }), started: (AudioBuffer | null)[] = [];
+  const audio = new FoxSounds(), started: (AudioBuffer | null)[] = [];
   let finishResume!: () => void, failResume!: (reason: Error) => void, resumeCalls = 0;
   const resumed = new Promise<void>((resolve, reject) => { finishResume = resolve; failResume = reject; });
   audio.output = { gain: { value: 0 } } as GainNode;
@@ -142,7 +142,7 @@ test('a real gesture retries an autoplay-blocked resume instead of sharing it', 
   assert.deepEqual(s.started, ['stone']);
 });
 
-test('unmuted gesture selects media playback; muted tests leave the audio session alone', async t => {
+test('a gesture selects media playback', async t => {
   const original = Object.getOwnPropertyDescriptor(navigator, 'audioSession');
   const session = { type: 'auto' };
   Object.defineProperty(navigator, 'audioSession', { configurable: true, value: session });
@@ -150,11 +150,7 @@ test('unmuted gesture selects media playback; muted tests leave the audio sessio
     if (original) Object.defineProperty(navigator, 'audioSession', original);
     else Reflect.deleteProperty(navigator, 'audioSession');
   });
-  const muted = suspendedSounds();
-  muted.audio.unlock(); muted.finish(); await flushAudio();
-  assert.equal(session.type, 'auto');
   const audible = suspendedSounds();
-  audible.audio.muted = false;
   audible.audio.unlock(); audible.finish(); await flushAudio();
   assert.equal(session.type, 'playback');
 });

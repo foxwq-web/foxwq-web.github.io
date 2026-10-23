@@ -4,10 +4,9 @@ import { DEV_SCREENS } from "./dev-screens.ts";
 export default function DevMenu({ controller: c }: {
   controller: Controller;
 }) {
-  const screenURL = (id: string | null) => {
+  const screenURL = (id: string) => {
     const url = new URL(location.href);
-    if (id) url.searchParams.set("dev-screen", id);
-    else url.searchParams.delete("dev-screen");
+    url.searchParams.set("dev-screen", id);
     return url.href;
   };
   return (
@@ -20,9 +19,6 @@ export default function DevMenu({ controller: c }: {
         </button>
       </section>
       <section id="dev-screen-tools">
-        <h2>Dev screens</h2>
-        <p><a href={screenURL("all")}>All screen previews</a></p>
-        <p><a href={screenURL(null)}>Return to app</a></p>
         {Array.from(new Set(DEV_SCREENS.map(screen => screen.group))).map(group => (
           <section key={group}>
             <h3>{group}</h3>
