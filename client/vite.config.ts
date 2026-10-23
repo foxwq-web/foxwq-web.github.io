@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { resolveBuildSha } from './scripts/build-metadata.ts';
+import { resolveBuildSha } from './src/build-metadata.ts';
 
 export default defineConfig({
   worker: { rollupOptions: { output: { inlineDynamicImports: true } } },

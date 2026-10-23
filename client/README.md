@@ -4,7 +4,7 @@ A browser client for Fox Go. The React/TypeScript client handles login, matchmak
 
 ## Development
 
-Use Node **26.11.0** and npm **12.2.0**, as pinned in `.node-version` and `package.json`.
+Use Node **26.11.0** and npm **12.2.0**, as pinned in `package.json`.
 
 ```sh
 npm ci

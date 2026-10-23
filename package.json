@@ -15,7 +15,7 @@
     "test": "node --import tsx --test client/tests/*.test.ts proxy/tests/*.test.ts score-estimator/tests/*.test.ts",
     "test:client": "node --import tsx --test client/tests/*.test.ts",
     "test:proxy": "node --import tsx --test proxy/tests/*.test.ts",
-    "test:browser": "node --import tsx client/scripts/run-browser-check.ts",
+    "test:browser": "node --import tsx client/tests/browser-check.ts",
     "proxy:dev": "wrangler dev --config proxy/wrangler.jsonc",
     "proxy:check": "cd proxy && wrangler deploy --dry-run --config wrangler.jsonc --outdir dist",
     "proxy:deploy": "node --import tsx proxy/scripts/deploy-worker.ts",

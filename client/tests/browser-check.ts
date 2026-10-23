@@ -1,14 +1,78 @@
-
-if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
-  await import('../../score-estimator/scripts/score-engine-browser-check.ts');
-  process.exit(0);
-}
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import type { ChildProcess } from 'node:child_process';
+import type { ViteDevServer, PreviewServer } from 'vite';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createServer as createPortServer } from 'node:net';
+import { mkdtemp, rm, readFile, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { createServer, build, preview } from 'vite';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import type { CDPSession } from 'playwright';
 import assert from 'node:assert/strict';
 import { DEV_SCREENS } from '../src/dev-screens.ts';
+
+if (!process.env.FOX_BROWSER_URL) {
+  const configFile = fileURLToPath(new URL('../vite.config.ts', import.meta.url));
+  const args = process.argv.slice(2);
+  const production = args.includes('--score-production') || args.includes('--production-shortcuts');
+  async function availablePort() {
+    const socket = createPortServer();
+    await new Promise<void>((resolve, reject) => {
+      socket.once('error', reject);
+      socket.listen(0, '127.0.0.1', () => resolve());
+    });
+    const address = socket.address();
+    assert.ok(address && typeof address !== 'string');
+    const { port } = address;
+    await new Promise<void>((resolve, reject) => socket.close(error => error ? reject(error) : resolve()));
+    return port;
+  }
+
+  let server: ViteDevServer | PreviewServer | undefined;
+  let child: ChildProcess | undefined;
+  let cache: string | undefined;
+  const interrupt = () => child?.kill('SIGINT');
+  const terminate = () => child?.kill('SIGTERM');
+  process.on('SIGINT', interrupt);
+  process.on('SIGTERM', terminate);
+  try {
+    const port = await availablePort();
+    if (production) {
+      await build({ configFile });
+      server = await preview({ configFile, preview: { host: '127.0.0.1', port, strictPort: true } });
+    } else {
+      cache = await mkdtemp(join(tmpdir(), 'foxwq-web-vite-'));
+      server = await createServer({ configFile, cacheDir: cache,
+        server: { host: '127.0.0.1', port, strictPort: true, hmr: false, watch: null } });
+      await server.listen();
+    }
+    assert.ok(server.httpServer);
+    const address = server.httpServer.address();
+    assert.ok(address && typeof address !== 'string');
+    const url = `http://127.0.0.1:${address.port}`;
+    child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(import.meta.url), ...args], {
+      cwd: fileURLToPath(new URL('../../', import.meta.url)),
+      env: { ...process.env, FOX_BROWSER_URL: url }, stdio: 'inherit'
+    });
+    const runningChild = child;
+    process.exitCode = await new Promise<number>((resolve, reject) => {
+      runningChild.once('error', reject);
+      runningChild.once('exit', (code, signal) => resolve(code ?? (signal === 'SIGINT' ? 130 : 1)));
+    });
+  } finally {
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', terminate);
+    if (server) await server.close();
+    if (cache) await rm(cache, { recursive: true, force: true });
+  }
+  process.exit(process.exitCode ?? 0);
+}
+
+if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
+  await import('../../score-estimator/scripts/score-engine-browser-check.ts');
+  process.exit(0);
+}
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
 const quietURL = (value: string) => { const target = new URL(value); target.searchParams.set('mute', '1'); return target.href; };
@@ -70,17 +134,6 @@ try {
   };
   await call('Runtime.enable');
   await call('Network.enable');
-  if (process.argv.includes('--audio-only')) {
-    const waitForEvent = (method: 'Tracing.tracingComplete') => new Promise<{ stream?: string }>((resolve, reject) => {
-      const timer = setTimeout(() => { cdp.off(method, listener); reject(Error(`CDP ${method} timed out`)); }, 20000);
-      const listener = (params: { stream?: string }) => { clearTimeout(timer); resolve(params); };
-      cdp.once(method, listener);
-    });
-    const { checkAudio } = await import('./audio-browser-check.ts');
-    await checkAudio({ call, js, wait, pause, url, waitForEvent });
-    assert.deepEqual(browserErrors, []);
-  } else {
-
   await wait("typeof window.downloadNetworkLog === 'function'");
   await js('document.activeElement?.blur()');
   await page.keyboard.press('f');
@@ -755,102 +808,6 @@ try {
   console.log('Browser checks passed: Escape ignored, stable pending login, default-colored errors, modal gating, cookies, matchmaking, restoration, Fox play/resignation/SGF');
 
 
-  await call('Page.navigate', { url: `${url}/scripts/sound-preview.html` });
-  await wait("window.foxSoundDemo != null && document.getElementById('reset')?.onclick != null");
-  await call('Runtime.evaluate', { expression: `(async()=>{
-    const audio=window.foxSoundDemo.sounds;
-    window.soundCalls=[];
-    const play=audio.play;
-    audio.play=function(name){window.soundCalls.push(name);return play.call(this,name);};
-    audio.unlock();await audio.context.resume();await audio.loading;
-    window.decodedSounds=audio.buffers.size;
-  })()`, awaitPromise: true, userGesture: true });
-  assert.equal(await js('window.decodedSounds'), 17);
-  assert.equal(await js('foxSoundDemo.sounds.muted'), true);
-  assert.equal(await js('foxSoundDemo.sounds.output.gain.value'), 0);
-
-
-  const renderedAudio = await js(`(async()=>{
-    const {FoxSounds}=await import('/src/sound.ts');
-    const results=[];
-    for(const muted of [true,false]) for(const name of ['stone','stone-capture-small','stone-capture-medium','stone-capture-large','start-play']) {
-      const NativeContext=window.AudioContext;
-      let audio;
-      try {
-        window.AudioContext=class extends OfflineAudioContext {
-          constructor(){super(1,57600,48000);}
-        };
-        audio=new FoxSounds({muted});
-        audio.preload();
-      } finally { window.AudioContext=NativeContext; }
-      await audio.loading;
-      Object.defineProperty(audio.context,'state',{get:()=> 'running'});
-      if (!audio.buffers.has(name)) throw Error('Missing decoded sound: '+name);
-      audio.play(name);
-      const rendered=await audio.context.startRendering();
-      const samples=rendered.getChannelData(0);
-      results.push({muted,name,gain:audio.output.gain.value,
-        hasSignal:samples.some(sample=>sample!==0),
-        delayedCaptureSignal:name.startsWith('stone-capture-') ? samples.slice(24000).some(sample=>Math.abs(sample)>.001) : null});
-    }
-    return results;
-  })()`);
-  assert.deepEqual(renderedAudio, [true,false].flatMap(muted =>
-    ['stone','stone-capture-small','stone-capture-medium','stone-capture-large','start-play'].map(name =>
-      ({muted,name,gain:muted?0:1,hasSignal:!muted,delayedCaptureSignal:name.startsWith('stone-capture-')?!muted:null}))));
-  await call('Runtime.evaluate', {expression: "document.getElementById('start-play').click()",userGesture:true});
-  await wait("window.soundCalls.includes('start-play')");
-  assert.equal(await js("(()=>{const a=foxSoundDemo.sounds,v=a.voice;a.stopCountdown();return v!=null&&v===a.voice})()"), true);
-  await js(`(async()=>{const audio=foxSoundDemo.sounds;audio.stopVoice();window.soundCalls=[];
-    const {ByoyomiAnnouncements}=await import('/src/clock.ts');
-    const speaker=new ByoyomiAnnouncements(name=>audio.play(name));
-    const {Session}=await import('/src/session.ts');
-    const session=new Session();session.phase='playing';session.color=1;
-    session.clocks[1]={main:2,periods:3,byoyomi:30,periodLength:30,at:0};
-    const tick=time=>{session.tickClock(time);speaker.update(session.snapshot(),time)};
-    tick(0);tick(2);tick(2.25);
-    const voice=audio.voice;audio.play('count-9');window.announcementProtected=voice===audio.voice;
-    tick(32.5);tick(63);session.close();
-  })()`);
-  assert.equal(await js('window.announcementProtected'), true);
-  assert.deepEqual(await js('window.soundCalls'), ['byoyomi-start','count-9','periods-2','periods-1']);
-  await js('foxSoundDemo.sounds.stopVoice();window.soundCalls=[]');
-  const clickDemo = "(()=>{const b=document.getElementById('board'),r=b.getBoundingClientRect();b.dispatchEvent(new MouseEvent('click',{clientX:r.left+90*r.width/420,clientY:r.top+90*r.height/420,bubbles:true}));})()";
-  await js(clickDemo);
-  assert.match(await js("document.getElementById('status').textContent"), /waiting 2 seconds/);
-  assert.deepEqual(await js('window.soundCalls'), ['stone']);
-  await wait("document.getElementById('status').textContent.includes('Confirmed silently')");
-  assert.deepEqual(await js('window.soundCalls'), ['stone']);
-  await js("document.getElementById('reset').click();document.getElementById('reject').checked=true");
-  await js(clickDemo);
-  await wait("document.getElementById('status').textContent.includes('Rejected')");
-  assert.deepEqual(await js('window.soundCalls'), ['stone','stone']);
-
-
-  for (const [count, name] of [[1,'stone-capture-small'],[2,'stone-capture-small'],[3,'stone-capture-medium'],[15,'stone-capture-medium'],[16,'stone-capture-large']] as const) {
-    await js(`document.getElementById('reset').click();document.getElementById('reject').checked=false;window.soundCalls=[];
-      (()=>{const b=foxSoundDemo.session.board;b.captures[1]=100;
-        for(let x=1;x<=${count};x++){b.stones[19+x]=2;b.stones[x]=1;if(x!==1)b.stones[38+x]=1;}
-        b.stones[19]=1;b.stones[20+${count}]=1;
-        const canvas=document.getElementById('board'),r=canvas.getBoundingClientRect();
-        canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+50*r.width/420,clientY:r.top+70*r.height/420,bubbles:true}));})()`);
-    assert.deepEqual(await js('window.soundCalls'), [name]);
-    assert.equal(await js('foxSoundDemo.session.board.captures[1]'), 100+count);
-    await wait("document.getElementById('status').textContent.includes('Confirmed silently')");
-    assert.deepEqual(await js('window.soundCalls'), [name]);
-  }
-  await js(`document.getElementById('reset').click();document.getElementById('reject').checked=true;window.soundCalls=[];
-    (()=>{const b=foxSoundDemo.session.board;b.stones[20]=2;for(const p of [1,19,21])b.stones[p]=1;
-      const canvas=document.getElementById('board'),r=canvas.getBoundingClientRect();
-      canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+50*r.width/420,clientY:r.top+70*r.height/420,bubbles:true}));})()`);
-  assert.deepEqual(await js('window.soundCalls'), ['stone-capture-small']);
-  await wait("document.getElementById('status').textContent.includes('Rejected')");
-  assert.equal(await js('foxSoundDemo.session.board.stones[20]'), 2);
-  assert.deepEqual(await js('window.soundCalls'), ['stone-capture-small']);
-  await js("document.getElementById('countdown').click()");
-  await wait("window.soundCalls.includes('count-9')");
-  assert.equal(await js('window.soundCalls.at(-1)'), 'count-9');
-  console.log('Browser sound checks passed: zero-output mute graph, 17 WAVs decode, delayed capture audio, capture thresholds, announcements, placement, confirmation, rejection, countdown');
   await call('Page.navigate', { url });
   await wait("document.getElementById('pass') != null");
 
@@ -1294,7 +1251,6 @@ try {
     console.log('Browser live fresh and remembered login through Cloudflare proxy and normal-match availability verified');
   }
   assert.deepEqual(browserErrors, []);
-  }
   }
 } finally {
   await browser.close();

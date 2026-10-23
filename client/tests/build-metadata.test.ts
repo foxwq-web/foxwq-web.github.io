@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { resolveBuildSha } from '../scripts/build-metadata.ts';
+import { resolveBuildSha } from '../src/build-metadata.ts';
 
 test('source archives build without Git metadata and accept an explicit revision', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'foxwq-web-source-'));
