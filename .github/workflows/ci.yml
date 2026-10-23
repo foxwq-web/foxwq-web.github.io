@@ -23,12 +23,37 @@ jobs:
       - run: npm ci
       - name: Rebuild scoring WASM and compare checked-in artifacts
         run: npm run score-estimator:build -- --check
-      - run: npm test
+      - run: npm run test:unit
+      - name: Install browser for browser checks
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
       - run: npm run typecheck
       - run: npm run build
         env:
           CLIENT_BUILD_SHA: ${{ github.sha }}
       - run: npm run proxy:check
+
+  visual:
+    name: Dev screen screenshots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: package.json
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - run: npm ci
+      - run: npm run test:visual
+      - name: Upload screenshot failures
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: visual-regression-results
+          path: client/tests/visual/results/
+          if-no-files-found: ignore
 
   deploy-proxy:
     name: Deploy Cloudflare proxy

@@ -12,10 +12,13 @@
     "dev": "vite --config client/vite.config.ts --host 0.0.0.0",
     "build": "vite build --config client/vite.config.ts",
     "preview": "vite preview --config client/vite.config.ts --host 127.0.0.1",
-    "test": "node --import tsx --test client/tests/*.test.ts proxy/tests/*.test.ts score-estimator/tests/*.test.ts",
+    "test": "npm run test:unit && npm run test:browser && npm run test:visual",
+    "test:unit": "node --import tsx --test client/tests/*.test.ts proxy/tests/*.test.ts score-estimator/tests/*.test.ts",
     "test:client": "node --import tsx --test client/tests/*.test.ts",
     "test:proxy": "node --import tsx --test proxy/tests/*.test.ts",
     "test:browser": "node --import tsx client/tests/browser-check.ts",
+    "test:visual": "node --import tsx client/tests/visual/run.ts",
+    "test:visual:run": "tsc --noEmit -p client/tsconfig.visual.json && playwright test --config client/playwright.visual.config.ts",
     "proxy:dev": "wrangler dev --config proxy/wrangler.jsonc",
     "proxy:check": "cd proxy && wrangler deploy --dry-run --config wrangler.jsonc --outdir dist",
     "proxy:deploy": "node --import tsx proxy/scripts/deploy-worker.ts",
@@ -48,7 +51,9 @@
     "wrangler": "^4.148.0"
   },
   "allowScripts": {
-    "fsevents@2.3.3": true
+    "fsevents@2.3.3": true,
+    "esbuild@0.28.2": true,
+    "workerd@1.20261006.1": true
   },
   "packageManager": "npm@12.2.0"
 }

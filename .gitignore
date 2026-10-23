@@ -20,3 +20,4 @@ proxy/worker-configuration.d.ts
 /analysis/
 /decompiled/
 /protocol/wire-fields.json
+/client/tests/visual/results/

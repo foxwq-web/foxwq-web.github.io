@@ -26,10 +26,15 @@ For offline UI previews, open `/?dev-screen=all` on the development server. Prev
 Run these commands from the repository root:
 
 ```sh
+npm run test:browser:install # First-time browser setup
 npm test
 npm run typecheck
 npm run build
 ```
+
+`npm test` runs the unit, browser, and visual suites in order, stopping on the
+first failure. Docker must be running for the visual suite. Run an individual
+suite with `npm run test:unit`, `npm run test:browser`, or `npm run test:visual`.
 
 The static app is built into `client/dist/`. Serve that directory with a static host; `npm run preview` previews the build locally. The Worker is deployed separately.
 
@@ -40,7 +45,29 @@ npm run test:browser:install
 npm run test:browser
 ```
 
-The [CI workflow](../.github/workflows/ci.yml) runs verification on pushes and pull requests. Offline tests and previews do not establish current Fox server availability or compatibility with every live game path.
+Run `npm run test:visual` with Docker running to compare every dev screen with
+the PNGs in `client/tests/visual/baselines/`. The test starts its own server in
+the pinned Playwright Linux/amd64 image, matching CI's browser and fonts.
+Docker builds and caches a test image with the Node and npm versions from
+`package.json`; the first run downloads the runtime and installs the pinned npm.
+Every dev screen is captured at desktop (1280 × 900) and mobile (390 × 844)
+sizes, with touch and mobile emulation enabled for mobile. Baselines are grouped
+under `desktop/` and `mobile/`. Both use UTC and a fixed date. The score preview
+uses the real local engine; player info previews wait for their sample data.
+
+Missing or changed screenshots fail without modifying the recorded baselines.
+Failures save actual, expected, and diff images in `client/tests/visual/results/`.
+Review them, then accept intentional changes using Playwright's standard update
+command: `npm run test:visual -- --update-snapshots`. Rerun the comparison and
+commit the updated PNGs alongside the code. New dev screens are automatically
+included; the same update command records their first baselines. To run or
+update a subset, add `--grep counting` to either command. Add `--project mobile`
+or `--project desktop` to select a viewport.
+CI runs the comparisons and uploads
+failure images as an artifact. `npm run test:visual:run` runs directly on the
+host for debugging; its rendering may differ from the recorded Linux images.
+
+The [CI workflow](../.github/workflows/ci.yml) runs unit and browser tests in the verification job and visual tests in a separate job on pushes and pull requests. Offline tests and previews do not establish current Fox server availability or compatibility with every live game path.
 
 ## GitHub Pages
 
