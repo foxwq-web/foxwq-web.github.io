@@ -369,9 +369,14 @@ try {
       await js("document.getElementById('resign').click()");
     }
     if (fixture.id === 'counting-waiting') {
-      assert.equal(await js("document.getElementById('request-score').textContent"), 'Waiting for opponent...');
+      assert.equal(await js("document.getElementById('request-score').textContent"), 'Request Counting');
       assert.equal(await js("document.getElementById('request-score').disabled"), true);
-      assert.equal(await js("document.getElementById('game-state-panel').hidden"), true);
+      assert.equal(await js("document.getElementById('board-status').checkVisibility()"), true);
+      assert.equal(await js("document.getElementById('board-status').textContent"), 'Waiting for opponent...');
+    }
+    if (fixture.id === 'counting-accepted') {
+      assert.equal(await js("document.getElementById('board-status').checkVisibility()"), true);
+      assert.equal(await js("document.getElementById('board-status').textContent"), 'Waiting for counting result...');
     }
     if (['move-pending'].includes(fixture.id)) {
       assert.equal(await js("document.getElementById('game-state-panel').hidden"), true, fixture.id);

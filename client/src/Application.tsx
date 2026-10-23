@@ -152,16 +152,22 @@ export function App({ controller: c }: { controller: Controller }) {
       /passed|counting|rejected|failed|leaving/i.test(s.status));
   const countingRequested =
     s.counting && s.status === "Counting requested; waiting for opponent";
+  const countingResultPending =
+    playing && s.counting && !s.pending && !s.confirmation && !countingRequested;
   const gameHidden =
     s.phase !== "reconnecting" &&
     !s.game_over &&
     !promptCounting &&
-    (s.counting || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
+    ((s.counting && !countingRequested && !countingResultPending) || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
   const boardStatus = s.game_over
     ? `Result: ${s.result || "Unknown"}`
-    : s.pending && !s.counting && !s.quitRequested
-      ? "Waiting to confirm action"
-      : s.status;
+    : countingRequested
+      ? "Waiting for opponent..."
+      : countingResultPending
+        ? "Waiting for counting result..."
+        : s.pending && !s.counting && !s.quitRequested
+          ? "Waiting to confirm action"
+          : s.status;
   const disconnectSeconds = Math.max(0, Math.ceil((s.opponentDisconnectDeadline ?? 0) - state.now));
   const ask = (command: Command) => {
     const prompt = promptForAction(command);
@@ -384,7 +390,7 @@ export function App({ controller: c }: { controller: Controller }) {
                     disabled={disabled || !yourTurn || s.counting}
                     onClick={() => command("request-score")}
                   >
-                    {countingRequested ? "Waiting for opponent..." : "Request Counting"}
+                    Request Counting
                   </button>
                   <div className="resign-actions">
                     <button
