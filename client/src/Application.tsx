@@ -109,7 +109,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const s = state.session,
     playing = s.phase === "playing";
   const available = boardAvailable(s),
-    showMenu = !available || state.roomMenuOpen;
+    showMenu = !available;
   const loginStep =
     [
       "disconnected",
@@ -256,21 +256,17 @@ export function App({ controller: c }: { controller: Controller }) {
         return;
       }
       const current = c.state,
-        menuShown = !boardAvailable(current.session) || current.roomMenuOpen;
+        menuShown = !boardAvailable(current.session);
       if (event.key === "Escape") {
         event.preventDefault();
         if (event.type !== "keydown" || event.repeat) return;
         if (menuShown) {
           event.stopImmediatePropagation();
-          if (current.roomMenuOpen && boardAvailable(current.session))
-            c.emit({ type: "room-menu.close" });
           return;
         }
         if (current.prompt) c.emit({ type: "prompt.close" });
         else if (current.session.confirmationKind?.startsWith("counting-"))
           c.command("confirm", { accept: false });
-        else if (current.session.phase === "finished")
-          c.emit({ type: "room-menu.open" });
       }
       if (
         !menuShown ||

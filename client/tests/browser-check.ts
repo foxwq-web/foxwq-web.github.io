@@ -284,9 +284,8 @@ try {
         return ['Top','Right','Bottom','Left'].every(side=>style['border'+side+'Width']==='1px' && style['border'+side+'Style']==='solid');
       })`), true, fixture.id);
     }
-    const menu = fixture.id === 'room-left';
     const countingDialog = ['counting-request','counting-result'].includes(fixture.id);
-    assert.equal(await js("document.getElementById('connection-layer').hidden"), inBoard && !menu, fixture.id);
+    assert.equal(await js("document.getElementById('connection-layer').hidden"), inBoard, fixture.id);
     if (!inBoard) {
       await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
       await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
@@ -963,16 +962,11 @@ try {
   await js("gameNotice(402,{1:0,2:1,4:3})");
   await wait("document.getElementById('board-status').textContent==='Result: B+R' && matchSession.phase==='finished'");
   await js("document.getElementById('quit-room').click()");
-  assert.equal(await js("matchSession.phase"), 'finished');
+  assert.equal(await js("matchSession.phase"), 'ready');
   assert.equal(await js("document.getElementById('matchmaking').hidden"), false);
-  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape'});
-  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape'});
-  await wait("document.getElementById('connection-layer').hidden");
-  assert.equal(await js("document.querySelector('main').inert"), false);
-  for (const id of ['quit-room','pass','request-score','resign','estimate-score','save-sgf'])
-    assert.equal(await js(`document.getElementById('${id}').checkVisibility()`), true);
-  assert.equal(await js("document.getElementById('board-status').textContent"), 'Result: B+R');
-  await js("document.getElementById('quit-room').click()");
+  await assertEscapeIgnored();
+  assert.equal(await js("document.querySelector('main').inert"), true);
+  assert.equal(await js("Object.keys(matchSession.roomKey).length"), 0);
   await js("document.getElementById('match').click();gameNotice(107,{6:25,7:204,9:[{1:42,6:1},{1:43,6:2}]})");
   await wait("document.getElementById('connection-layer').hidden");
   await js("matchSession.board.turn=2;matchSession.clocks[2]={main:1200,periods:3,byoyomi:60,at:Date.now()/1000-10}");

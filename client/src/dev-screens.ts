@@ -80,7 +80,7 @@ export const DEV_SCREENS: Screen[] = [
   screen("matching", "Searching", "Matchmaking", "matching", "matching", "Play; Fox accepts the search"),
   screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(100130, { 1: -1 })),
   screen("joining", "Joining a room", "Matchmaking", "joining", "joining", "A match is found; game environment is pending"),
-  screen("room-left", "Ready for the next game", "Matchmaking", "playing", "finished", "Finished game → Quit room; Escape returns to the result", finishedResignation),
+  screen("room-left", "Ready for the next game", "Matchmaking", "playing", "ready", "Finished game → Quit room; return to matchmaking", s => { finishedResignation(s); s.session.quitRoom(); }),
 
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "Game starts as White; Black plays", blackMove),
@@ -225,7 +225,7 @@ export async function applyDevScreen(session: Session, id: string) {
     session.login = () => { throw Error("Offline preview. Remove dev-screen to connect to Fox."); };
     session.connectionFactory = async () => { throw Error("Offline development preview"); };
   }
-  return { fixture, prompt, menuError, boardError, roomMenuOpen: id === "room-left" };
+  return { fixture, prompt, menuError, boardError };
 }
 
 

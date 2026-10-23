@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Controller } from "../src/controller";
 import { Session } from "../src/session.ts";
-import type { UIState } from "../src/state";
+import { boardAvailable, type UIState } from "../src/state";
 import { BoardView, playablePoint } from "../src/BoardView";
 import { Board } from "../src/board";
 import { createElement } from "react";
@@ -13,7 +13,6 @@ import { applyDevScreen } from "../src/dev-screens";
 
 function initial(session = new Session()): UIState {
   return {
-    roomMenuOpen: false,
     session: session.snapshot(),
     now: 1000,
     frozen: false,
@@ -53,17 +52,16 @@ test("quitting a finished room preserves its result and history until matchmakin
     controller.emit({ type: "initialize", state: initial(controller.session) });
     const finished = controller.snapshot();
     controller.command("quit-room");
-    assert.equal(controller.state.roomMenuOpen, true);
-    assert.deepEqual(controller.snapshot(), finished);
-    controller.emit({ type: "room-menu.close" });
-    assert.equal(controller.state.roomMenuOpen, false);
-    assert.deepEqual(controller.state.session, finished);
-    controller.command("quit-room");
+    assert.equal(controller.state.session.phase, "ready");
+    assert.equal(boardAvailable(controller.state.session), false);
+    assert.deepEqual(controller.session.roomKey, {});
+    assert.equal(controller.state.session.result, finished.result);
+    assert.equal(controller.state.session.moves, finished.moves);
+    assert.deepEqual(controller.state.session.stones, finished.stones);
     controller.command("select-time", { id: 2 });
-    assert.equal(controller.state.roomMenuOpen, true);
+    assert.equal(controller.state.session.phase, "ready");
     controller.command("match");
     assert.equal(controller.state.session.phase, "matching");
-    assert.equal(controller.state.roomMenuOpen, false);
     assert.equal(controller.state.session.game_over, false);
   } finally {
     controller.dispose();

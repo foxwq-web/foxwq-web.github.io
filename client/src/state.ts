@@ -75,7 +75,6 @@ export interface Prompt {
   label: string;
 }
 export interface UIState {
-  roomMenuOpen: boolean;
   session: SessionState;
   now: number;
   frozen: boolean;
@@ -87,8 +86,6 @@ export interface UIState {
   form: { username: string; passwordLength: number; remember: boolean };
 }
 export type UIEvent =
-  | { type: "room-menu.open" }
-  | { type: "room-menu.close" }
   | { type: "initialize"; state: UIState }
   | { type: "session.updated"; session: SessionState }
   | { type: "clock.tick"; now: number }
@@ -131,7 +128,6 @@ export function reducer(state: UIState, event: UIEvent): UIState {
     case "session.updated":
       return {
         ...state,
-        roomMenuOpen: event.session.phase === "finished" && state.roomMenuOpen,
         session: event.session,
         prompt:
           actionsBlocked(event.session) ||
@@ -146,12 +142,6 @@ export function reducer(state: UIState, event: UIEvent): UIState {
       };
     case "clock.tick":
       return { ...state, now: event.now };
-    case "room-menu.open":
-      return state.session.phase === "finished"
-        ? { ...state, roomMenuOpen: true, prompt: null, preview: null }
-        : state;
-    case "room-menu.close":
-      return { ...state, roomMenuOpen: false };
     case "board.hover":
       return { ...state, preview: event.point };
     case "prompt.open":

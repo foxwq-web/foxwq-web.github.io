@@ -65,7 +65,6 @@ export class Controller {
   }
   async initialize() {
     let prompt: UIState["prompt"] = null,
-      roomMenuOpen = false,
       menuError = "",
       error = "";
     if (import.meta.env.DEV) {
@@ -77,7 +76,6 @@ export class Controller {
         prompt = fixture?.prompt ?? null;
         menuError = fixture?.menuError ?? "";
         error = fixture?.boardError ?? "";
-        roomMenuOpen = fixture?.roomMenuOpen ?? false;
       }
     }
     const saved = rememberedCredentials();
@@ -86,7 +84,6 @@ export class Controller {
     this.emit({
       type: "initialize",
       state: {
-        roomMenuOpen,
         session,
         now: Date.now() / 1000,
         frozen: this.preview,
@@ -193,9 +190,7 @@ export class Controller {
           this.session.close();
           break;
         case "quit-room":
-          if (this.session.phase === "finished")
-            this.emit({ type: "room-menu.open" });
-          else this.session.quitRoom();
+          this.session.quitRoom();
           break;
         case "select-time":
           if (body.id === undefined) throw Error("Missing time control");
