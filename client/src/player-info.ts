@@ -45,7 +45,7 @@ export function applyPlayerSummary(info: PlayerInfo, m: Message) {
   }
 }
 
-type Entry = { info: PlayerInfo; at: number; request: string; abort: AbortController; timer?: ReturnType<typeof setTimeout> };
+type Entry = { info: PlayerInfo; stale: boolean; request: string; abort: AbortController; timer?: ReturnType<typeof setTimeout> };
 export class PlayerInfoStore {
   current: PlayerInfo | null = null;
   private entries = new Map<number, Entry>();
@@ -68,12 +68,12 @@ export class PlayerInfoStore {
     this.changed();
   }
   // Starts both reads without opening a card. Hover reuses the same data and
-  // in-flight requests; expired entries stay visible while they refresh.
+  // in-flight requests until game end invalidates them. Previous results stay
+  // visible while they refresh.
   prefetch(uid: number, name: string, rank = '') {
     if (!Number.isSafeInteger(uid) || uid <= 0) return;
     const cached = this.entries.get(uid);
-    if (cached && (cached.info.summaryLoading || cached.info.loading || Date.now() - cached.at < 60000))
-      return cached.info;
+    if (cached && !cached.stale) return cached.info;
     if (cached) this.remove(uid);
     if (this.entries.size >= 24) this.remove(this.entries.keys().next().value!);
     const info: PlayerInfo = cached?.info ?? {
@@ -81,7 +81,7 @@ export class PlayerInfoStore {
     };
     info.summaryLoading = info.loading = true;
     info.error = info.summaryError = '';
-    const entry: Entry = { info, at: Date.now(), request: `player-${++this.serial}`, abort: new AbortController() };
+    const entry: Entry = { info, stale: false, request: `player-${++this.serial}`, abort: new AbortController() };
     this.entries.set(uid, entry);
     entry.timer = setTimeout(() => {
       info.summaryLoading = false;
@@ -107,7 +107,7 @@ export class PlayerInfoStore {
     entry.info.summaryLoading = false;
     if (this.current === entry.info) this.changed();
   }
-  invalidate() { for (const entry of this.entries.values()) entry.at = 0; }
+  invalidate() { for (const entry of this.entries.values()) entry.stale = true; }
   close() { this.current = null; this.changed(); }
   private remove(uid: number) {
     const entry = this.entries.get(uid);
@@ -144,8 +144,20 @@ export class PlayerInfoStore {
   private async loadGames(entry: Entry) {
     const { info, abort } = entry;
     const timer = setTimeout(() => abort.abort(), 20000);
-    try { info.games = historyGames(await this.request(info.uid, abort.signal), info.uid); }
-    catch (error) { info.error = abort.signal.aborted ? 'Recent games timed out.' : (error as Error).message; }
-    finally { clearTimeout(timer); info.loading = false; if (this.current === info) this.changed(); }
+    try {
+      const games = historyGames(await this.request(info.uid, abort.signal), info.uid);
+      if (this.entries.get(info.uid) === entry) info.games = games;
+    }
+    catch (error) {
+      if (this.entries.get(info.uid) === entry)
+        info.error = abort.signal.aborted ? 'Recent games timed out.' : (error as Error).message;
+    }
+    finally {
+      clearTimeout(timer);
+      if (this.entries.get(info.uid) === entry) {
+        info.loading = false;
+        if (this.current === info) this.changed();
+      }
+    }
   }
 }

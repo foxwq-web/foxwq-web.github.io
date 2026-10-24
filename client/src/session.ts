@@ -271,7 +271,7 @@ export class Session {
   private resetGame() {
     this.rollbackMove();
     this.clearEstimate();
-    this.playerInfo.reset();
+    this.playerInfo.close();
     this.board = new Board();
     this.boardRoomKey = "";
     this.players = {};
@@ -299,6 +299,7 @@ export class Session {
       this.reconnectAttempt = 0;
       this.loginPacket = null;
       this.resetGame();
+      this.playerInfo.reset();
       this.generation++;
       clearTimeout(this.bootstrapTimer);
       clearTimeout(this.timer ?? undefined);

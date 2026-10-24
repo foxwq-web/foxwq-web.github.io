@@ -54,7 +54,9 @@ test('history never falls back to guest requests without a signed-in UID and tok
   }
 });
 
-test('native summary is correlated, cached and independent of the single history request', async () => {
+test('native summary stays cached regardless of elapsed time until invalidation', async t => {
+  let time = Date.now();
+  t.mock.method(Date, 'now', () => time);
   const sent: Fields[] = [], calls: string[] = [];
   let finish!: (r: Response) => void;
   const store = new PlayerInfoStore(fields => { sent.push(fields); }, () => {}, config,
@@ -83,6 +85,7 @@ test('native summary is correlated, cached and independent of the single history
     await settle();
     assert.equal(info.loading, false);
     assert.equal(info.games[0].result, 'B+R');
+    time += 24 * 60 * 60 * 1000;
     store.close(); store.open(42, 'River');
     assert.equal(store.current, info);
     assert.equal(sent.length, 1);
@@ -158,11 +161,39 @@ test('preload runs both reads before hover, deduplicates in-flight work and pres
     assert.equal(info.games.length, 1);
     assert.equal(sent.length, 2);
     assert.equal(calls, 2);
-    // Invalidating an in-flight refresh must not duplicate either request.
-    store.invalidate(); store.open(42, 'River');
+    // Opening during the post-game refresh reuses both requests.
+    store.open(42, 'River');
     assert.equal(sent.length, 2);
     assert.equal(calls, 2);
     finish(Response.json({ result: 0, chesslist: [] })); await settle();
+  } finally { store.reset(); }
+});
+
+test('game-end invalidation replaces in-flight reads and ignores their late responses', async () => {
+  const sent: Fields[] = [], finishes: ((response: Response) => void)[] = [], signals: AbortSignal[] = [];
+  const store = new PlayerInfoStore(fields => { sent.push(fields); }, () => {}, config,
+    async (_input, init) => {
+      signals.push(init!.signal!);
+      return new Promise(resolve => { finishes.push(resolve); });
+    });
+  try {
+    const info = store.prefetch(42, 'River')!;
+    store.invalidate();
+    store.open(42, 'River');
+    assert.equal(sent.length, 2);
+    assert.equal(signals[0].aborted, true);
+    store.receive(decode(encode({ 1: 0, 2: sent[0][3], 3: 42, 9: { 2: '-' } })));
+    finishes[0](Response.json({ result: 0, chesslist: [record('1')] }));
+    await settle();
+    assert.equal(info.summaryLoading, true);
+    assert.equal(info.loading, true);
+    assert.equal(info.games.length, 0);
+    store.receive(decode(encode({ 1: 0, 2: sent[1][3], 3: 42, 9: { 2: '+' } })));
+    finishes[1](Response.json({ result: 0, chesslist: [record('2')] }));
+    await settle();
+    assert.equal(info.recent, '+');
+    assert.equal(info.games[0].id, '2');
+    assert.equal(store.ready(42), true);
   } finally { store.reset(); }
 });
 
@@ -197,6 +228,12 @@ test('session preloads on room login and player discovery, refreshes after game 
     assert.equal(calls, 1);
     assert.equal(session.phase, 'gateway'); // Discovery has not completed yet.
     assert.equal(session.playerInfo.current, null);
+    session.phase = 'ready';
+    session.fieldId = 1;
+    session.match();
+    session.playerInfo.open(42, 'River');
+    assert.deepEqual(native, [42]);
+    assert.equal(calls, 1); // Matchmaking keeps the prefetched account card.
     session.readPlayer(decode(encode({ 1: 43, 3: 'Moon', 4: 20, 6: 2 })));
     await settle();
     assert.deepEqual(native, [42, 43]);
@@ -208,6 +245,12 @@ test('session preloads on room login and player discovery, refreshes after game 
     session.gameMessage(402, decode(encode({ 2: 1, 3: -1, 4: 3 })), decode(encode()));
     await settle();
     assert.deepEqual(native, [42, 43, 42, 43]);
+    assert.equal(calls, 4);
+    session.leaveFinishedRoom();
+    session.playerInfo.open(42, 'River');
+    assert.equal(calls, 4); // Returning to matchmaking retains the refreshed card.
+    session.match();
+    session.playerInfo.open(42, 'River');
     assert.equal(calls, 4);
     session.readPlayer(decode(encode({ 1: 44, 3: 'Cloud', 6: 2 })));
     session.close(); await settle();
