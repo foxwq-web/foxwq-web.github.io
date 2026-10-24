@@ -112,6 +112,54 @@ test("opponent stone appears while the rendered estimate markers stay unchanged"
   } finally { s.close(); }
 });
 
+for (const screen of ["finished", "board-black"]) {
+  for (const action of screen === "finished" ? ["timeout", "disconnect"] : ["disconnect"]) {
+    test(`${action} from ${screen} clears the board and sidebar when login opens`, async () => {
+      const controller = new Controller();
+      try {
+        await applyDevScreen(controller.session, screen);
+        controller.emit({ type: "initialize", state: initial(controller.session) });
+        if (screen === "finished") controller.review("previous");
+        controller.session.komi = 6.5;
+        controller.session.opponentDisconnectDeadline = 1234;
+        controller.session.pendingAction = 301;
+        controller.session.pendingSince = 100;
+        controller.session.counting = true;
+        controller.session.pendingConfirmation = ["counting-request", {}];
+        controller.session.estimation = { phase: "loading" };
+        controller.emit({ type: "error.raised", message: "Previous game error", menu: false });
+        controller.emit({ type: "board.hover", point: 5 });
+        controller.emit({ type: "prompt.open", prompt: {
+          action: "quit-room", title: "Leave this room?", description: "", label: "Leave",
+        } });
+        if (action === "timeout") {
+          controller.session.failed(controller.session.generation, "Network response timed out");
+          controller.session.flushChanges();
+        } else controller.command("disconnect");
+        const state = controller.state;
+        assert.equal(state.session.phase, action === "timeout" ? "error" : "disconnected");
+        if (action === "timeout") assert.equal(state.session.status, "Network response timed out");
+        const empty = new Session().snapshot();
+        for (const key of [
+          "stones", "captures", "turn", "passes", "moves", "last_move", "koStones", "komi",
+          "players", "clocks", "result", "game_over", "gameId", "color", "pending", "pendingMove",
+          "quitRequested", "confirmation", "confirmationKind", "counting", "countingResult",
+          "estimation", "opponentDisconnectDeadline", "playerInfo",
+        ] as const) {
+          assert.deepEqual(state.session[key], empty[key], key);
+        }
+        assert.equal(state.review, null);
+        assert.equal(state.prompt, null);
+        assert.equal(state.preview, null);
+        assert.equal(state.error, "");
+        assert.equal(controller.session.pendingAction, null);
+        assert.equal(controller.session.pendingSince, 0);
+        assert.equal(controller.session.boardRoomKey, "");
+      } finally { controller.dispose(); }
+    });
+  }
+}
+
 test("quitting a finished room resets the game and review while preserving matchmaking", async () => {
   const controller = new Controller();
   try {

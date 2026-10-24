@@ -63,7 +63,8 @@ test("synchronization preserves known timing only for the same game's matching h
     notify(s, 203, { 1: 3, 2: 3, 3: 1, 4: { 2: 1190 } });
     notify(s, 203, { 1: 15, 2: 15, 3: 2, 4: { 2: 1180 } });
     s.play(10, 10);
-    s.close();
+    // Recovery rolls back unconfirmed moves while retaining the current game.
+    s.rollbackMove();
     s.phase = "resuming";
     notify(s, 501, environment([black, white, { 1: 2, 4: 1 }]));
     assert.match(s.board.sgf(), /TM\[1200\]/);

@@ -134,6 +134,7 @@ export function reducer(state: UIState, event: UIEvent): UIState {
       return {
         ...state,
         session: event.session,
+        error: boardAvailable(event.session) ? state.error : "",
         review: event.session.phase === "finished" && event.session.game_over &&
           event.session.gameId === state.session.gameId && event.session.moves === state.session.moves
           ? state.review : null,

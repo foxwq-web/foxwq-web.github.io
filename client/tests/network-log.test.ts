@@ -124,7 +124,7 @@ test('accepted outgoing frames are recorded once and decode offline; failed send
   } finally {globalThis.WebSocket=original;connection.close();}
 });
 
-test('SGF eligibility requires a completed game and survives disconnect', async () => {
+test('SGF eligibility requires a completed game and resets on disconnect', async () => {
   const session = new Session();
   assert.equal(session.snapshot().game_over, false);
   setupFoxGame(session);
@@ -133,7 +133,7 @@ test('SGF eligibility requires a completed game and survives disconnect', async 
   assert.equal(session.snapshot().game_over, false, 'two passes await the server result');
   session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true);
-  session.close(); assert.equal(session.snapshot().game_over, true);
+  session.close(); assert.equal(session.snapshot().game_over, false);
   setupFoxGame(session);
   session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true);

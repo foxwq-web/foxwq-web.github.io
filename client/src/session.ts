@@ -268,16 +268,37 @@ export class Session {
       koStones: this.board.history.at(-1) ?? null,
     });
   }
+  private resetGame() {
+    this.rollbackMove();
+    this.clearEstimate();
+    this.playerInfo.reset();
+    this.board = new Board();
+    this.boardRoomKey = "";
+    this.players = {};
+    this.clocks = {};
+    this.komi = 7.5;
+    this.result = "";
+    this.gameOver = false;
+    this.startedRoom = null;
+    this.opponentDisconnectDeadline = null;
+    this.sync = 0;
+    this.pendingAction = null;
+    this.pendingSince = 0;
+    this.roomKey = {};
+    this.color = 0;
+    this.pending = false;
+    this.quitRequested = false;
+    this.pendingConfirmation = null;
+    this.counting = false;
+    this.countingAnswer = null;
+  }
   close() {
     try {
-      this.playerInfo.reset();
       clearTimeout(this.reconnectTimer);
       this.reconnectBoard = null;
-      this.opponentDisconnectDeadline = null;
       this.reconnectAttempt = 0;
       this.loginPacket = null;
-      this.clearEstimate();
-      this.rollbackMove();
+      this.resetGame();
       this.generation++;
       clearTimeout(this.bootstrapTimer);
       clearTimeout(this.timer ?? undefined);
@@ -294,16 +315,8 @@ export class Session {
       this.fieldPlayers = {};
       this.fieldPlayersRequestedAt = 0;
       this.gameLockChecked = false;
-      this.roomKey = {};
-      this.color = 0;
-      this.quitRequested = false;
-      this.startedRoom = null;
       this.phase = "disconnected";
       this.status = "Disconnected";
-      this.pending = false;
-      this.pendingConfirmation = null;
-      this.counting = false;
-      this.countingAnswer = null;
     } finally {
       this.changed();
     }
@@ -320,14 +333,6 @@ export class Session {
       this.close();
       this.loginPacket = request;
       this.account = { name: username, rank: "" };
-      this.players = {};
-      this.board = new Board();
-      this.clocks = {};
-      this.result = "";
-      this.gameOver = false;
-      this.roomKey = {};
-      this.color = 0;
-      this.sync = 0;
       this.phase = "connecting";
       this.status = "Connecting...";
       this.timeout(this.generation, "Login timed out");
@@ -1229,18 +1234,7 @@ export class Session {
         throw Error("Log in and wait for server discovery first");
       this.clearEstimate();
       this.send(game.ROOM, 100130, { 1: this.fieldId, 2: false });
-      this.players = {};
-      this.board = new Board();
-      this.roomKey = {};
-      this.clocks = {};
-      this.result = "";
-      this.gameOver = false;
-      this.color = 0;
-      this.pendingConfirmation = null;
-      this.counting = false;
-      this.countingAnswer = null;
-      this.quitRequested = false;
-      this.startedRoom = null;
+      this.resetGame();
       this.phase = "matching";
       this.status = "Requesting a match...";
     } finally {
@@ -1269,27 +1263,7 @@ export class Session {
   }
   leaveFinishedRoom() {
     try {
-      this.rollbackMove();
-      this.clearEstimate();
-      this.playerInfo.reset();
-      this.board = new Board();
-      this.players = {};
-      this.clocks = {};
-      this.komi = 7.5;
-      this.result = "";
-      this.gameOver = false;
-      this.startedRoom = null;
-      this.opponentDisconnectDeadline = null;
-      this.sync = 0;
-      this.pendingAction = null;
-      this.pendingSince = 0;
-      this.roomKey = {};
-      this.color = 0;
-      this.pending = false;
-      this.quitRequested = false;
-      this.pendingConfirmation = null;
-      this.counting = false;
-      this.countingAnswer = null;
+      this.resetGame();
       this.phase = "ready";
       this.status = "Room left. Choose your next game.";
     } finally {
