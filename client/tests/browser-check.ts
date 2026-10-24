@@ -69,6 +69,11 @@ if (!process.env.FOX_BROWSER_URL) {
   process.exit(process.exitCode ?? 0);
 }
 
+if (process.argv.includes('--network-log')) {
+  await import('./network-log-browser-check.ts');
+  process.exit(0);
+}
+
 if (process.argv.includes('--player-info')) {
   await import('./player-info-browser-check.ts');
   process.exit(0);
@@ -78,6 +83,8 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
   await import('../../score-estimator/scripts/score-engine-browser-check.ts');
   process.exit(0);
 }
+await import('./network-log-browser-check.ts');
+
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
 const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
@@ -160,27 +167,43 @@ try {
   await page.keyboard.press('Control+f');
   assert.equal(await js('document.fullscreenElement'), null);
   console.log('Browser fullscreen passed: F toggles, typing, repeat, and modifier guards');
-  await js(`localStorage.setItem('fox-network-log', JSON.stringify([
-    ['2020-01-01T00:00:00.000Z:fixture:0000000000000000','client:fixture:1','fox.example:10000','AA==']
-  ]))`);
+  await js(`(async()=>{
+    const {IndexedDBNetworkLogStore}=await import('/src/network-log-store.ts');
+    const store=new IndexedDBNetworkLogStore(indexedDB);
+    store.put({key:'2020-01-01T00:00:00.000Z:fixture:0000000000000000',entry:{
+      timestamp:'2020-01-01T00:00:00.000Z',source:'client:fixture:1',destination:'fox.example:10000',payload:'AQ=='
+    }});
+    await store.flush();
+  })()`);
   await js('window.networkReloadMarker=true');
   await call('Page.reload');
   await wait("!window.networkReloadMarker && typeof window.downloadNetworkLog === 'function'");
   const consoleLog = await js(`(async()=>{
     let saved; const create = URL.createObjectURL;
     URL.createObjectURL = blob => {saved = blob; return create(blob);};
-    try { downloadNetworkLog(); } finally { URL.createObjectURL = create; }
+    try { await downloadNetworkLog(); } finally { URL.createObjectURL = create; }
     return saved.text();
   })()`);
   assert.deepEqual(JSON.parse(consoleLog), [{
-    timestamp:'2020-01-01T00:00:00.000Z', source:'client:fixture:1', destination:'fox.example:10000', payload:'AA=='
+    timestamp:'2020-01-01T00:00:00.000Z', source:'client:fixture:1', destination:'fox.example:10000', payload:'AQ=='
   }]);
   await js('window.networkReloadMarker=true');
   await call('Page.reload');
   await wait("!window.networkReloadMarker && typeof window.downloadNetworkLog === 'function'");
-  assert.equal(await js("JSON.parse(localStorage.getItem('fox-network-log')).length"), 1);
-  await js("localStorage.removeItem('fox-network-log')");
-  console.log('Browser network log passed: console download and retention across reloads');
+  assert.equal(await js(`(async()=>{
+    const {IndexedDBNetworkLogStore}=await import('/src/network-log-store.ts');
+    return (await new IndexedDBNetworkLogStore(indexedDB).read()).length;
+  })()`), 1);
+  await js(`new Promise((resolve,reject)=>{
+    const request=indexedDB.open('fox-network-log',1);
+    request.onerror=()=>reject(request.error);
+    request.onsuccess=()=>{
+      const db=request.result,tx=db.transaction(['entries','metadata'],'readwrite');
+      tx.objectStore('entries').clear();tx.objectStore('metadata').clear();
+      tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>reject(tx.error);
+    };
+  })`);
+  console.log('Browser network log passed: async console download, retention across reloads');
 
   for (const screen of ['matchmaking', 'board-black', 'unknown']) {
     const shortcut = new URL(url); shortcut.searchParams.set('dev-screen', screen);
@@ -742,7 +765,11 @@ try {
   assert.equal(await js("downloadSubmissions"), 0);
   const networkLog = await js(`(async()=>{
     let saved;const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
-    document.getElementById('save-network-log').click();URL.createObjectURL=create;return saved.text();
+    try {
+      document.getElementById('save-network-log').click();
+      while (!saved) await new Promise(resolve=>setTimeout(resolve,10));
+      return await saved.text();
+    } finally { URL.createObjectURL=create; }
   })()`);
   assert.ok(Array.isArray(JSON.parse(networkLog)));
   assert.equal(networkLog.includes('"kind":"ui"'), false);

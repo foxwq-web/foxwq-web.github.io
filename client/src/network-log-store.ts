@@ -5,143 +5,154 @@ export interface StoredNetworkEntry {
   entry: NetworkEntry;
 }
 export interface NetworkLogStore {
+  readonly enabled?: boolean;
   put(record: StoredNetworkEntry): void;
-  read(): StoredNetworkEntry[];
-  flush?(): void;
+  read(): StoredNetworkEntry[] | Promise<StoredNetworkEntry[]>;
+  flush?(): void | Promise<void>;
 }
 
-export const NETWORK_LOG_KEY = "fox-network-log";
 export const NETWORK_LOG_MAX_BYTES = 20 * 1024 * 1024;
+const MAX_PENDING_BYTES = 1024 * 1024;
 const WRITE_DELAY = 500;
-type Row = [key: string, source: string, destination: string, payload: string];
-interface CachedEntry {
-  record: StoredNetworkEntry;
-  json: string;
-}
+interface Row extends StoredNetworkEntry { bytes: number }
 
-class MemoryStore implements NetworkLogStore {
-  protected records: CachedEntry[] = [];
-  private bytes = 4; // JSON array brackets, in UTF-16 bytes.
+const disabledStore: NetworkLogStore = {
+  enabled: false,
+  put() {},
+  read: () => [],
+};
+
+export class IndexedDBNetworkLogStore implements NetworkLogStore {
+  enabled = true;
+  private pending = new Map<string, Row>();
+  private pendingBytes = 0;
+  private timer?: ReturnType<typeof setTimeout>;
+  private writing?: Promise<void>;
+  private database: Promise<IDBDatabase>;
+
+  constructor(factory: IDBFactory, name = "fox-network-log", private maxBytes = NETWORK_LOG_MAX_BYTES) {
+    this.database = new Promise((resolve, reject) => {
+      const request = factory.open(name, 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("entries", { keyPath: "key" });
+        request.result.createObjectStore("metadata");
+      };
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(Error("Network log database is blocked"));
+      request.onsuccess = () => {
+        const db = request.result;
+        if (!this.enabled) { db.close(); return; }
+        db.onversionchange = () => { this.disable(); db.close(); };
+        resolve(db);
+      };
+    });
+    // Opening can fail before the first packet arrives.
+    void this.database.catch(() => this.disable());
+  }
+
+  private disable() {
+    this.enabled = false;
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.pending.clear();
+    this.pendingBytes = 0;
+  }
 
   put(record: StoredNetworkEntry) {
-    const encode = (value: StoredNetworkEntry) => JSON.stringify([
-      value.key, value.entry.source, value.entry.destination, value.entry.payload,
-    ] satisfies Row);
-    let json = encode(record);
-    // Keep metadata when a single payload would consume the whole log.
-    if ((json.length + 2) * 2 > NETWORK_LOG_MAX_BYTES) {
-      record = { key: record.key, entry: { ...record.entry, payload: "" } };
-      json = encode(record);
-      if ((json.length + 2) * 2 > NETWORK_LOG_MAX_BYTES) return;
+    if (!this.enabled) return;
+    const bytes = JSON.stringify(record).length * 2;
+    if (bytes > Math.min(MAX_PENDING_BYTES, this.maxBytes)) return;
+    this.pendingBytes -= this.pending.get(record.key)?.bytes ?? 0;
+    this.pending.set(record.key, { ...record, bytes });
+    this.pendingBytes += bytes;
+    // Debug logging may drop records if storage cannot keep up with traffic.
+    while (this.pendingBytes > MAX_PENDING_BYTES) {
+      const key = this.pending.keys().next().value!;
+      this.pendingBytes -= this.pending.get(key)!.bytes;
+      this.pending.delete(key);
     }
-    // Fragments can complete out of capture order; normally this just appends.
-    let low = 0, high = this.records.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (this.records[middle].record.key.localeCompare(record.key) < 0) low = middle + 1;
-      else high = middle;
-    }
-    if (this.records[low]?.record.key === record.key) {
-      this.bytes -= (this.records[low].json.length + 1) * 2;
-      this.records.splice(low, 1);
-    }
-    this.records.splice(low, 0, { record, json });
-    this.bytes += (json.length + 1) * 2;
-    while (this.bytes > NETWORK_LOG_MAX_BYTES) this.dropOldest();
-  }
-  protected dropOldest() {
-    const removed = this.records.shift()!;
-    this.bytes -= (removed.json.length + 1) * 2;
-  }
-  read(): StoredNetworkEntry[] { return this.records.map(({ record }) => record); }
-}
-
-export class LocalStorageNetworkLogStore extends MemoryStore {
-  private timer?: ReturnType<typeof setTimeout>;
-  private dirty = false;
-  private disabled = false;
-  private warned = false;
-
-  constructor(private storage: Pick<Storage, "getItem" | "setItem">) {
-    super();
-    try {
-      const saved = storage.getItem(NETWORK_LOG_KEY) ?? "[]";
-      const rows: Row[] = JSON.parse(saved);
-      for (const [key, source, destination, payload] of rows) {
-        super.put({ key, entry: { timestamp: key.slice(0, 24), source, destination, payload } });
-      }
-      if (saved.length * 2 > NETWORK_LOG_MAX_BYTES) {
-        this.dirty = true;
-        this.flush();
-      }
-    } catch (error) { this.unavailable(error); }
-  }
-  override put(record: StoredNetworkEntry) {
-    super.put(record);
-    this.dirty = true;
-    if (!this.disabled && this.timer === undefined) {
-      this.timer = setTimeout(() => this.flush(), WRITE_DELAY);
+    if (this.timer === undefined && !this.writing) {
+      this.timer = setTimeout(() => { void this.flush(); }, WRITE_DELAY);
       this.timer.unref?.();
     }
   }
-  override read() {
-    this.flush();
-    return super.read();
-  }
-  private unavailable(error: unknown) {
-    const quota = error instanceof DOMException && error.name === "QuotaExceededError";
-    this.disabled = !quota;
-    if (!this.warned) {
-      this.warned = true;
-      console.warn("Network log storage unavailable; a bounded log remains in memory until this page closes.", error);
-    }
-  }
-  flush() {
+
+  flush(): Promise<void> {
     clearTimeout(this.timer);
     this.timer = undefined;
-    if (!this.dirty || this.disabled) return;
-    this.dirty = false;
-    const write = (skip: number) => this.storage.setItem(
-      NETWORK_LOG_KEY, `[${this.records.slice(skip).map(({ json }) => json).join(",")}]`,
-    );
-    try { write(0); return; }
-    catch (error) {
-      if (!(error instanceof DOMException) || error.name !== "QuotaExceededError") {
-        this.unavailable(error);
-        return;
-      }
-    }
-    // A smaller browser quota (or other origin data) may require extra eviction.
-    // Never erase saved history if even the newest record cannot fit.
-    let low = 1, high = this.records.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      try { write(middle); high = middle; }
-      catch (error) {
-        if (!(error instanceof DOMException) || error.name !== "QuotaExceededError") {
-          this.unavailable(error);
-          return;
+    if (!this.enabled) return Promise.resolve();
+    if (!this.writing) {
+      this.writing = this.drain().catch(() => this.disable()).finally(() => {
+        this.writing = undefined;
+        if (this.enabled && this.pending.size) {
+          this.timer = setTimeout(() => { void this.flush(); }, WRITE_DELAY);
+          this.timer.unref?.();
         }
-        low = middle + 1;
-      }
+      });
     }
-    if (low === this.records.length) {
-      this.unavailable(new DOMException("Network record exceeds available localStorage", "QuotaExceededError"));
-      return;
+    return this.writing;
+  }
+
+  private async drain() {
+    const db = await this.database;
+    while (this.enabled && this.pending.size) {
+      const rows = [...this.pending.values()];
+      this.pending.clear();
+      this.pendingBytes = 0;
+      await new Promise<void>((resolve, reject) => {
+        // Read/write transactions serialize accounting and eviction across tabs.
+        const tx = db.transaction(["entries", "metadata"], "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+        const entries = tx.objectStore("entries"), metadata = tx.objectStore("metadata");
+        const total = metadata.get("bytes");
+        total.onsuccess = () => {
+          let bytes: number = total.result ?? 0, remaining = rows.length;
+          for (const row of rows) {
+            const previous = entries.get(row.key);
+            previous.onsuccess = () => {
+              bytes += row.bytes - (previous.result?.bytes ?? 0);
+              entries.put(row);
+              if (--remaining) return;
+              if (bytes <= this.maxBytes) metadata.put(bytes, "bytes");
+              else {
+                const oldest = entries.openCursor();
+                oldest.onsuccess = () => {
+                  const cursor = oldest.result;
+                  if (bytes > this.maxBytes && cursor) {
+                    bytes -= (cursor.value as Row).bytes;
+                    cursor.delete();
+                    cursor.continue();
+                  } else metadata.put(bytes, "bytes");
+                };
+              }
+            };
+          }
+        };
+      });
     }
+  }
+
+  async read(): Promise<StoredNetworkEntry[]> {
+    await this.flush();
+    if (!this.enabled) return [];
     try {
-      write(low);
-      for (let i = 0; i < low; i++) this.dropOldest();
-    } catch (error) { this.unavailable(error); }
+      const db = await this.database;
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction("entries"), request = tx.objectStore("entries").getAll();
+        tx.oncomplete = () => resolve((request.result as Row[]).map(({ key, entry }) => ({ key, entry })));
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch {
+      this.disable();
+      return [];
+    }
   }
 }
 
 export function networkLogStore(): NetworkLogStore {
   try {
-    if (typeof window !== "undefined" && typeof localStorage !== "undefined")
-      return new LocalStorageNetworkLogStore(localStorage);
-  } catch (error) {
-    console.warn("Network log localStorage unavailable; a bounded log remains in memory until this page closes.", error);
-  }
-  return new MemoryStore();
+    if (typeof indexedDB !== "undefined") return new IndexedDBNetworkLogStore(indexedDB);
+  } catch { /* Debug logging is optional. */ }
+  return disabledStore;
 }

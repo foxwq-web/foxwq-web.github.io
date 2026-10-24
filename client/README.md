@@ -79,4 +79,13 @@ The Pages workflow deploys the static app independently of Verify. Build-time `V
 
 ## Logs
 
-Network logs are stored locally across page reloads using bounded browser storage, with an in-memory fallback when storage is unavailable. Downloads contain timestamps, source/destination, base64 payloads, and build metadata. Login/session traffic is redacted by the logging code; remaining entries can contain game and account identifiers. SGF and network-log downloads are generated in the browser.
+Network logs persist across page reloads in IndexedDB. New redacted records are written in small batches, with a shared 20 MiB retention budget across tabs and a 1 MiB pending-write limit. Oldest records are dropped when the budget is exceeded; oversized records are skipped. If IndexedDB is unsupported or fails, network logging stops. There is no migration or in-memory fallback.
+
+Network-log downloads wait for pending writes and contain timestamps, source/destination, and base64 payloads. Login/session traffic is redacted before persistence; remaining entries can contain game and account identifiers. SGF and network-log downloads are generated in the browser. A crash can lose the most recent uncommitted batch.
+
+The normal browser suite includes IndexedDB checks. To run them separately, or against other installed Playwright engines:
+
+```sh
+npm run test:browser -- --network-log
+FOX_LOG_BROWSERS=chromium,firefox,webkit npm run test:browser -- --network-log
+```

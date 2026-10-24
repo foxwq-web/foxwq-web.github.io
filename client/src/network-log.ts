@@ -33,7 +33,8 @@ export class NetworkLog {
     this.connections.set(id, { client: `client:${this.pageId}:${id}`, server: `${host}:${port}` });
     return id;
   }
-  flush() { this.store.flush?.(); }
+  private recording() { return this.store.enabled !== false; }
+  flush() { return this.store.flush?.(); }
 
   private finish(stream: Stream) {
     for (const chunk of stream.chunks) {
@@ -51,6 +52,7 @@ export class NetworkLog {
     }
   }
   traffic(connectionId: number, direction: "inbound" | "outbound", bytes: Uint8Array) {
+    if (!this.recording()) { this.streams.clear(); return; }
     const { client, server } = this.connections.get(connectionId)!;
     const timestamp = new Date().toISOString();
     const chunk: PendingChunk = {
@@ -101,17 +103,17 @@ export class NetworkLog {
       this.finish(stream);
     }
   }
-  serialize() {
-
-
+  async serialize() {
+    if (!this.recording()) { this.streams.clear(); return "[]"; }
     const pending = [...this.streams.values()].flatMap(stream => stream.chunks.map(chunk => ({
       key: chunk.key, entry: { ...chunk.entry, payload: "" },
     })));
     let stored: StoredNetworkEntry[] = [];
-    try { stored = this.store.read(); }
+    try { stored = await this.store.read(); }
     catch (error) {
       console.warn("Network log could not read browser storage.", error);
     }
+    if (!this.recording()) { this.streams.clear(); return "[]"; }
     const records = new Map(stored.map(record => [record.key, record]));
     for (const record of pending) records.set(record.key, record);
     return JSON.stringify([...records.values()].sort((a, b) => a.key.localeCompare(b.key)).map(record => record.entry));

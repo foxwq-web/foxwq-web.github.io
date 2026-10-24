@@ -10,7 +10,7 @@ import type { Fields, Message } from '../src/wire.ts';
 import type { Frame } from '../src/framing.ts';
 import type { Transport } from '../src/transport.ts';
 import type { SessionState } from '../src/state.ts';
-import type { NetworkEntry } from '../src/network-log.ts';
+import { NetworkLog, type NetworkEntry } from '../src/network-log.ts';
 import * as game from '../src/game.ts';
 
 function unpack(payload: Buffer): [Message, Message] {
@@ -274,6 +274,10 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
   }
   globalThis.WebSocket=FakeWebSocket as unknown as typeof WebSocket;
   const s=new Session({proxyUrl:'wss://example.com/proxy',proxyToken:'a'.repeat(43)});
+  const records = new Map();
+  s.networkLog = new NetworkLog({
+    put(record) { records.set(record.key, record); }, read: () => [...records.values()],
+  });
   const wait=async (predicate: () => boolean)=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}assert.fail(JSON.stringify(s.snapshot()));};
   try {
     s.login('test','password');await wait(()=>s.phase==='ready');assert.equal(s.servers.length,1);assert.ok(!JSON.stringify(s.snapshot()).includes('private-token'));
@@ -281,9 +285,9 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
     s.play(3,3);await wait(()=>s.board.moves.length===2);assert.equal(s.sync,2);
     s.passTurn();await wait(()=>s.board.moves.length===3);s.send(31000,501,{},63);await wait(()=>s.status==='Game synchronized');
     assert.deepEqual(s.board.moves,[[1,3,3],[2,15,15],[1,null,null]]);s.resign();await wait(()=>s.phase==='finished');assert.equal(s.result,'W+R');assert.match(s.board.sgf(s.result),/RE\[W\+R\]/);
-    const log: NetworkEntry[] = JSON.parse(s.networkLog.serialize());
+    const log: NetworkEntry[] = JSON.parse(await s.networkLog.serialize());
     assert.ok(Array.isArray(log));
-    assert.ok(!s.networkLog.serialize().includes('a'.repeat(43)), 'proxy access token is excluded');
+    assert.ok(!(await s.networkLog.serialize()).includes('a'.repeat(43)), 'proxy access token is excluded');
     assert.deepEqual([...new Set(log.filter(e => e.source.startsWith('client:')).map(e => e.destination))],
       ['43.132.13.39:10000', '119.91.247.46:3001']);
     const packets = (client: string, inbound: boolean) => {

@@ -248,13 +248,13 @@ export class Controller {
       5000,
     );
   }
-  save(format: "sgf" | "network-log") {
+  async save(format: "sgf" | "network-log") {
     const date = new Date(),
       pad = (value: number) => String(value).padStart(2, "0"),
       timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}`;
     if (format === "network-log")
       download(
-        this.session.networkLog.serialize(),
+        await this.session.networkLog.serialize(),
         "application/json",
         `fox-network-log-${timestamp}.json`,
       );
@@ -281,7 +281,7 @@ export class Controller {
     clearTimeout(this.errorTimer);
     this.suppress = true;
     this.session.close();
-    this.session.networkLog.flush();
+    void this.session.networkLog.flush();
     this.sounds.stopVoice();
   }
 }

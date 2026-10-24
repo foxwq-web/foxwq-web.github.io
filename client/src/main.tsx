@@ -6,7 +6,7 @@ await controller.initialize();
 
 window.downloadNetworkLog = () => controller.save("network-log");
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") controller.session.networkLog.flush();
+  if (document.visibilityState === "hidden") void controller.session.networkLog.flush();
 });
 createRoot(document.getElementById("root")!).render(
   <App controller={controller} />,
@@ -26,6 +26,6 @@ if (import.meta.env.DEV) {
 
 declare global {
   interface Window {
-    downloadNetworkLog: () => void;
+    downloadNetworkLog: () => Promise<void>;
   }
 }

@@ -12,12 +12,17 @@ import { decodeOne, encode as frame } from '../src/framing.ts';
 import { GATEWAY, GAME, envelope } from '../src/game.ts';
 import SparkMD5 from 'spark-md5';
 
-test('network-only export preserves one timestamp/source/destination/payload per wire chunk', () => {
-  const log = new NetworkLog();
+function memoryStore(): NetworkLogStore {
+  const records = new Map<string, StoredNetworkEntry>();
+  return { put(record) { records.set(record.key, record); }, read: () => [...records.values()] };
+}
+
+test('network-only export preserves one timestamp/source/destination/payload per wire chunk', async () => {
+  const log = new NetworkLog(memoryStore());
   const first = log.connection('fox.example',10000), second = log.connection('fox.example',10000);
   const bytes = frame(3005, Buffer.from([0,1,255]));
   log.traffic(first,'outbound',bytes); log.traffic(first,'inbound',bytes); log.traffic(second,'inbound',bytes);
-  const json = log.serialize(), exported = JSON.parse(json);
+  const json = await log.serialize(), exported = JSON.parse(json);
   assert.ok(Array.isArray(exported));
   assert.equal(exported.length, 3);
   assert.equal(json.includes('\n'), false);
@@ -31,11 +36,11 @@ test('network-only export preserves one timestamp/source/destination/payload per
   assert.match(exported[2].destination,/^client:.+:2$/);
   const session = new Session(); session.networkLog = log;
   session.close();
-  assert.deepEqual(JSON.parse(log.serialize()), exported);
+  assert.deepEqual(JSON.parse(await log.serialize()), exported);
 });
 
-test('malformed incoming traffic is recorded once but redacted before storage', () => {
-  const log = new NetworkLog(), connectionId = log.connection('fox.example',10000);
+test('malformed incoming traffic is recorded once but redacted before storage', async () => {
+  const log = new NetworkLog(memoryStore()), connectionId = log.connection('fox.example',10000);
   const ws = Object.assign(new EventTarget(), { close() {} });
   let failure;
   const connection = new Connection(ws as unknown as WebSocket, () => assert.fail('must not deliver malformed frame'), reason => {failure=reason;},
@@ -43,14 +48,14 @@ test('malformed incoming traffic is recorded once but redacted before storage', 
   const bytes = Buffer.from('000707d00001b800d9','hex');
   for (const part of [bytes.subarray(0,3),bytes.subarray(3)])
     ws.dispatchEvent(new MessageEvent('message',{data:Uint8Array.from(part).buffer}));
-  const entries: NetworkEntry[] = JSON.parse(log.serialize());
+  const entries: NetworkEntry[] = JSON.parse(await log.serialize());
   assert.equal(entries.length, 2);
   assert.ok(entries.every(e=>e.payload === ''));
   assert.equal(entries[0].source,'fox.example:10000'); assert.match(entries[0].destination,/^client:.+:1$/);
   assert.equal(failure,'Invalid protocol response'); assert.equal(connection.closed,true);
 });
 
-test('exports redact login credentials and tokens across compressed, split and coalesced frames', () => {
+test('exports redact login credentials and tokens across compressed, split and coalesced frames', async () => {
   const username = 'private-login-name', password = 'private-login-password';
   const token = Buffer.from('private-session-token'.repeat(20));
   const secrets = [username, password, SparkMD5.hash(password), token.toString()];
@@ -63,18 +68,18 @@ test('exports redact login credentials and tokens across compressed, split and c
   for (const [direction, packet] of packets) {
     for (const split of [1, 3, packet.length - 1, packet.length]) {
       const originalPacket = Buffer.from(packet);
-      const log = new NetworkLog(), connection = log.connection('fox.example', 10000);
+      const log = new NetworkLog(memoryStore()), connection = log.connection('fox.example', 10000);
       log.traffic(connection, direction, packet.subarray(0, split));
       log.traffic(connection, direction, Buffer.concat([packet.subarray(split), ordinary]));
       log.traffic(connection, direction, ordinary);
-      const exported: NetworkEntry[] = JSON.parse(log.serialize());
+      const exported: NetworkEntry[] = JSON.parse(await log.serialize());
       assert.equal(exported[0].payload, '');
       if (split < packet.length) {
         assert.equal(exported[1].payload, '');
       } else assert.equal(exported[1].payload, ordinary.toString('base64'));
       assert.equal(exported[2].payload, ordinary.toString('base64'));
       for (const secret of secrets) {
-        assert.equal(log.serialize().includes(secret), false);
+        assert.equal((await log.serialize()).includes(secret), false);
         assert.ok(exported.every(e=>!Buffer.from(e.payload, 'base64').includes(Buffer.from(secret))));
       }
       assert.deepEqual(packet, originalPacket,
@@ -83,25 +88,25 @@ test('exports redact login credentials and tokens across compressed, split and c
   }
 });
 
-test('partial authentication frames are redacted even before their remainder arrives', () => {
-  const log = new NetworkLog(), connection = log.connection('fox.example', 10000);
+test('partial authentication frames are redacted even before their remainder arrives', async () => {
+  const log = new NetworkLog(memoryStore()), connection = log.connection('fox.example', 10000);
   const packet = frame(2000, loginRequest('private-name', 'private-password'));
   log.traffic(connection, 'outbound', packet.subarray(0, packet.length - 1));
-  assert.equal(JSON.parse(log.serialize())[0].payload, '');
+  assert.equal(JSON.parse(await log.serialize())[0].payload, '');
   log.traffic(connection, 'outbound', packet.subarray(packet.length - 1));
-  assert.ok((JSON.parse(log.serialize()) as NetworkEntry[]).every(e=>!e.payload));
+  assert.ok((JSON.parse(await log.serialize()) as NetworkEntry[]).every(e=>!e.payload));
 });
 
-test('complete non-authentication frames retain their original chunk boundaries', () => {
-  const log = new NetworkLog(), connection = log.connection('fox.example', 10000);
+test('complete non-authentication frames retain their original chunk boundaries', async () => {
+  const log = new NetworkLog(memoryStore()), connection = log.connection('fox.example', 10000);
   const packet = frame(3005, encode({1:42}), true);
   const chunks = [packet.subarray(0,3), packet.subarray(3)];
   for (const chunk of chunks) log.traffic(connection, 'inbound', chunk);
-  assert.deepEqual((JSON.parse(log.serialize()) as NetworkEntry[]).map(e=>e.payload), chunks.map(c=>c.toString('base64')));
+  assert.deepEqual((JSON.parse(await log.serialize()) as NetworkEntry[]).map(e=>e.payload), chunks.map(c=>c.toString('base64')));
 });
 
-test('accepted outgoing frames are recorded once and decode offline; failed sends are excluded', () => {
-  const log = new NetworkLog(), connectionId = log.connection('fox.example',10000);
+test('accepted outgoing frames are recorded once and decode offline; failed sends are excluded', async () => {
+  const log = new NetworkLog(memoryStore()), connectionId = log.connection('fox.example',10000);
   const sent: Uint8Array[] = [];
   const ws = Object.assign(new EventTarget(), { close() {}, readyState: 1, bufferedAmount: 0, send(bytes: Uint8Array) { sent.push(bytes); } });
   const connection = new Connection(ws as unknown as WebSocket,()=>{},()=>{}, {networkLog:log,connectionId});
@@ -109,17 +114,17 @@ test('accepted outgoing frames are recorded once and decode offline; failed send
   try {
     const payload = Buffer.alloc(5000,97);
     connection.send(3000,payload);
-    const entries: NetworkEntry[] = JSON.parse(log.serialize());
+    const entries: NetworkEntry[] = JSON.parse(await log.serialize());
     assert.equal(entries.length,1);
     const bytes = Buffer.from(entries[0].payload,'base64'); assert.deepEqual(bytes,sent[0]);
     const [packet,size] = decodeOne(bytes)!;
     assert.equal(size,bytes.length); assert.equal(packet.command,3000); assert.deepEqual(packet.payload,payload);
     ws.send=()=>{throw Error('rejected');}; assert.throws(()=>connection.send(2000,Buffer.alloc(0)),/rejected/);
-    assert.equal(JSON.parse(log.serialize()).length,1);
+    assert.equal(JSON.parse(await log.serialize()).length,1);
   } finally {globalThis.WebSocket=original;connection.close();}
 });
 
-test('SGF eligibility requires a completed game and survives disconnect', () => {
+test('SGF eligibility requires a completed game and survives disconnect', async () => {
   const session = new Session();
   assert.equal(session.snapshot().game_over, false);
   setupFoxGame(session);
@@ -138,7 +143,7 @@ test('SGF eligibility requires a completed game and survives disconnect', () => 
   assert.equal(session.snapshot().game_over, true, 'restoring a finished game enables SGF');
 });
 
-test('directional fragments retain capture order at equal timestamps and never persist secrets', () => {
+test('directional fragments retain capture order at equal timestamps and never persist secrets', async () => {
   const records = new Map<string, StoredNetworkEntry>();
   const store: NetworkLogStore = {put(record) {records.set(record.key,record);}, read() {return [...records.values()];}};
   const log = new NetworkLog(store), connection = log.connection('fox.example',10000);
@@ -146,9 +151,9 @@ test('directional fragments retain capture order at equal timestamps and never p
   log.traffic(connection,'inbound',packet.subarray(0,3));
   log.traffic(connection,'outbound',packet);
   log.traffic(connection,'inbound',packet.subarray(3));
-  assert.deepEqual((JSON.parse(log.serialize()) as NetworkEntry[]).map(e=>e.payload), [packet.subarray(0,3),packet,packet.subarray(3)].map(b=>b.toString('base64')));
+  assert.deepEqual((JSON.parse(await log.serialize()) as NetworkEntry[]).map(e=>e.payload), [packet.subarray(0,3),packet,packet.subarray(3)].map(b=>b.toString('base64')));
   log.traffic(connection,'outbound',frame(2000,loginRequest('private-user','private-password')));
   assert.equal([...records.values()].at(-1)!.entry.payload,'');
-  const previous = JSON.parse(log.serialize());
-  assert.deepEqual(JSON.parse(new NetworkLog(store).serialize()), previous, 'stored traffic survives a new page logger');
+  const previous = JSON.parse(await log.serialize());
+  assert.deepEqual(JSON.parse(await new NetworkLog(store).serialize()), previous, 'stored traffic survives a new page logger');
 });
