@@ -2,16 +2,11 @@
 
 A web client for the [Fox go server](https://foxwq.com/).
 
-Featuring:
-
-- Matchmaking
-- Sound effects
-- Score estimation
-- SGF export
-
-For screenshots, see [desktop](https://github.com/foxwq-web/foxwq-web.github.io/tree/main/client/tests/visual/baselines/desktop/) and [mobile](https://github.com/foxwq-web/foxwq-web.github.io/tree/main/client/tests/visual/baselines/mobile/).
+This project aims to faithfully recreate Fox's gameplay in the browser. No fancy graphics or community features here, just good old Fox as you know it. If you're only in it for the gameplay, you've come to the right place.
 
 Try it out: https://foxwq-web.github.io/
+
+See [desktop](client/tests/visual/baselines/desktop/README.md) and [mobile](client/tests/visual/baselines/mobile/README.md) for screenshots.
 
 ## FAQ
 
@@ -42,12 +37,3 @@ I'm only half joking, see [this commit](https://github.com/foxwq-web/foxwq-web.g
 
 This client uses Fox's original score estimation algorithm, so you get the same estimate as your opponent.
 The estimator was binary translated to WebAssembly and runs entirely in the browser.
-
-#### Why not minifox/WeiqiHub?
-
-This client runs directly in the browser.
-
-#### Why not OGS?
-
-The playerbase.
-At this point OGS has more third-party clients than players LOL.
