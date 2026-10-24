@@ -1,0 +1,1 @@
+Feel free to open issues. Not sure about PRs. As I said in README.md, I have no interest in reading any of this code. If you want to contribute, your best bet is probably to open an issue with the prompt.

@@ -9,6 +9,8 @@ Featuring:
 - Score estimation
 - SGF export
 
+For screenshots, see [desktop](https://github.com/foxwq-web/foxwq-web.github.io/tree/main/client/tests/visual/baselines/desktop/) and [mobile](https://github.com/foxwq-web/foxwq-web.github.io/tree/main/client/tests/visual/baselines/mobile/).
+
 Try it out: https://foxwq-web.github.io/
 
 ## FAQ
@@ -17,12 +19,13 @@ Try it out: https://foxwq-web.github.io/
 
 Yes, this is a complete slop-fest.
 I haven't read a single line of the generated TS and have no interest in doing so.
-I wrote this README and all commit messages, the rest is just the AI talking to itself.
+I wrote this README and all the prompts, which I included verbatim in commit messages.
+The rest is just the AI talking to itself.
 
 #### Where's the backend?
 
 There is no backend.
-This project uses a WebSocket-to-TCP proxy hosted on Cloudflare.
+This project uses a WebSocket-to-TCP proxy hosted on Cloudflare Workers.
 Architecturally, this makes it as close as it gets to the original client.
 
 #### Will this break with future Fox updates?
@@ -42,7 +45,7 @@ The estimator was binary translated to WebAssembly and runs entirely in the brow
 
 #### Why not minifox/WeiqiHub?
 
-The main differentiating factors are that this client is fully open source and works directly from the browser.
+This client runs directly in the browser.
 
 #### Why not OGS?
 
