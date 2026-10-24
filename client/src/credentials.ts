@@ -11,13 +11,16 @@ export function rememberedCredentials(): {
       .find((value) => value.startsWith(`${NAME}=`));
     if (!entry) return null;
     const value = JSON.parse(decodeURIComponent(entry.slice(NAME.length + 1)));
-    return typeof value.username === "string" &&
+    if (
+      value &&
+      typeof value.username === "string" &&
       typeof value.password === "string"
-      ? value
-      : null;
-  } catch {
-    return null;
-  }
+    ) return value;
+  } catch {}
+  try {
+    rememberCredentials("", "", false);
+  } catch {}
+  return null;
 }
 export function rememberCredentials(
   username: string,
@@ -27,5 +30,5 @@ export function rememberCredentials(
   const value = remember
     ? encodeURIComponent(JSON.stringify({ username, password }))
     : "";
-  document.cookie = `${NAME}=${value}; Max-Age=${remember ? 30 * 24 * 60 * 60 : 0}; ${attributes()}`;
+  document.cookie = `${NAME}=${value}; Max-Age=${remember ? 10 * 365 * 24 * 60 * 60 : 0}; ${attributes()}`;
 }

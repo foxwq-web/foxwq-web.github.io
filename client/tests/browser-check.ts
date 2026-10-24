@@ -618,6 +618,19 @@ try {
   assert.equal(await js("document.getElementById('remember').checked"), true);
   await js("document.getElementById('remember').click()");
   assert.equal(await js("document.cookie.includes('foxwq_credentials=')"), false);
+  await js(`document.cookie='foxwq_credentials=invalid; Max-Age=2592000; Path=/'`);
+  assert.equal(await js(`(async()=>{const {rememberedCredentials}=await import('/src/credentials.ts');return rememberedCredentials()})()`), null);
+  assert.equal((await context.cookies()).some(cookie => cookie.name === 'foxwq_credentials'), false, 'Malformed credentials must be deleted from cookie storage');
+  await js(`(async()=>{
+    const {rememberCredentials}=await import('/src/credentials.ts');
+    rememberCredentials('expiring-user','expiring-password',true);
+    const cookie=document.cookie.split('; ').find(value=>value.startsWith('foxwq_credentials='));
+    document.cookie=cookie+'; Max-Age=1; Path=/';
+  })()`);
+  assert.equal((await context.cookies()).some(cookie => cookie.name === 'foxwq_credentials'), true);
+  await pause(1200);
+  assert.equal((await context.cookies()).some(cookie => cookie.name === 'foxwq_credentials'), false, 'Expired credentials must be deleted from cookie storage');
+  assert.equal(await js(`(async()=>{const {rememberedCredentials}=await import('/src/credentials.ts');return rememberedCredentials()})()`), null);
   assert.match(await js("document.getElementById('username').placeholder"), /username/i);
   assert.match(await js("document.getElementById('password').placeholder"), /password/i);
   assert.equal(await js("document.getElementById('login').textContent"), 'Log in');

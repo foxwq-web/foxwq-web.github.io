@@ -10,6 +10,8 @@ import { Board } from "../src/board";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { applyDevScreen } from "../src/dev-screens";
+import { rememberedCredentials, rememberCredentials } from "../src/credentials.ts";
+import { Buffer } from "buffer";
 
 function initial(session = new Session()): UIState {
   return {
@@ -24,6 +26,71 @@ function initial(session = new Session()): UIState {
     form: { username: "", passwordLength: 0, remember: false },
   };
 }
+
+test("remembered credentials are replaced only after Fox accepts the submitted login", context => {
+  const writes: string[] = [];
+  let cookie = "";
+  for (const [name, value] of Object.entries({
+    document: {
+      get cookie() { return cookie; },
+      set cookie(value: string) {
+        writes.push(value);
+        cookie = value.includes("Max-Age=0;") ? "" : value.split(";")[0];
+      },
+    },
+    location: { protocol: "https:" },
+  })) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    context.after(() => {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    });
+  }
+  rememberCredentials("PreviousPlayer", "previous-password", true);
+  const controller = new Controller();
+  controller.sounds.preload = () => {};
+  controller.emit({ type: "initialize", state: initial(controller.session) });
+  controller.emit({ type: "form.username", value: "NewPlayer" });
+  controller.editPassword("new-password");
+  controller.remember(true);
+  controller.session.login = () => {
+    controller.session.close();
+    controller.session.phase = "authenticating";
+    controller.session.changed();
+  };
+  const reply = (fields: Parameters<typeof encode>[0]) => {
+    controller.session.receive(controller.session.generation, { command: 2005, flags: 0, payload: encode(fields) });
+    controller.session.flushChanges();
+  };
+  try {
+    controller.command("login");
+    assert.equal(writes.length, 1, "submitting must not persist credentials");
+    reply({ 1: 111231 });
+    assert.deepEqual(rememberedCredentials(), { username: "PreviousPlayer", password: "previous-password" });
+    assert.equal(writes.length, 1, "rejection must preserve previously accepted credentials");
+    controller.command("login");
+    controller.emit({ type: "form.username", value: "EditedWhilePending" });
+    controller.editPassword("edited-password");
+    controller.session.connection = { send() {}, close() {} };
+    reply({ 1: 0, 2: 42, 8: Buffer.from("accepted-token") });
+    assert.deepEqual(rememberedCredentials(), { username: "NewPlayer", password: "new-password" });
+    assert.equal(writes.length, 2);
+    assert.match(writes[1], /; Max-Age=315360000; Path=\/; SameSite=Strict; Secure$/);
+    controller.session.phase = "ready";
+    controller.session.changed();
+    controller.session.flushChanges();
+    assert.equal(writes.length, 2, "later session updates must not extend credential expiry");
+    controller.remember(false);
+    assert.equal(rememberedCredentials(), null);
+    controller.command("login");
+    controller.remember(true);
+    controller.remember(false);
+    controller.session.connection = { send() {}, close() {} };
+    reply({ 1: 0, 2: 42, 8: Buffer.from("accepted-token") });
+    assert.equal(rememberedCredentials(), null, "opting out during login must keep storage empty");
+  } finally { controller.dispose(); }
+});
 test("opponent stone appears while the rendered estimate markers stay unchanged", async () => {
   const s = new Session();
   try {

@@ -49,6 +49,7 @@ export class Controller {
   private errorTimer?: ReturnType<typeof setTimeout>;
   private suppress = false;
   private assetsStarted = false;
+  private pendingCredentials?: { username: string; password: string; remember: boolean };
 
   constructor() {
     this.session = new Session({
@@ -116,6 +117,13 @@ export class Controller {
   }
   private sync(session: SessionState) {
     if (!this.state || this.suppress) return;
+    if (this.pendingCredentials && this.session.uid && this.session.token.length) {
+      const { username, password, remember } = this.pendingCredentials;
+      this.pendingCredentials = undefined;
+      if (!this.preview) rememberCredentials(username, password, remember);
+    } else if (["error", "disconnected"].includes(session.phase)) {
+      this.pendingCredentials = undefined;
+    }
     const wasAvailable = boardAvailable(this.state.session);
     this.emit({ type: "session.updated", session });
     if (
@@ -164,6 +172,7 @@ export class Controller {
   }
   remember(value: boolean) {
     this.emit({ type: "form.remember", value });
+    if (this.pendingCredentials && !value) this.pendingCredentials.remember = false;
     if (!this.preview && !value) rememberCredentials("", "", false);
   }
   command(
@@ -184,7 +193,7 @@ export class Controller {
     try {
       switch (command) {
         case "login":
-          if (!this.preview) rememberCredentials(username, password, remember);
+          this.pendingCredentials = { username, password, remember };
           this.session.login(username, password);
           break;
         case "disconnect":
@@ -232,6 +241,7 @@ export class Controller {
           break;
       }
     } catch (error) {
+      if (command === "login") this.pendingCredentials = undefined;
       this.raise(error instanceof Error ? error.message : String(error));
     } finally {
       this.session.flushChanges();
@@ -303,6 +313,7 @@ export class Controller {
     }
   }
   dispose() {
+    this.pendingCredentials = undefined;
     clearTimeout(this.clockTimer);
     clearTimeout(this.errorTimer);
     this.suppress = true;
