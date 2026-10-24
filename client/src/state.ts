@@ -79,6 +79,7 @@ export interface Prompt {
 }
 export interface UIState {
   session: SessionState;
+  review?: Pick<SessionState, "stones" | "captures" | "turn" | "passes" | "moves" | "last_move"> | null;
   now: number;
   frozen: boolean;
   preview: number | null;
@@ -91,6 +92,7 @@ export interface UIState {
 export type UIEvent =
   | { type: "initialize"; state: UIState }
   | { type: "session.updated"; session: SessionState }
+  | { type: "review.position"; position: NonNullable<UIState["review"]> }
   | { type: "clock.tick"; now: number }
   | { type: "board.hover"; point: number | null }
   | { type: "prompt.open"; prompt: Prompt }
@@ -132,6 +134,9 @@ export function reducer(state: UIState, event: UIEvent): UIState {
       return {
         ...state,
         session: event.session,
+        review: event.session.phase === "finished" && event.session.game_over &&
+          event.session.gameId === state.session.gameId && event.session.moves === state.session.moves
+          ? state.review : null,
         prompt:
           actionsBlocked(event.session) ||
           (state.prompt?.action === null &&
@@ -143,6 +148,8 @@ export function reducer(state: UIState, event: UIEvent): UIState {
             ? null
             : state.preview,
       };
+    case "review.position":
+      return { ...state, review: event.position, preview: null };
     case "clock.tick":
       return { ...state, now: event.now };
     case "board.hover":

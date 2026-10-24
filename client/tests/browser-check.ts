@@ -339,15 +339,53 @@ try {
       await js("document.getElementById('status').textContent=window.joiningStatus");
     }
     assert.equal(await js("document.getElementById('counting-dialog').open"), countingDialog, fixture.id);
-    assert.equal(await js("document.getElementById('game-downloads').hidden"), fixture.phase !== 'finished' && fixture.id !== 'room-left', fixture.id);
+    assert.equal(await js("document.getElementById('game-downloads').hidden"), fixture.phase !== 'finished', fixture.id);
+    assert.equal(await page.locator('#game-review').isVisible(), fixture.phase === 'finished', fixture.id);
+    if (fixture.id === 'room-left') {
+      assert.equal(await page.locator('#primary-actions').isVisible(), true);
+      assert.equal(await page.locator('#board .stone').count(), 0);
+      assert.equal(await page.locator('#board polygon').count(), 0);
+      assert.equal(await page.locator('#game-state-panel').isVisible(), false);
+      assert.equal(await page.locator('.clock-display').count(), 0);
+    }
     if (fixture.phase === 'finished') {
       const result = {finished:'B+2.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R'}[fixture.id];
       assert.equal(await js("document.getElementById('game-state-title').textContent"), 'Game over', fixture.id);
       assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), `Result: ${result}`, fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
-      assert.equal(await js("['pass','request-score','resign','estimate-score'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
+      assert.equal(await page.locator('#estimate-score').isEnabled(), true, fixture.id);
+      assert.equal(await js("['pass','request-score','resign'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
     }
     if (fixture.id === 'finished') {
+      const finalStones = await page.locator('#board .board-stones').innerHTML();
+      assert.equal(await page.locator('#game-state-panel #game-review').count(), 0);
+      assert.equal(await page.locator('.review-position').count(), 0);
+      assert.equal(await page.locator('#game-review button svg').count(), 4);
+      await page.getByRole('button', { name: 'First move', exact: true }).click();
+      assert.equal(await page.locator('#board .stone').count(), 0);
+      assert.equal(await page.locator('#review-previous').isDisabled(), true);
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.locator('#board .stone').count(), 1);
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('#board .stone').count(), 0);
+      await page.locator('#review-next').click();
+      assert.equal(await page.locator('#board .stone').count(), 1);
+      await page.locator('#estimate-score').click();
+      await wait("!document.getElementById('estimation-lead').hidden");
+      assert.equal(await page.locator('#board .stone').count(), 1);
+      assert.ok(await page.locator('.estimated-territory rect').count() > 0);
+      await page.locator('#estimate-score').click();
+      assert.equal(await page.locator('.estimated-territory rect').count(), 0);
+      assert.equal(await page.locator('#board .stone').count(), 1);
+      await page.locator('#estimate-score').click();
+      await wait("!document.getElementById('estimation-lead').hidden");
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('#board .stone').count(), 0);
+      assert.equal(await page.locator('.estimated-territory rect').count(), 0);
+      assert.equal(await page.locator('#estimation-panel').isVisible(), false);
+      await page.locator('#review-last').click();
+      assert.equal(await page.locator('#board .board-stones').innerHTML(), finalStones);
+      assert.equal(await page.locator('#review-next').isDisabled(), true);
       const record = await js(`(async()=>{
         let saved,filename;const create=URL.createObjectURL,click=HTMLAnchorElement.prototype.click;
         URL.createObjectURL=blob=>{saved=blob;return create(blob);};

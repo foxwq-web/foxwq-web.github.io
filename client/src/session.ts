@@ -1105,9 +1105,9 @@ export class Session {
   get awaitingMove() {
     return this.pending && this.pendingAction === 201 && !!this.pendingMove;
   }
-  estimateScore() {
+  estimateScore(position?: Pick<Board, "stones" | "captures">) {
     if (
-      this.phase !== "playing" ||
+      (this.phase !== "playing" && !(this.phase === "finished" && this.gameOver)) ||
       !Object.keys(this.roomKey).length ||
       ![1, 2].includes(this.color)
     )
@@ -1118,8 +1118,12 @@ export class Session {
       throw Error("Finish the pending game action first");
     if (this.estimation && this.estimation.phase !== "error")
       throw Error("An estimate is already open");
-    const board = this.board.clone(),
-      komi = this.komi,
+    const board = this.board.clone();
+    if (position) {
+      board.stones = [...position.stones];
+      board.captures = [...position.captures];
+    }
+    const komi = this.komi,
       payload = { status: board.stones.join("") };
     this.clearEstimate();
     const controller = new AbortController();
@@ -1266,6 +1270,19 @@ export class Session {
   leaveFinishedRoom() {
     try {
       this.rollbackMove();
+      this.clearEstimate();
+      this.playerInfo.reset();
+      this.board = new Board();
+      this.players = {};
+      this.clocks = {};
+      this.komi = 7.5;
+      this.result = "";
+      this.gameOver = false;
+      this.startedRoom = null;
+      this.opponentDisconnectDeadline = null;
+      this.sync = 0;
+      this.pendingAction = null;
+      this.pendingSince = 0;
       this.roomKey = {};
       this.color = 0;
       this.pending = false;

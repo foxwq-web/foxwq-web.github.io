@@ -31,6 +31,7 @@
     "score-estimator:build:native": "make -C score-estimator build"
   },
   "dependencies": {
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
     "buffer": "^6.0.3",
     "fflate": "^0.8.2",
     "react": "^19.3.0",

@@ -45,19 +45,33 @@ test("opponent stone appears while the rendered estimate markers stay unchanged"
   } finally { s.close(); }
 });
 
-test("quitting a finished room preserves its result and history until matchmaking starts", async () => {
+test("quitting a finished room resets the game and review while preserving matchmaking", async () => {
   const controller = new Controller();
   try {
     await applyDevScreen(controller.session, "finished");
     controller.emit({ type: "initialize", state: initial(controller.session) });
-    const finished = controller.snapshot();
+    controller.review("previous");
+    controller.session.estimationFetcher = async () => ({ ret: 0, board_size: 19, judge_status: '0'.repeat(361) });
+    await controller.session.estimateScore(controller.state.review!);
+    controller.session.flushChanges();
+    const account = controller.state.session.account;
+    const gateway = controller.session.gateway;
     controller.command("quit-room");
     assert.equal(controller.state.session.phase, "ready");
     assert.equal(boardAvailable(controller.state.session), false);
     assert.deepEqual(controller.session.roomKey, {});
-    assert.equal(controller.state.session.result, finished.result);
-    assert.equal(controller.state.session.moves, finished.moves);
-    assert.deepEqual(controller.state.session.stones, finished.stones);
+    assert.equal(controller.state.session.result, "");
+    assert.equal(controller.state.session.moves, 0);
+    assert.equal(controller.state.session.game_over, false);
+    assert.deepEqual(controller.state.session.stones, new Board().stones);
+    assert.deepEqual(controller.state.session.captures, [0, 0, 0]);
+    assert.deepEqual(controller.state.session.players, {});
+    assert.deepEqual(controller.state.session.clocks, {});
+    assert.equal(controller.state.session.last_move, null);
+    assert.equal(controller.state.session.estimation, null);
+    assert.equal(controller.state.review, null);
+    assert.deepEqual(controller.state.session.account, account);
+    assert.equal(controller.session.gateway, gateway);
     controller.command("select-time", { id: 2 });
     assert.equal(controller.state.session.phase, "ready");
     controller.command("match");
@@ -303,4 +317,106 @@ test('controller persists the native rollover anchor before rendering and announ
     assert.equal(session.clocks[1].at, 1.5, 'ordinary ticks do not restart the anchor');
     assert.deepEqual(voices, ['count-1', 'periods-2']);
   } finally { controller.dispose(); }
+});
+
+test("finished game review restores captures and passes silently without changing the record", () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    const board = c.session.board;
+    for (const [color, x, y] of [[2, 1, 1], [1, 0, 1], [1, 1, 0], [1, 2, 1], [1, 1, 2]])
+      board.play(x, y, color);
+    board.passTurn();
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.emit({ type: "initialize", state: initial(c.session) });
+    c.sounds.play = () => assert.fail("review must be silent");
+    const record = board.sgf();
+    c.review("previous");
+    assert.equal(c.state.review?.moves, 5);
+    assert.equal(c.state.review?.captures[1], 1);
+    assert.equal(c.state.review?.stones[20], 0);
+    assert.deepEqual(c.state.review?.last_move, [1, 1, 2]);
+    c.review("previous");
+    assert.equal(c.state.review?.stones[20], 2);
+    assert.equal(c.state.review?.captures[1], 0);
+    c.review("first");
+    c.review("previous");
+    assert.equal(c.state.review?.moves, 0);
+    assert.equal(c.state.review?.last_move, null);
+    assert.ok(c.state.review?.stones.every(stone => stone === 0));
+    c.review("next");
+    assert.deepEqual(c.state.review?.last_move, [2, 1, 1]);
+    c.review("last");
+    c.review("next");
+    assert.equal(c.state.review?.moves, 6);
+    assert.equal(c.state.review?.passes, 1);
+    assert.deepEqual(c.state.review?.last_move, [2, null, null]);
+    assert.deepEqual(c.state.review?.stones, board.stones);
+    assert.equal(board.sgf(), record);
+    assert.equal(c.state.session.moves, 6);
+    c.session.phase = "playing";
+    c.session.gameOver = false;
+    c.session.changed();
+    c.session.flushChanges();
+    assert.equal(c.state.review, null);
+    c.review("first");
+    assert.equal(c.state.review, null);
+  } finally { c.dispose(); }
+});
+
+test("review estimates use the displayed stones and captures and discard late results on navigation", async () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    const board = c.session.board;
+    for (const [color, x, y] of [[2, 1, 1], [1, 0, 1], [1, 1, 0], [1, 2, 1], [1, 1, 2]])
+      board.play(x, y, color);
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.emit({ type: "initialize", state: initial(c.session) });
+    const record = board.sgf();
+    c.sounds.play = () => assert.fail("review and estimation must be silent");
+    const payloads: string[] = [];
+    c.session.estimationFetcher = async ({ payload }) => {
+      payloads.push(payload.status);
+      return { ret: 0, board_size: 19, judge_status: '0'.repeat(361) };
+    };
+    const estimate = async () => {
+      c.command("estimate-score");
+      await new Promise<void>(resolve => queueMicrotask(resolve));
+      c.session.flushChanges();
+      const result = c.state.session.estimation;
+      assert.ok(result?.phase === "result");
+      return result;
+    };
+    assert.equal((await estimate()).lead, 1 - c.session.komi);
+    c.command("return-game");
+    c.review("previous");
+    const reviewed = structuredClone(c.state.review);
+    const result = await estimate();
+    assert.deepEqual(result.stones, reviewed?.stones);
+    assert.equal(payloads.at(-1), reviewed?.stones.join(''));
+    assert.equal(result.lead, -c.session.komi);
+    c.command("return-game");
+    assert.equal(c.state.session.estimation, null);
+    assert.deepEqual(c.state.review, reviewed);
+    let signal!: AbortSignal;
+    let finish!: (response: { ret: number; board_size: number; judge_status: string }) => void;
+    c.session.estimationFetcher = options => {
+      signal = options.signal;
+      return new Promise(resolve => { finish = resolve; });
+    };
+    c.command("estimate-score");
+    assert.equal(c.getState().session.estimation?.phase, "loading");
+    c.review("previous");
+    assert.equal(signal.aborted, true);
+    finish({ ret: 0, board_size: 19, judge_status: '1'.repeat(361) });
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+    c.session.flushChanges();
+    assert.equal(c.state.session.estimation, null);
+    assert.equal(c.state.review?.moves, 3);
+    assert.equal(board.sgf(), record);
+    assert.equal(c.state.session.moves, 5);
+  } finally { c.dispose(); }
 });

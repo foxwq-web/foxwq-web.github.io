@@ -1,3 +1,4 @@
+import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep } from "@fortawesome/free-solid-svg-icons";
 import { PlayerName } from "./PlayerInfo";
 import {
   useEffect,
@@ -94,9 +95,14 @@ function countingText(s: UIState["session"]) {
 
 export function App({ controller: c }: { controller: Controller }) {
   const state = useSyncExternalStore(c.subscribe, c.getState);
+  const displayState = state.review
+    ? { ...state, session: { ...state.session, ...state.review } }
+    : state;
+  const reviewMove = state.review?.moves ?? state.session.moves;
   const s = state.session,
     playing = s.phase === "playing";
   const available = boardAvailable(s),
+    reviewing = available && s.phase === "finished" && s.game_over,
     showMenu = !available;
   const loginStep =
     [
@@ -248,6 +254,18 @@ export function App({ controller: c }: { controller: Controller }) {
       }
       const current = c.state,
         menuShown = !boardAvailable(current.session);
+      if (
+        event.type === "keydown" && !menuShown && current.session.game_over &&
+        current.session.phase === "finished" &&
+        ["ArrowLeft", "ArrowRight"].includes(event.key) &&
+        !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
+        !(event.target instanceof HTMLElement &&
+          (event.target.isContentEditable || event.target.closest("input, textarea, select, [role='dialog'], #dev-menu")))
+      ) {
+        event.preventDefault();
+        c.review(event.key === "ArrowLeft" ? "previous" : "next");
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         if (event.type !== "keydown" || event.repeat) return;
@@ -336,7 +354,7 @@ export function App({ controller: c }: { controller: Controller }) {
         <div className="layout">
           <section className="board-wrap">
             <BoardView
-              state={state}
+              state={displayState}
               hover={(point) => {
                 if (point !== c.state.preview)
                   c.emit({ type: "board.hover", point });
@@ -350,16 +368,13 @@ export function App({ controller: c }: { controller: Controller }) {
             <div id="sidebar-content">
               <Player
                 key={3 - bottomColor}
-                state={state}
+                state={displayState}
                 controller={c}
                 color={3 - bottomColor}
               />
-              <Player key={bottomColor} state={state} controller={c} color={bottomColor} />
+              <Player key={bottomColor} state={displayState} controller={c} color={bottomColor} />
               <div className="primary-actions-slot">
-                <div
-                  id="primary-actions"
-                  hidden={!playing && s.phase !== "finished" && s.phase !== "reconnecting"}
-                >
+                <div id="primary-actions">
                   <button
                     id="pass"
                     className="secondary"
@@ -395,7 +410,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   <button
                     id="estimate-score"
                     className="secondary"
-                    disabled={!playing || !!state.prompt || (!estimate && actionsBlocked(s))}
+                    disabled={(!playing && !reviewing) || !!state.prompt || (!estimate && (reviewing ? s.pending : actionsBlocked(s)))}
                     onClick={() => command(estimate ? "return-game" : "estimate-score")}
                   >
                     {estimate ? "Return to Game" : "Estimate Score"}
@@ -536,6 +551,24 @@ export function App({ controller: c }: { controller: Controller }) {
                     Quit Room
                   </button>
                 </section>
+                <div id="game-review" hidden={!s.game_over}>
+                  <div className="actions" role="group" aria-label="Review game">
+                    {([
+                      ["first", "First move", faBackwardStep, reviewMove === 0],
+                      ["previous", "Previous move", faArrowLeft, reviewMove === 0],
+                      ["next", "Next move", faArrowRight, reviewMove === s.moves],
+                      ["last", "Last move", faForwardStep, reviewMove === s.moves],
+                    ] as const).map(([direction, label, icon, disabled]) => (
+                      <button key={direction} id={`review-${direction}`} type="button"
+                        className="secondary" aria-label={label} title={label}
+                        disabled={disabled} onClick={() => c.review(direction)}>
+                        <svg viewBox={`0 0 ${icon.icon[0]} ${icon.icon[1]}`} aria-hidden="true" focusable="false">
+                          <path fill="currentColor" d={Array.isArray(icon.icon[4]) ? icon.icon[4].join(" ") : icon.icon[4]} />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </aside>

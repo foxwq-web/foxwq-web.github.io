@@ -521,7 +521,8 @@ test('quitting an active room waits for Fox resignation, then returns to matchma
   assert.throws(() => s.quitRoom(), /Waiting to confirm/);
   notify(311, {1:0}); assert.equal(s.phase, 'playing');
   notify(402, {1:0,2:2,3:-1,4:3});
-  assert.equal(s.phase, 'ready'); assert.equal(s.result, 'W+R'); assert.equal(s.gameOver, true);
+  assert.equal(s.phase, 'ready'); assert.equal(s.result, ''); assert.equal(s.gameOver, false);
+  assert.deepEqual(s.board, new Board()); assert.deepEqual(s.players, {}); assert.deepEqual(s.clocks, {});
   assert.equal(s.gateway, gateway); assert.equal(s.generation, generation); assert.equal(s.token.toString(), 'session');
   assert.deepEqual(s.roomKey, {}); assert.equal(s.color, 0); assert.equal(s.quitRequested, false);
 
@@ -546,7 +547,7 @@ test('finished rooms quit immediately; rejected or failed resignation stays in t
   s.quitRoom(); notify(501, {1:0,3:[{1:42,6:1}],6:3,7:23,10:202,12:31000,13:63});
   assert.equal(s.phase, 'playing'); assert.equal(s.quitRequested, false);
   s.quitRoom(); notify(501, {1:0,3:[{1:42,6:1}],6:5,7:23,10:202,12:31000,13:63});
-  assert.equal(s.phase, 'ready'); assert.equal(s.gameOver, true);
+  assert.equal(s.phase, 'ready'); assert.equal(s.gameOver, false);
   s.phase = 'finished'; s.roomKey = {1:31000,2:63}; s.color = 1;
   s.quitRoom(); assert.equal(s.phase, 'ready'); assert.deepEqual(s.roomKey, {});
   assert.throws(() => s.quitRoom(), /No room to quit/); s.close();

@@ -116,7 +116,8 @@ test('return, disconnect, own move or pass, counting, game end and synchronizati
     (s: Session) => s.gameMessage(206, decode(encode({})), decode(encode({}))),
     (s: Session) => s.gameMessage(303, decode(encode({1:0,2:1})), decode(encode({}))),
     (s: Session) => s.gameMessage(402, decode(encode({1:0,2:2,4:3})), decode(encode({}))),
-    (s: Session) => s.gameMessage(501, decode(encode({1:0,6:5})), decode(encode({})))]) {
+    (s: Session) => s.gameMessage(501, decode(encode({1:0,6:5})), decode(encode({}))),
+    (s: Session) => { s.phase = 'finished'; s.gameOver = true; s.quitRoom(); }]) {
     const task = deferred(); let signal!: AbortSignal;
     const s = await foxSession(options => { signal = options.signal; return task.promise; });
     const done = s.estimateScore(); action(s);

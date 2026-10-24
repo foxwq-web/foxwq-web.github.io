@@ -1,3 +1,4 @@
+import { Board } from "./board.ts";
 import { Session } from "./session.ts";
 import { PROXY_URL, PROXY_TOKEN } from "./proxy.ts";
 import { rememberedCredentials, rememberCredentials } from "./credentials.ts";
@@ -205,7 +206,7 @@ export class Controller {
           this.session.cancelMatch();
           break;
         case "estimate-score":
-          void this.session.estimateScore();
+          void this.session.estimateScore(this.state.review ?? undefined);
           break;
         case "return-game":
           this.session.returnToGame();
@@ -235,6 +236,31 @@ export class Controller {
     } finally {
       this.session.flushChanges();
     }
+  }
+  review(direction: "first" | "previous" | "next" | "last") {
+    const s = this.state.session;
+    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s)) return;
+    const total = this.session.board.moves.length;
+    const current = this.state.review?.moves ?? total;
+    const move = direction === "first" ? 0 : direction === "last" ? total
+      : Math.max(0, Math.min(total, current + (direction === "next" ? 1 : -1)));
+    if (move === current) return;
+    const board = new Board(this.session.board.size);
+    for (const [color, x, y] of this.session.board.moves.slice(0, move)) {
+      if (x === null || y === null) board.passTurn(color);
+      else board.play(x, y, color);
+    }
+    this.session.clearEstimate();
+    this.emit({ type: "review.position", position: {
+      stones: board.stones,
+      captures: board.captures,
+      turn: board.turn,
+      passes: board.passes,
+      moves: move,
+      last_move: board.moves.at(-1) ?? null,
+    } });
+    this.session.changed();
+    this.session.flushChanges();
   }
   raise(message: string) {
     this.emit({
