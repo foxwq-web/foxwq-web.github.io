@@ -38,7 +38,6 @@ export class ByoyomiAnnouncements {
   turn: string | null = null;
   periods: number | null = null;
   said = new Set<string>();
-  saidPeriods = new Set<number>();
   sawMain = false;
   byoyomiAnnounced = false;
   constructor(play: (name: string) => void) {
@@ -50,7 +49,6 @@ export class ByoyomiAnnouncements {
     this.turn = null;
     this.periods = null;
     this.said = new Set<string>();
-    this.saidPeriods = new Set<number>();
     this.sawMain = false;
     this.byoyomiAnnounced = false;
   }
@@ -75,6 +73,8 @@ export class ByoyomiAnnouncements {
       clock,
       active ? Math.max(0, time - clock.at) : 0,
     );
+    const previousPeriods = this.periods;
+    this.periods = reading.periods;
     this.sawMain ||= !reading.overtime;
     if (!active) {
       this.turn = null;
@@ -94,16 +94,14 @@ export class ByoyomiAnnouncements {
       this.byoyomiAnnounced = true;
       this.play("byoyomi-start");
     }
-    if (
-      this.periods !== null &&
-      reading.periods < this.periods &&
-      [1, 2].includes(reading.periods) &&
-      !this.saidPeriods.has(reading.periods)
-    ) {
-      this.saidPeriods.add(reading.periods);
+    // Native panel 008ef830 reacts to changes in the displayed period count,
+    // whether a local own-clock rollover or a server update supplied it. Its
+    // periodLength - 2 guard limits voices to the start of the new period.
+    if (reading.overtime && previousPeriods !== null && previousPeriods > 0 &&
+        reading.periods !== previousPeriods && [1, 2].includes(reading.periods) &&
+        reading.seconds >= (clock.periodLength || 60) - 2) {
       this.play(`periods-${reading.periods}`);
     }
-    this.periods = reading.periods;
     if (reading.overtime && reading.seconds >= 1 && reading.seconds <= 9) {
       const key = `${reading.periods}:${reading.seconds}`;
       if (!this.said.has(key)) {

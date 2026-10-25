@@ -47,26 +47,21 @@ test('clock ticks match traces executed from the original Fox x86 routines', () 
   }
 });
 
-test('speaks 9 through 1 once per period, remaining periods, and stops on placing a move', () => {
+test('own countdown speaks seconds and announces each local period rollover once', () => {
   const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
-  const state: SessionState = { ...new Session().snapshot(),  phase: 'playing', color: 1, turn: 1, pending: false, moves: 0,
+  const state: SessionState = { ...new Session().snapshot(), phase: 'playing', color: 1, turn: 1, pending: false, moves: 0,
     clocks: { 1: { main: 0, periods: 3, byoyomi: 60, at: 0 } } };
-  speaker.update(state, 49);
-  speaker.update(state, 50); assert.deepEqual(sounds, []);
-  for (let t = 51; t < 60; t += 0.25) speaker.update(state, t);
+  for (let t = 49; t < 60.5; t += 0.25) speaker.update(state, t);
   assert.deepEqual(sounds, Array.from({ length: 9 }, (_, i) => `count-${9 - i}`));
-  speaker.update(state, 60); speaker.update(state, 60.25);
-  assert.equal(sounds.at(-1), 'count-1');
   speaker.update(state, 60.5);
-  assert.equal(sounds.at(-1), 'periods-2'); assert.equal(sounds.length, 10);
-
+  assert.equal(sounds.at(-1), 'periods-2');
   state.clocks[1] = { main: 0, periods: 2, byoyomi: 60, at: 60.5 };
-  speaker.update(state, 60.75); assert.equal(sounds.length, 10);
-  speaker.update(state, 110.5); assert.equal(sounds.at(-1), 'periods-2');
-  speaker.update(state, 111); assert.equal(sounds.at(-1), 'count-9');
-  speaker.update(state, 121); assert.equal(sounds.at(-1), 'periods-1');
-  state.pending = true; speaker.update(state, 170); assert.equal(sounds.at(-1), 'periods-1');
-  state.pending = false; state.turn = 2; speaker.update(state, 171); assert.equal(sounds.at(-1), 'periods-1');
+  for (let t = 60.5; t < 121; t += 0.25) speaker.update(state, t);
+  speaker.update(state, 121);
+  assert.deepEqual(sounds.filter(name => name.startsWith('periods-')), ['periods-2', 'periods-1']);
+  state.pending = true; speaker.update(state, 172);
+  state.pending = false; state.turn = 2; speaker.update(state, 172);
+  assert.equal(sounds.at(-1), 'periods-1');
 });
 
 test('main time stays silent, announces overtime once, and counts only in byoyomi', () => {
@@ -87,23 +82,108 @@ test('main time stays silent, announces overtime once, and counts only in byoyom
   assert.deepEqual(sounds, ['byoyomi-start', 'count-9']);
 });
 
-test('overtime and remaining-period announcements survive turns and server corrections without repeating', () => {
+test('native half-second cushion permits last-moment play and only own clocks roll over', context => {
+  context.mock.timers.enable({ apis: ['Date'], now: 0 });
+  for (const color of [1, 2]) {
+    const session = new Session(), sounds: string[] = [];
+    const speaker = new ByoyomiAnnouncements(name => sounds.push(name));
+    session.color = color; session.phase = 'playing'; session.board.turn = color;
+    session.clocks[color] = { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
+    try {
+      speaker.update(session.snapshot(), 0);
+      for (const time of [30, 30.499]) {
+        session.tickClock(time); speaker.update(session.snapshot(), time);
+        assert.equal(session.clocks[color].periods, 3);
+        assert.deepEqual(sounds, []);
+      }
+      // A stone submitted during zero freezes the player's clock before rollover.
+      session.pending = true;
+      assert.equal(session.tickClock(30.5), false);
+      speaker.update(session.snapshot(), 30.5);
+      assert.equal(session.clocks[color].periods, 3);
+      assert.deepEqual(sounds, []);
+      session.pending = false;
+      session.tickClock(30.5); speaker.update(session.snapshot(), 30.5);
+      speaker.update(session.snapshot(), 30.75);
+      assert.equal(session.clocks[color].periods, 2);
+      assert.deepEqual(sounds, ['periods-2']);
+      const opponent = 3 - color;
+      session.board.turn = opponent;
+      session.clocks[opponent] = { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
+      assert.equal(session.tickClock(300), false);
+      assert.deepEqual(clockReading(session.clocks[opponent], 300, 60, false),
+        { main: 0, periods: 3, seconds: 0, overtime: true });
+      speaker.update(session.snapshot(), 300);
+      assert.deepEqual(sounds, ['periods-2']);
+      session.uid = 42;
+      session.gameMessage(108, decode(encode({ 2: 0, 3: 2, 4: 30, 5: 43 })), decode(encode({})));
+      assert.equal(session.clocks[opponent].periods, 2, 'opponent period changes only on server data');
+    } finally { session.close(); }
+  }
+});
+
+test('server updates can trigger own period voices and do not duplicate local rollover', context => {
+  context.mock.timers.enable({ apis: ['Date'], now: 0 });
+  for (const color of [1, 2]) for (const op of [108, 109]) {
+    const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
+    const session = new Session({ onSound: name => sounds.push(name) });
+    session.uid = 42; session.color = color; session.phase = 'playing'; session.board.turn = color;
+    session.clocks[color] = { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
+    const notice = (periods: number) => {
+      const timing = { 2: 0, 3: periods, 4: 30, 5: 42 };
+      session.gameMessage(op, decode(encode(op === 109 ? { 2: timing } : timing)), decode(encode({})));
+      speaker.update(session.snapshot());
+    };
+    try {
+      context.mock.timers.setTime(0);
+      notice(3); notice(2); notice(2);
+      assert.deepEqual(sounds, ['periods-2']);
+      context.mock.timers.setTime(30500);
+      session.tickClock(); speaker.update(session.snapshot());
+      notice(1); notice(1);
+      assert.deepEqual(sounds, ['periods-2', 'periods-1']);
+    } finally { session.close(); }
+  }
+});
+
+test('native period voice window suppresses late updates and observes changes rather than lifetime deduplication', () => {
   const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
-  const state: SessionState = { ...new Session().snapshot(), phase:'playing',gameId:'room-1',color:1,turn:1,pending:false,moves:0,
-    clocks:{1:{main:2,periods:3,byoyomi:30,periodLength:30,at:0}}};
-  speaker.update(state, 0); speaker.update(state, 2); speaker.update(state, 2.25);
-  assert.deepEqual(sounds, ['byoyomi-start']);
-  speaker.update(state, 32.5); assert.equal(sounds.at(-1), 'periods-2');
-  state.pending = true; speaker.update(state, 33);
-  state.pending = false; state.moves = 2;
-  state.clocks[1] = {main:0,periods:2,byoyomi:30,periodLength:30,at:34};
-  speaker.update(state, 34); assert.deepEqual(sounds, ['byoyomi-start','periods-2']);
-  speaker.update(state, 64.5); assert.equal(sounds.at(-1), 'periods-1');
-  state.clocks[1] = {main:0,periods:2,byoyomi:1,periodLength:30,at:64};
-  speaker.update(state, 66); assert.equal(sounds.filter(s=>s==='periods-1').length, 1);
-  state.gameId = 'room-2'; state.clocks[1] = {main:2,periods:3,byoyomi:30,periodLength:30,at:70};
-  speaker.update(state, 70); speaker.update(state, 72);
-  assert.equal(sounds.filter(s=>s==='byoyomi-start').length, 2);
+  const state: SessionState = { ...new Session().snapshot(), phase: 'playing', color: 1, turn: 1, pending: false,
+    clocks: { 1: { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 } } };
+  speaker.update(state, 0);
+  state.clocks[1].periods = 2; state.clocks[1].byoyomi = 27;
+  speaker.update(state, 0);
+  assert.deepEqual(sounds, [], 'late period changes are silent');
+  state.clocks[1].periods = 1; state.clocks[1].byoyomi = 28;
+  speaker.update(state, 0); speaker.update(state, 0);
+  assert.deepEqual(sounds, ['periods-1'], 'two-second boundary is included');
+  state.clocks[1].periods = 2; state.clocks[1].byoyomi = 30;
+  speaker.update(state, 0);
+  state.clocks[1].periods = 1;
+  speaker.update(state, 0);
+  assert.deepEqual(sounds, ['periods-1', 'periods-2', 'periods-1']);
+});
+
+test('initial overtime readings, inactive transitions, reconnects, and new games establish silent baselines', () => {
+  for (const blocked of ['pending', 'counting', 'confirmation', 'opponent-turn'] as const) {
+    const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
+    const state: SessionState = { ...new Session().snapshot(), phase: 'playing', gameId: 'room-1', color: 1, turn: 1, pending: false,
+      clocks: { 1: { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 } } };
+    speaker.update(state, 0);
+    if (blocked === 'opponent-turn') state.turn = 2;
+    else state[blocked] = true;
+    state.clocks[1].periods = 2;
+    speaker.update(state, 0);
+    state.turn = 1; state.pending = state.counting = state.confirmation = false;
+    speaker.update(state, 0);
+    assert.deepEqual(sounds, [], blocked);
+    state.phase = 'reconnecting'; speaker.update(state, 0);
+    state.phase = 'playing'; state.clocks[1].periods = 1; speaker.update(state, 0);
+    assert.deepEqual(sounds, [], 'restored last-period baseline');
+    state.gameId = 'room-2'; state.clocks[1].periods = 2; speaker.update(state, 0);
+    state.clocks[1].periods = 1; speaker.update(state, 0);
+    assert.deepEqual(sounds, ['periods-1'], 'new game starts a new baseline');
+  }
 });
 
 test('reconnecting in overtime, opponents, and clocks without byoyomi do not announce overtime entry', () => {
