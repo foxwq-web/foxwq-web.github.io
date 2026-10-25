@@ -18,6 +18,8 @@ button {
 button:enabled:hover { background: #484848; }
 button:enabled:active { background: #323232; }
 button:disabled { color: #999; border-color: #4c4c4c; }
+.icon { display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
+.icon-standalone { margin-right: 0; }
 input:not([type="checkbox"]):not([type="radio"]) {
   border-width: 1px;
   border-style: solid;

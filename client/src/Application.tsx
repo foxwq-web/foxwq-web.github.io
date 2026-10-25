@@ -1,4 +1,5 @@
-import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep } from "@fortawesome/free-solid-svg-icons";
+import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faXmark, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { Icon } from "./Icon";
 import { PlayerName } from "./PlayerInfo";
 import {
   useEffect,
@@ -341,6 +342,7 @@ export function App({ controller: c }: { controller: Controller }) {
       hidden={statusHidden}
       className={statusError ? "is-error" : ""}
     >
+      {!statusHidden && loginStep && statusError && <Icon icon={faTriangleExclamation} />}
       {!statusHidden && `${statusError ? "Error: " : ""}${statusError ? state.menuError || s.status : s.status}`}
     </span>
   );
@@ -403,9 +405,10 @@ export function App({ controller: c }: { controller: Controller }) {
                     <button
                       id="resign-cancel"
                       className="secondary"
+                      aria-label="Cancel resignation" title="Cancel resignation"
                       hidden={!resignConfirm}
                       onClick={() => c.emit({ type: "prompt.close" })}
-                    >X</button>
+                    ><Icon icon={faXmark} standalone /></button>
                   </div>
                   <button
                     id="estimate-score"
