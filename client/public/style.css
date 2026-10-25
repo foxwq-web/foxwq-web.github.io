@@ -133,9 +133,9 @@ body:has(#connection-layer:not([hidden])) { overflow: hidden; }
 #status.is-error,
 #error,
 #estimation-status { font-size: 14px; }
-.login-copy a { color: #aaa; text-decoration: underline; }
-.login-copy a:hover,
-.login-copy a:focus-visible { color: #fff; }
+a { color: #aaa; text-decoration: underline; }
+a:hover,
+a:focus-visible { color: #fff; }
 .login-intro { margin: -8px 0 16px; }
 #matchmaking-player { margin-bottom: 17.5px; }
 #login, #match { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
@@ -226,18 +226,19 @@ button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-o
 .player-info-games th { color: #aaa; text-align: left; }
 .player-info-games td, .player-info-games th { padding: 5px 0; text-align: left; border-bottom: 1px solid #444; white-space: nowrap; }
 .player-info-games tbody tr:last-child td { border-bottom: 0; padding-bottom: 0; }
-.player-info-games td:first-child, .player-info-games td:nth-child(3), .player-info-games td:last-child { width: 1%; }
+.player-info-games td:not(:nth-child(2)) { width: 1%; }
 .player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 16px; }
 .player-info-games th:last-child, .player-info-games td:last-child { text-align: right; }
+.player-info-games td:last-child a { margin-left: 8px; }
+.player-info-games a svg { width: 12px; height: 12px; vertical-align: middle; }
 .history-opponent { display: flex; align-items: center; gap: 5px; }
 .history-opponent .player-stone { width: 10px; height: 10px; flex: 0 0 10px; }
-.history-opponent-name { max-width: 145px; overflow: hidden; text-overflow: ellipsis; }
+.history-opponent-name { max-width: min(145px, calc(100vw - 260px)); overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 460px) {
   .player-info { padding: 10px 8px; }
 }
 @media (max-width: 359px) {
   .player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 12px; }
-  .history-opponent-name { max-width: 110px; }
 }
 @media (max-height: 500px) {
   .player-info { padding: 8px; gap: 8px; }

@@ -1,3 +1,4 @@
+import { faDownload } from '@fortawesome/free-solid-svg-icons';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Controller } from './controller';
@@ -89,6 +90,32 @@ export function PlayerName({ controller: c, uid, name, rank = '', id }: {
   </>;
 }
 function InfoContent({ info: h }: { info: PlayerInfo }) {
+  const [downloadError, setDownloadError] = useState('');
+  const [downloading, setDownloading] = useState('');
+  const gameUrl = (id: string) => `https://h5.foxwq.com/yehuDiamond/chessbook_local/YHWQFetchChess?chessid=${encodeURIComponent(id)}`;
+  const downloadGame = async (id: string) => {
+    if (downloading) return;
+    setDownloading(id);
+    setDownloadError('');
+    try {
+      const response = await fetch(gameUrl(id), { referrerPolicy: 'no-referrer' });
+      if (!response.ok) throw Error();
+      const record = await response.json();
+      if (record.result !== 0 || typeof record.chess !== 'string' || !record.chess.startsWith('(;')) throw Error();
+      const url = URL.createObjectURL(new Blob([record.chess], { type: 'application/x-go-sgf;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${id}.sgf`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setDownloadError('Could not download the game. Please try again.');
+    } finally {
+      setDownloading('');
+    }
+  };
   const progress: ReactNode[] = [];
   if (h.promotion) progress.push(<span key="up">{h.promotion} wins to promote{h.doublePromotion ? ` (${h.doublePromotion} for 2 ranks)` : ''}</span>);
   if (h.demotion) progress.push(<span key="down">{h.demotion} losses to demote{h.doubleDemotion ? ` (${h.doubleDemotion} for 2 ranks)` : ''}</span>);
@@ -106,6 +133,7 @@ function InfoContent({ info: h }: { info: PlayerInfo }) {
     <div className="player-info-games" aria-live="polite">
       {h.loading && !h.games.length && <p role="status">Loading recent games…</p>}
       {h.error && <p className="is-error">{h.error}</p>}
+      {downloadError && <p className="is-error" role="alert">{downloadError}</p>}
       {!h.loading && !h.error && !h.games.length && <p>No recent games available.</p>}
       {!!h.games.length && <table><thead><tr><th>Date</th><th>Opponent</th><th>Result</th><th>Moves</th></tr></thead>
         <tbody>{h.games.slice(0, 10).map(g => <tr key={g.id}>
@@ -113,7 +141,13 @@ function InfoContent({ info: h }: { info: PlayerInfo }) {
           <td><span className="history-opponent"><span className={`player-stone ${g.color === 'Black' ? 'white' : 'black'}`} role="img" aria-label={g.color === 'Black' ? 'White' : 'Black'} />
             <span className="history-opponent-name" title={g.opponent}>{g.opponent}{g.opponentRank ? ` (${g.opponentRank})` : ''}</span></span></td>
           <td className={g.outcome}>{g.result}</td>
-          <td>{g.moves ?? "—"}</td>
+          <td>{g.moves ?? "—"}<a href={gameUrl(g.id)} download={`${g.id}.sgf`} aria-disabled={!!downloading}
+            aria-label={`Download SGF for game against ${g.opponent}`} onClick={event => {
+              event.preventDefault();
+              void downloadGame(g.id);
+            }}><svg viewBox={`0 0 ${faDownload.icon[0]} ${faDownload.icon[1]}`} aria-hidden="true" focusable="false">
+              <path fill="currentColor" d={Array.isArray(faDownload.icon[4]) ? faDownload.icon[4].join(' ') : faDownload.icon[4]} />
+            </svg></a></td>
         </tr>)}</tbody></table>}
     </div>
   </>;

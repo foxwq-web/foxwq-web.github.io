@@ -23,7 +23,12 @@ try {
       getComputedStyle(element, '::before').borderRadius), '50%');
     assert.equal(await card.evaluate(element => getComputedStyle(element).borderTopWidth), '1px');
     assert.equal(await card.locator('th:last-child').evaluate(element => getComputedStyle(element).textAlign), 'right');
-    assert.equal(await card.locator('button, a').count(), 0);
+    assert.deepEqual(await card.locator('th').allTextContents(), ['Date', 'Opponent', 'Result', 'Moves']);
+    assert.equal(await card.locator('th:nth-child(4)').evaluate(element => getComputedStyle(element).textAlign), 'right');
+    assert.equal(await card.locator('tbody tr:first-child td:nth-child(4)').evaluate(element => getComputedStyle(element).textAlign), 'right');
+    assert.equal(await card.locator('tbody tr:first-child td:last-child').evaluate(element => getComputedStyle(element).textAlign), 'right');
+    assert.equal(await card.locator('a').count(), 10);
+    assert.equal(await card.locator('tbody tr:first-child td:last-child a').count(), 1);
     await card.hover();
     await page.waitForTimeout(250);
     assert.equal(await card.count(), 1);
@@ -38,6 +43,24 @@ try {
     assert.equal(await name.evaluate(element => element === document.activeElement), true);
     // Escape is consumed by the card and does not open/close the room menu.
     assert.equal(await page.locator('#connection-layer').isVisible(), screen === 'matchmaking');
+    await name.click();
+    await card.waitFor();
+    const sgf = '(;GM[1]FF[4]SZ[19];B[dd])';
+    await page.route('https://h5.foxwq.com/yehuDiamond/chessbook_local/YHWQFetchChess?*', route =>
+      route.fulfill({ json: { result: 0, chess: sgf } }));
+    const link = card.locator('a').first();
+    assert.equal(await link.locator('svg').count(), 1);
+    assert.match(await link.getAttribute('aria-label') ?? '', /^Download SGF/);
+    const downloadPromise = page.waitForEvent('download');
+    await link.click();
+    const download = await downloadPromise;
+    assert.equal(download.suggestedFilename(), '1791872071030044736.sgf');
+    const stream = await download.createReadStream();
+    let contents = '';
+    for await (const chunk of stream) contents += chunk.toString();
+    assert.equal(contents, sgf);
+    await page.keyboard.press('Escape');
+    await card.waitFor({ state: 'detached' });
   }
   for (const [width, height] of [[320, 640], [360, 640], [640, 360]]) {
     await page.setViewportSize({ width, height });
