@@ -1,5 +1,6 @@
 import React, { type PointerEvent, type MouseEvent } from "react";
 import { Board } from "./board.ts";
+import { clockReading } from "./clock.ts";
 import { blocked, boardAvailable, type UIState } from "./state";
 const extent = 840,
   margin = 48,
@@ -109,6 +110,20 @@ export function BoardView({
     last && last[1] !== null && last[2] !== null
       ? location(last[2] * size + last[1])
       : null;
+  const clock = s.clocks[s.turn];
+  const reading = clock && clockReading(
+    clock,
+    state.frozen ? 0 : Math.max(0, state.now - clock.at),
+    60,
+    s.turn === s.color,
+  );
+  const countdown =
+    s.phase === "playing" && !state.review && !s.pending && !s.counting &&
+    !s.confirmation && !(s.turn !== s.color && s.opponentDisconnectDeadline != null) &&
+    reading?.overtime && reading.periods > 0 &&
+    reading.seconds >= 1 && reading.seconds <= 9
+      ? reading.seconds
+      : null;
   return (
     <svg
       id="board"
@@ -211,12 +226,26 @@ export function BoardView({
         )}
       </g>
       <g pointerEvents="none">
-        {marker && (
+        {marker && (countdown !== null ? (
+          <text
+            className="byoyomi-countdown"
+            x={marker.cx}
+            y={marker.cy}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontFamily="Arial, sans-serif"
+            fontSize={24}
+            fontWeight="bold"
+            fill={last?.[0] === 1 ? "#fff" : "#000"}
+          >
+            {countdown}
+          </text>
+        ) : (
           <polygon
             points={`${marker.cx},${marker.cy} ${marker.cx},${marker.cy + radius} ${marker.cx + radius},${marker.cy}`}
             fill={last?.[0] === 1 ? "#fff" : "#000"}
           />
-        )}
+        ))}
       </g>
       <g
         className="estimated-territory"

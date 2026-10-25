@@ -18,6 +18,13 @@ for (const screen of DEV_SCREENS) {
     if (screen.id === 'score-estimation') {
       await expect(page.locator('#estimation-lead')).toBeVisible();
     }
+    if (screen.id === 'byoyomi') {
+      await expect(page.locator('#board .byoyomi-countdown')).toHaveText('9');
+      await expect(page.locator('#board .byoyomi-countdown')).toHaveCSS('font-size', '24px');
+      await expect(page.locator('#board .byoyomi-countdown')).toHaveCSS('font-weight', '700');
+      await expect(page.locator('#board .byoyomi-countdown')).toHaveAttribute('fill', '#000');
+      await expect(page.locator('#board polygon')).toHaveCount(0);
+    }
     await page.evaluate(() => document.fonts.ready);
     for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {
       await expect(page.locator(`#${id}`)).toBeVisible();

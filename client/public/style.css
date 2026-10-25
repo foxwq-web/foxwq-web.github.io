@@ -58,6 +58,11 @@ main {
   cursor: default;
 }
 #board .board-surface { filter: drop-shadow(0 8px 12px #0005); }
+#board .byoyomi-countdown, #board .variation-number {
+  -webkit-user-select: none;
+  user-select: none;
+}
+#board .byoyomi-countdown { font-weight: bold; }
 aside {
   min-width: 0;
   display: flex;

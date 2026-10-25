@@ -91,6 +91,56 @@ test("remembered credentials are replaced only after Fox accepts the submitted l
     assert.equal(rememberedCredentials(), null, "opting out during login must keep storage empty");
   } finally { controller.dispose(); }
 });
+test("byoyomi replaces the last-move marker with contrasting seconds and restores it outside countdown", async () => {
+  const session = new Session();
+  try {
+    await applyDevScreen(session, "byoyomi");
+    const state = initial(session);
+    state.frozen = true;
+    const render = () => renderToStaticMarkup(createElement(BoardView, {
+      state, hover() {}, play() {},
+    }));
+    const digit = () => render().match(/<text class="byoyomi-countdown"[^>]*>(\d)<\/text>/);
+    assert.equal(digit()?.[1], "9", "offline preview shows countdown despite frozen clocks");
+    assert.match(digit()![0], /fill="#000"/, "black digit on the last white stone");
+    assert.doesNotMatch(render(), /<polygon/);
+
+    const s = state.session;
+    state.frozen = false;
+    const clock = s.clocks[s.turn];
+    for (let seconds = 9; seconds >= 1; seconds--) {
+      state.now = clock.at + 9 - seconds;
+      assert.equal(digit()?.[1], String(seconds));
+    }
+    state.now = clock.at + 9;
+    assert.equal(digit(), null, "zero has no spoken countdown");
+    assert.match(render(), /<polygon/);
+    state.now = clock.at;
+    for (const patch of [
+      { pending: true }, { counting: true }, { confirmation: true },
+      { phase: "finished" }, { phase: "reconnecting" },
+    ]) {
+      Object.assign(s, patch);
+      assert.equal(digit(), null);
+      Object.assign(s, { pending: false, counting: false, confirmation: false, phase: "playing" });
+    }
+    clock.main = 9;
+    assert.equal(digit(), null, "main time does not show a byoyomi countdown");
+    clock.main = 0;
+    clock.byoyomi = 10;
+    assert.equal(digit(), null);
+    clock.byoyomi = 9;
+    clock.periods = 0;
+    assert.equal(digit(), null);
+    clock.periods = 1;
+    s.last_move = [1, 14, 9];
+    s.stones[9 * 19 + 14] = 1;
+    assert.match(digit()![0], /fill="#fff"/, "white digit on a black stone");
+    s.last_move = [1, null, null];
+    assert.equal(digit(), null, "a pass has no stone to label");
+  } finally { session.close(); }
+});
+
 test("opponent stone appears while the rendered estimate markers stay unchanged", async () => {
   const s = new Session();
   try {
