@@ -1,0 +1,157 @@
+{
+  "title": "foxwq-web",
+  "controls": [
+    {
+      "tag": "button",
+      "id": "black-player-name",
+      "text": "a155ff01 (3d)",
+      "disabled": false,
+      "expanded": "false"
+    },
+    {
+      "tag": "button",
+      "id": "white-player-name",
+      "text": "products (3d)",
+      "disabled": false,
+      "expanded": "false"
+    },
+    {
+      "tag": "button",
+      "id": "pass",
+      "text": "Pass",
+      "disabled": false
+    },
+    {
+      "tag": "button",
+      "id": "request-score",
+      "text": "Request Counting",
+      "disabled": false
+    },
+    {
+      "tag": "button",
+      "id": "resign",
+      "text": "Resign",
+      "disabled": false
+    },
+    {
+      "tag": "button",
+      "id": "estimate-score",
+      "text": "Estimate Score",
+      "disabled": false
+    }
+  ],
+  "board": {
+    "visible": true,
+    "stones": [
+      {
+        "color": "white",
+        "x": "254.66666666666669",
+        "y": "130.66666666666669"
+      },
+      {
+        "color": "black",
+        "x": "585.3333333333334",
+        "y": "130.66666666666669"
+      },
+      {
+        "color": "white",
+        "x": "172",
+        "y": "172"
+      },
+      {
+        "color": "black",
+        "x": "668",
+        "y": "172"
+      },
+      {
+        "color": "black",
+        "x": "130.66666666666669",
+        "y": "254.66666666666669"
+      },
+      {
+        "color": "black",
+        "x": "172",
+        "y": "420"
+      },
+      {
+        "color": "white",
+        "x": "130.66666666666669",
+        "y": "585.3333333333334"
+      },
+      {
+        "color": "black",
+        "x": "172",
+        "y": "585.3333333333334"
+      },
+      {
+        "color": "white",
+        "x": "709.3333333333334",
+        "y": "585.3333333333334"
+      },
+      {
+        "color": "black",
+        "x": "172",
+        "y": "626.6666666666667"
+      },
+      {
+        "color": "white",
+        "x": "130.66666666666669",
+        "y": "668"
+      },
+      {
+        "color": "black",
+        "x": "172",
+        "y": "668"
+      },
+      {
+        "color": "white",
+        "x": "668",
+        "y": "668"
+      },
+      {
+        "color": "white",
+        "x": "130.66666666666669",
+        "y": "709.3333333333334"
+      },
+      {
+        "color": "black",
+        "x": "172",
+        "y": "709.3333333333334"
+      },
+      {
+        "color": "black",
+        "x": "213.33333333333334",
+        "y": "709.3333333333334"
+      },
+      {
+        "color": "white",
+        "x": "254.66666666666669",
+        "y": "709.3333333333334"
+      },
+      {
+        "color": "black",
+        "x": "337.33333333333337",
+        "y": "709.3333333333334"
+      },
+      {
+        "color": "white",
+        "x": "130.66666666666669",
+        "y": "750.6666666666667"
+      },
+      {
+        "color": "white",
+        "x": "172",
+        "y": "750.6666666666667"
+      },
+      {
+        "color": "black",
+        "x": "213.33333333333334",
+        "y": "750.6666666666667"
+      }
+    ],
+    "annotations": [
+      "<polygon points=\"172,585.3333333333334 172,606 192.66666666666666,585.3333333333334\" fill=\"#fff\"></polygon>"
+    ]
+  },
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"a155ff01 (3d)\":\n      - paragraph:\n        - button \"a155ff01 (3d)\"\n      - paragraph: \"Captures: 0\"\n      - term: Main time\n      - definition:\n        - time: 17:02\n    - region \"products (3d)\":\n      - paragraph:\n        - button \"products (3d)\"\n      - paragraph: \"Captures: 0 + 7.5\"\n      - term: Main time\n      - definition:\n        - time: 18:49\n    - button \"Pass\"\n    - button \"Request Counting\"\n    - button \"Resign\"\n    - button \"Estimate Score\""
+}

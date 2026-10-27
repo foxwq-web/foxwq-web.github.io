@@ -1,0 +1,76 @@
+[
+  {
+    "source": "fox-network-log-20261019T2053.json",
+    "sourceSha256": "94c37cf38aa799565889388e8faae246fb04446c0a72b3abadb97a17df20c2e9",
+    "sourceEntries": 13237,
+    "discardedEntries": 13169,
+    "fixture": "fox-network-log-20261019T2053.network.json",
+    "normalizedPackets": 77,
+    "fixturePackets": 79,
+    "clientPacketCountChanges": {
+      "20043/1001": 2
+    },
+    "serverEntriesSha256": "c312013a67978649d8917cf99d813179137b781070508b122b269101a52bc8c2"
+  },
+  {
+    "source": "fox-network-log-20261020T0347.json",
+    "sourceSha256": "dcfd59e7067957aaf02ebc126939f8e6afda174d752a43343a5b83e3626800c7",
+    "sourceEntries": 15852,
+    "discardedEntries": 15478,
+    "fixture": "fox-network-log-20261020T0347.network.json",
+    "normalizedPackets": 408,
+    "fixturePackets": 410,
+    "clientPacketCountChanges": {
+      "20043/1001": 2
+    },
+    "serverEntriesSha256": "ecb8a015c6f9cdd068fb379bdba03f30f0e18ce31f93a0047df64fc246ce19c3"
+  },
+  {
+    "source": "fox-network-log-20261020T0404.json",
+    "sourceSha256": "2d9ffce3df85ce8f48d8b2f980c82f94205e5c9754ab729d957c8a182ee654ee",
+    "sourceEntries": 17294,
+    "discardedEntries": 16709,
+    "fixture": "fox-network-log-20261020T0404.network.json",
+    "normalizedPackets": 675,
+    "fixturePackets": 679,
+    "clientPacketCountChanges": {
+      "20043/1001": 4
+    },
+    "serverEntriesSha256": "a5ea545fde5ada2f1276c7b93f3ffdbb2f2a0ba2300809d2c69977c174547e2a"
+  },
+  {
+    "source": "fox-network-log-20261020T0851.json",
+    "sourceSha256": "c8cae419980e286afe742873c60edcc4bdcbfef232910641ba9babc6eafeff53",
+    "sourceEntries": 17266,
+    "discardedEntries": 17238,
+    "fixture": "fox-network-log-20261020T0851.network.json",
+    "normalizedPackets": 32,
+    "fixturePackets": 32,
+    "clientPacketCountChanges": {},
+    "serverEntriesSha256": "912bb540224a9ce37636281a29e686a1b4bb50d2ff22d10f27ac16d1919a36b5"
+  },
+  {
+    "source": "fox-network-log-20261021T2028.json",
+    "sourceSha256": "045eec92a3b782c2d0f5c823c1bd3193caadedf5155a4a0f08433747b4e3a3e5",
+    "sourceEntries": 11003,
+    "discardedEntries": 10665,
+    "fixture": "fox-network-log-20261021T2028.network.json",
+    "normalizedPackets": 371,
+    "fixturePackets": 378,
+    "clientPacketCountChanges": {
+      "20043/1001": 7
+    },
+    "serverEntriesSha256": "6c6f0bb0aecc7448feca1163b962a18860ecc690ea1f657401e8d1f6781d588a"
+  },
+  {
+    "source": "fox-network-log-20261024T0705.json",
+    "sourceSha256": "7aae84d4686527a6ed747667f8645632969ed248a0317397539f20886bfbe303",
+    "sourceEntries": 17505,
+    "discardedEntries": 13626,
+    "fixture": "fox-network-log-20261024T0705.network.json",
+    "normalizedPackets": 4469,
+    "fixturePackets": 4469,
+    "clientPacketCountChanges": {},
+    "serverEntriesSha256": "4dcda0635e79b5a2a41175ea64a7e35b0e9e7a140340d6426b433d9bbe392a7f"
+  }
+]

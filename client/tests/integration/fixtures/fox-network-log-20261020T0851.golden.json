@@ -1,0 +1,72 @@
+{
+  "title": "foxwq-web",
+  "controls": [
+    {
+      "tag": "button",
+      "id": "pass",
+      "text": "Pass",
+      "disabled": true
+    },
+    {
+      "tag": "button",
+      "id": "request-score",
+      "text": "Request Counting",
+      "disabled": true
+    },
+    {
+      "tag": "button",
+      "id": "resign",
+      "text": "Resign",
+      "disabled": true
+    },
+    {
+      "tag": "button",
+      "id": "estimate-score",
+      "text": "Estimate Score",
+      "disabled": true
+    },
+    {
+      "tag": "button",
+      "id": "",
+      "text": "Replay player",
+      "disabled": false,
+      "expanded": "false"
+    },
+    {
+      "tag": "input",
+      "id": "time-control-108",
+      "text": "",
+      "disabled": false,
+      "value": "108",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "id": "time-control-100",
+      "text": "",
+      "disabled": false,
+      "value": "100",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "id": "time-control-101",
+      "text": "",
+      "disabled": false,
+      "value": "101",
+      "checked": true
+    },
+    {
+      "tag": "button",
+      "id": "match",
+      "text": "Play",
+      "disabled": false
+    }
+  ],
+  "board": {
+    "visible": true,
+    "stones": [],
+    "annotations": []
+  },
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"White\":\n      - paragraph: White\n      - paragraph: \"Captures: 0 + 7.5\"\n      - term: Main time\n      - definition: —\n    - region \"Black\":\n      - paragraph: Black\n      - paragraph: \"Captures: 0\"\n      - term: Main time\n      - definition: —\n    - button \"Pass\" [disabled]\n    - button \"Request Counting\" [disabled]\n    - button \"Resign\" [disabled]\n    - button \"Estimate Score\" [disabled]\n- heading \"Matchmaking\" [level=2]\n- paragraph:\n  - text: Playing as\n  - button \"Replay player\"\n  - text: .\n- region \"Time control\":\n  - radiogroup \"Time control\":\n    - radio \"19,1m20s(8070 players)\"\n    - text: 19,1m20s(8070 players)\n    - radio \"19,5m30s(6543 players)\"\n    - text: 19,5m30s(6543 players)\n    - radio \"19,20m60s(5350 players)\" [checked]\n    - text: 19,20m60s(5350 players)\n- button \"Play\""
+}

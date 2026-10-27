@@ -32,9 +32,17 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` runs the unit, browser, and visual suites in order, stopping on the
-first failure. Docker must be running for the visual suite. Run an individual
-suite with `npm run test:unit`, `npm run test:browser`, or `npm run test:visual`.
+`npm test` runs the unit, browser, integration harness, network replay, and visual
+suites in order, stopping on the first failure. Docker must be running for the
+visual suite. Run an individual suite with `npm run test:unit`,
+`npm run test:browser`, `npm run test:integration`, or `npm run test:visual`.
+
+[Network replay integration tests](tests/integration/README.md) exercise the
+production UI offline using recorded Fox traffic. Import a downloaded log with
+`npm run test:integration -- --import /path/to/log.json --name my-game` to
+truncate it to the last login and record its first UI golden. Later runs compare
+the UI and emitted wire bytes. Use `npm run test:integration:update` to accept UI
+changes, adding `-- --update-messages` to regenerate outgoing packets as well.
 
 The static app is built into `client/dist/`. Serve that directory with a static host; `npm run preview` previews the build locally. The Worker is deployed separately.
 
@@ -45,11 +53,23 @@ npm run test:browser:install
 npm run test:browser
 ```
 
+The setup command installs Playwright's Chromium, which is the only browser
+required by the default suites. For optional cross-browser checks, install the
+additional engines with `npx playwright install --with-deps firefox webkit`.
+
 Run `npm run test:visual` with Docker running to compare every dev screen with
 the PNGs in `client/tests/visual/baselines/`. The test starts its own server in
 the pinned Playwright Linux/amd64 image, matching CI's browser and fonts.
 Docker builds and caches a test image with the Node and npm versions from
 `package.json`; the first run downloads the runtime and installs the pinned npm.
+Later runs reuse that image without invoking the builder. Linux npm dependencies
+are kept in a named Docker volume and installed only on the first run for a given
+`package.json`, `package-lock.json`, and test image. Dependency or runtime changes
+automatically select a fresh volume; host `node_modules` stays separate. A shared
+npm download cache also speeds up installs after dependency changes. Interrupted
+installs are retried on the next run. Three Playwright workers run the desktop
+and mobile screenshot groups alongside the shorter interaction checks; pass
+`--workers 1` to serialize them when debugging.
 Every dev screen is captured at desktop (1280 × 900) and mobile (390 × 844)
 sizes, with touch and mobile emulation enabled for mobile. Baselines are grouped
 under `desktop/` and `mobile/`. Both use UTC and a fixed date. The score preview

@@ -6,7 +6,8 @@ export default defineConfig({
   outputDir: './tests/visual/results',
   snapshotPathTemplate: '{testDir}/baselines/{projectName}/{arg}{ext}',
   updateSnapshots: 'none',
-  workers: 1,
+  // Run both screenshot groups alongside the shorter interaction checks.
+  workers: 3,
   retries: 0,
   forbidOnly: true,
   timeout: 30_000,

@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["vite.config.ts", "tests/browser-check.ts", "../score-estimator/tests/browser-check.ts"]
+  "include": ["vite.config.ts", "tests/browser-check.ts", "tests/integration/**/*.ts", "../score-estimator/tests/browser-check.ts"]
 }
