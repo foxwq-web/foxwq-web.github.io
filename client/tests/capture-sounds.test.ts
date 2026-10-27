@@ -84,6 +84,7 @@ test('rejected or unsent capturing moves do not add playback or leave captures b
 test('capture effects overlap each other and never replace or stop voice announcements', () => {
   const started: (AudioBuffer | null)[] = [], stopped: (AudioBuffer | null)[] = [];
   const audio = Object.assign(Object.create(FoxSounds.prototype) as FoxSounds, {
+    active: true,
     context: { state: 'running', createBufferSource() {
       return { buffer: null as AudioBuffer | null, connect(output: unknown) { assert.equal(output, audio.output); },
         start() { started.push(this.buffer); }, stop() { stopped.push(this.buffer); } };
@@ -100,6 +101,7 @@ test('capture effects overlap each other and never replace or stop voice announc
 
 function suspendedSounds() {
   const audio = new FoxSounds(), started: (AudioBuffer | null)[] = [];
+  audio.active = true;
   let finishResume!: () => void, failResume!: (reason: Error) => void, resumeCalls = 0;
   const resumed = new Promise<void>((resolve, reject) => { finishResume = resolve; failResume = reject; });
   audio.output = { gain: { value: 0 } } as GainNode;
@@ -120,6 +122,78 @@ function suspendedSounds() {
 }
 
 const flushAudio = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('audio hardware is opened only for a game and closed with all pending playback on exit', async t => {
+  const contexts: FakeContext[] = [], started: FakeContext[] = [];
+  class FakeContext {
+    state = 'running';
+    destination = {};
+    closes = 0;
+    constructor() { contexts.push(this); }
+    createGain() { return { connect() {} }; }
+    async decodeAudioData() { return {} as AudioBuffer; }
+    async close() { this.closes++; this.state = 'closed'; }
+    createBufferSource() {
+      const context = this;
+      return { connect() {}, start() { started.push(context); }, stop() {} };
+    }
+  }
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
+  Object.defineProperty(globalThis, 'AudioContext', { configurable: true, value: FakeContext });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'AudioContext', original);
+    else Reflect.deleteProperty(globalThis, 'AudioContext');
+  });
+  let downloads = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    downloads++;
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
+  });
+  const audio = new FoxSounds();
+  t.after(() => audio.setActive(false));
+  audio.preload(); audio.unlock(); audio.play('stone');
+  await flushAudio();
+  assert.equal(contexts.length, 0, 'preloading and gestures before play must not open hardware');
+
+  audio.setActive(true);
+  audio.play('start-play');
+  audio.play('count-9'); audio.stopCountdown();
+  await audio.loading; await flushAudio();
+  assert.equal(contexts.length, 1);
+  assert.deepEqual(started, [contexts[0]], 'the initial sound waits for decoding');
+  audio.setActive(false);
+  assert.equal(contexts[0].closes, 1);
+  assert.equal(audio.context, null);
+  audio.unlock(); audio.play('stone');
+  assert.equal(contexts.length, 1, 'postgame gestures must not reopen hardware');
+  assert.equal(started.length, 1);
+
+  audio.setActive(true);
+  audio.play('stone');
+  audio.setActive(false);
+  await flushAudio();
+  assert.equal(contexts[1].closes, 1);
+  assert.equal(started.length, 1, 'ending a game cancels sounds waiting for decoding');
+  assert.equal(audio.buffers.size, 0, 'old decoding must not populate a later game');
+
+  audio.setActive(true);
+  await audio.loading;
+  audio.play('stone');
+  assert.deepEqual(started, [contexts[0], contexts[2]]);
+  assert.equal(downloads, audio.names.length, 'later games reuse downloaded sound files');
+});
+
+test('ending a game cancels sounds waiting for an interrupted audio context', async () => {
+  const s = suspendedSounds();
+  let closes = 0;
+  Object.assign(s.context, { async close() { closes++; } });
+  s.audio.play('stone'); s.audio.play('count-9');
+  s.audio.setActive(false);
+  s.finish(); await flushAudio();
+  assert.equal(closes, 1);
+  assert.deepEqual(s.started, []);
+  assert.equal(s.audio.context, null);
+});
 
 test('touch completion and clicks unlock audio and are removed on cleanup', () => {
   const target = new EventTarget();

@@ -57,6 +57,8 @@ export class Controller {
       proxyToken: PROXY_TOKEN,
       preferredTimeControl: rememberedTimeControl(),
       onSound: (name: string) => {
+        // Session sounds can arrive before its batched UI update (game start).
+        this.sounds.setActive(this.session.phase === "playing" && !this.session.gameOver);
         this.sounds.play(name);
       },
       onChange: (state) => this.sync(state),
@@ -102,6 +104,7 @@ export class Controller {
       },
     });
     this.preloadGameplayAssets(session);
+    this.audio();
     this.scheduleClock();
   }
   private preloadGameplayAssets(session: SessionState) {
@@ -144,6 +147,7 @@ export class Controller {
   }
   audio() {
     const s = this.state.session;
+    this.sounds.setActive(s.phase === "playing" && !s.game_over);
     this.announcements.update(s, this.state.now);
     if (s.phase !== "playing") this.sounds.stopVoice();
     else if (s.turn !== s.color || s.pending) this.sounds.stopCountdown();
@@ -320,5 +324,6 @@ export class Controller {
     this.session.close();
     void this.session.networkLog.flush();
     this.sounds.stopVoice();
+    this.sounds.setActive(false);
   }
 }

@@ -145,6 +145,35 @@ try {
   };
   await call('Runtime.enable');
   await call('Network.enable');
+  const audioLifecycle = await page.evaluate(async () => {
+    const { FoxSounds } = await import(`${'/src'}/sound.ts`) as typeof import('../src/sound.ts');
+    const sounds = new FoxSounds();
+    sounds.preload(); sounds.unlock(); sounds.play('stone');
+    const beforeGame = sounds.context === null;
+    sounds.setActive(true);
+    await sounds.loading;
+    const first = sounds.context!;
+    const decoded = sounds.buffers.size === sounds.names.length;
+    sounds.play('start-play');
+    sounds.setActive(false);
+    // close() releases the device asynchronously, after stopping playback.
+    await new Promise<void>(resolve => first.addEventListener('statechange', () => {
+      if (first.state === 'closed') resolve();
+    }));
+    sounds.unlock(); sounds.play('stone');
+    const afterGame = sounds.context === null && first.state === 'closed';
+    sounds.setActive(true);
+    await sounds.loading;
+    const nextGame = sounds.context !== first && sounds.buffers.size === sounds.names.length;
+    const second = sounds.context!;
+    sounds.setActive(false);
+    await new Promise<void>(resolve => second.addEventListener('statechange', () => {
+      if (second.state === 'closed') resolve();
+    }));
+    return { beforeGame, decoded, afterGame, nextGame };
+  });
+  assert.deepEqual(audioLifecycle, { beforeGame: true, decoded: true, afterGame: true, nextGame: true });
+  console.log('Browser audio lifecycle passed: no pregame context, decoded game sounds, closed postgame context, and a fresh next game');
   await wait("typeof window.downloadNetworkLog === 'function'");
   await js('document.activeElement?.blur()');
   await page.keyboard.press('f');

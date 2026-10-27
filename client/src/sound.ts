@@ -15,7 +15,8 @@ export class FoxSounds {
   names: string[];
   voice: AudioBufferSourceNode | null = null;
   voiceName: string | null = null;
-  idleAnalyser: AnalyserNode | null = null;
+  active = false;
+  private downloads: Promise<([string, ArrayBuffer] | null)[]> | null = null;
   private resuming: Promise<void> | null = null;
   private voiceRevision = 0;
   private pendingVoiceName: string | null = null;
@@ -35,9 +36,27 @@ export class FoxSounds {
       "start-play",
       "byoyomi-start",
     ];
-    this.prepare();
+  }
+  setActive(active: boolean) {
+    if (this.active === active) return;
+    this.active = active;
+    if (active) {
+      this.prepare();
+      this.preload();
+      return;
+    }
+    this.stopVoice();
+    const context = this.context;
+    this.context = null;
+    this.output = null;
+    this.loading = null;
+    this.resuming = null;
+    this.buffers.clear();
+    // Closing the context also stops overlapping effects and releases the device.
+    if (context && context.state !== "closed") void context.close().catch(() => {});
   }
   prepare() {
+    if (!this.active) return;
     const Context =
       globalThis.AudioContext ||
       (
@@ -51,37 +70,35 @@ export class FoxSounds {
       this.output = this.context.createGain();
       this.output.connect(this.context.destination);
     }
-    if (!this.idleAnalyser) {
-
-
-
-
-      this.idleAnalyser = this.context.createAnalyser();
-      this.idleAnalyser.fftSize = 32;
-      this.output.connect(this.idleAnalyser);
-    }
   }
   preload() {
-    this.prepare();
-    if (!this.context) return;
-    this.loading ??= Promise.all(
+    // Fetch before a game without opening an audio device. Decode only once
+    // an active game has created its context; keep the bytes for later games.
+    this.downloads ??= Promise.all(
       this.names.map(async (name) => {
         try {
           const response = await fetch(
-            `${import.meta.env.BASE_URL}sounds/${name}.mp3`,
+            `${import.meta.env?.BASE_URL ?? "/"}sounds/${name}.mp3`,
           );
-          if (response.ok)
-            this.buffers.set(
-              name,
-              await this.context!.decodeAudioData(await response.arrayBuffer()),
-            );
+          if (response.ok) return [name, await response.arrayBuffer()] as [string, ArrayBuffer];
         } catch {
-
         }
+        return null;
       }),
     );
+    const context = this.context;
+    if (!context) return;
+    this.loading ??= this.downloads.then(files => Promise.all(files.map(async file => {
+      if (!file || this.context !== context) return;
+      try {
+        const [name, bytes] = file;
+        const buffer = await context.decodeAudioData(bytes.slice(0));
+        if (this.context === context) this.buffers.set(name, buffer);
+      } catch { /* A closed context or unavailable sound must not interrupt play. */ }
+    })));
   }
   unlock() {
+    if (!this.active) return;
     this.prepare();
     // iOS otherwise treats Web Audio as ambient/ringer audio, which is silent
     // with the phone's Silent switch enabled. Request media playback on a tap.
@@ -108,9 +125,7 @@ export class FoxSounds {
     return pending;
   }
   play(name: string) {
-    if (!this.context || this.context.state === "closed") return;
-    const buffer = this.buffers.get(name);
-    if (!buffer) return;
+    if (!this.active || !this.context || this.context.state === "closed") return;
     const placement = name === "stone" || name.startsWith("stone-capture-");
     const voiceName = this.pendingVoiceName ?? this.voiceName;
     if (
@@ -119,6 +134,21 @@ export class FoxSounds {
       !voiceName?.startsWith("count-")
     )
       return;
+    const buffer = this.buffers.get(name);
+    if (!buffer) {
+      if (!this.loading) return;
+      const context = this.context, requestedAt = performance.now();
+      const revision = placement ? null : ++this.voiceRevision;
+      if (!placement) this.pendingVoiceName = name;
+      void this.loading.then(() => {
+        if (revision !== null && revision !== this.voiceRevision) return;
+        if (!placement) this.pendingVoiceName = null;
+        if (this.active && this.context === context && this.buffers.has(name) &&
+            performance.now() - requestedAt <= 250)
+          this.play(name);
+      });
+      return;
+    }
     if (this.context.state !== "running") {
       const context = this.context, requestedAt = performance.now();
       const revision = placement ? null : ++this.voiceRevision;

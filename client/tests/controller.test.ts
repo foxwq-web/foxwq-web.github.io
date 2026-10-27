@@ -441,6 +441,7 @@ test("gameplay assets start once after login, including a directly restored game
     const controller = new Controller();
     try {
       let preloads = 0;
+      controller.sounds.setActive = () => {};
       controller.sounds.preload = () => { preloads++; };
       controller.emit({ type: "initialize", state: initial(controller.session) });
       for (const phase of ["connecting", "authenticating", "bootstrap", "gateway", "resuming", "error"]) {
@@ -457,6 +458,44 @@ test("gameplay assets start once after login, including a directly restored game
       }
     } finally { controller.dispose(); }
   }
+});
+
+test('audio is active only during an ongoing game, including starts before UI updates', () => {
+  const controller = new Controller();
+  controller.sounds.preload = () => {};
+  controller.emit({ type: 'initialize', state: initial(controller.session) });
+  const update = (phase: string, gameOver = false) => {
+    controller.session.phase = phase;
+    controller.session.gameOver = gameOver;
+    controller.session.changed();
+    controller.session.flushChanges();
+  };
+  try {
+    for (const phase of ['disconnected', 'connecting', 'authenticating', 'ready', 'matching', 'joining']) {
+      update(phase);
+      controller.sounds.unlock();
+      assert.equal(controller.sounds.active, false, phase);
+      assert.equal(controller.sounds.context, null, phase);
+    }
+    controller.session.phase = 'playing';
+    controller.session.onSound('start-play');
+    assert.equal(controller.sounds.active, true, 'start sound precedes the batched UI update');
+    update('playing');
+    assert.equal(controller.sounds.active, true);
+    update('finished', true);
+    assert.equal(controller.sounds.active, false);
+    controller.review('previous');
+    assert.equal(controller.sounds.active, false, 'postgame review stays silent');
+    update('playing', true);
+    assert.equal(controller.sounds.active, false, 'game-over flag also disables audio');
+    update('playing');
+    assert.equal(controller.sounds.active, true, 'a subsequent game enables sounds again');
+    update('reconnecting');
+    assert.equal(controller.sounds.active, false);
+    update('playing');
+    assert.equal(controller.sounds.active, true);
+  } finally { controller.dispose(); }
+  assert.equal(controller.sounds.active, false, 'closing the app releases audio');
 });
 
 test('controller persists the native rollover anchor before rendering and announcing it', context => {
