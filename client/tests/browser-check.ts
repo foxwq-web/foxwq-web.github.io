@@ -15,7 +15,7 @@ import { DEV_SCREENS } from '../src/dev-screens.ts';
 if (!process.env.FOX_BROWSER_URL) {
   const configFile = fileURLToPath(new URL('../vite.config.ts', import.meta.url));
   const args = process.argv.slice(2);
-  const production = args.includes('--score-production') || args.includes('--production-shortcuts');
+  const production = args.includes('--score-production') || args.includes('--production-shortcuts') || args.includes('--history');
   async function availablePort() {
     const socket = createPortServer();
     await new Promise<void>((resolve, reject) => {
@@ -69,6 +69,11 @@ if (!process.env.FOX_BROWSER_URL) {
   process.exit(process.exitCode ?? 0);
 }
 
+if (process.argv.includes('--history')) {
+  await import('./history-browser-check.ts');
+  process.exit(0);
+}
+
 if (process.argv.includes('--network-log')) {
   await import('./network-log-browser-check.ts');
   process.exit(0);
@@ -89,6 +94,7 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
   process.exit(0);
 }
 await import('./network-log-browser-check.ts');
+await import('./history-browser-check.ts');
 if (!process.argv.includes('--production-shortcuts')) await import('./replay-captures-browser-check.ts');
 if (!process.argv.includes('--production-shortcuts')) await import('./clock-sizing-browser-check.ts');
 

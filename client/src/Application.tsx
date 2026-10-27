@@ -329,7 +329,13 @@ export function App({ controller: c }: { controller: Controller }) {
     document.addEventListener("keydown", key, true);
     document.addEventListener("keyup", key, true);
     const hide = () => c.dispose();
+    // pagehide permanently disposes the controller, even when the browser caches
+    // this document. Start a fresh session rather than restore a frozen UI.
+    const show = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
     window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
     return () => {
       for (const type of ["blur", "resize", "scroll"])
         window.removeEventListener(type, clear, true);
@@ -338,6 +344,7 @@ export function App({ controller: c }: { controller: Controller }) {
       document.removeEventListener("keydown", key, true);
       document.removeEventListener("keyup", key, true);
       window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
     };
   }, [c]);
   const status = (
