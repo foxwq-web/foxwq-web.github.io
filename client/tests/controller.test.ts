@@ -569,6 +569,57 @@ test("finished game review restores captures and passes silently without changin
   } finally { c.dispose(); }
 });
 
+test("review clocks follow recorded main time and byoyomi and stay at the variation origin", () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    const board = c.session.board;
+    board.timeControl = { main: 120, periods: 5, byoyomi: 30 };
+    board.play(3, 3);
+    board.play(15, 15);
+    board.passTurn();
+    board.play(10, 10);
+    board.moveTimings = [
+      { remaining: 112 }, { remaining: 105 },
+      { remaining: 24, periods: 4 }, { remaining: 0, periods: 0 },
+    ];
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.session.clocks = { 1: { main: 0, periods: 1, byoyomi: 2, at: 1000 } };
+    c.emit({ type: "initialize", state: initial(c.session) });
+    const record = board.sgf();
+    const clocks = () => c.state.review!.clocks!;
+    c.review("first");
+    assert.equal(clocks()[1].main, 120);
+    assert.equal(clocks()[2].main, 120);
+    c.review("next");
+    assert.equal(clocks()[1].main, 112);
+    assert.equal(clocks()[2].main, 120);
+    c.review("next");
+    assert.equal(clocks()[2].main, 105);
+    c.review("next");
+    assert.equal(clocks()[1].main, 0);
+    assert.equal(clocks()[1].periods, 4);
+    assert.equal(clocks()[1].byoyomi, 24);
+    assert.equal(clocks()[1].periodLength, 30);
+    assert.equal(c.state.review?.totalPeriods, 5);
+    const origin = structuredClone(clocks());
+    c.playVariation(4, 4);
+    c.playVariation(5, 5);
+    assert.deepEqual(clocks(), origin);
+    c.emit({ type: "clock.tick", now: 9999 });
+    assert.deepEqual(clocks(), origin);
+    c.review("main");
+    c.review("last");
+    assert.equal(clocks()[2].periods, 0);
+    assert.equal(clocks()[2].byoyomi, 0);
+    c.review("previous");
+    assert.deepEqual(clocks(), origin);
+    assert.equal(c.state.session.clocks[1].byoyomi, 2);
+    assert.equal(board.sgf(), record);
+  } finally { c.dispose(); }
+});
+
 test("review estimates use the displayed stones and captures and discard late results after closing", async () => {
   const c = new Controller();
   try {

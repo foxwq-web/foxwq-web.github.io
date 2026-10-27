@@ -8,7 +8,7 @@ import {
 } from "./time-preference.ts";
 import { preloadLocalEstimate } from "../../score-estimator/src/local-score-estimation.ts";
 import { FoxSounds } from "./sound.ts";
-import { ByoyomiAnnouncements } from "./clock.ts";
+import { ByoyomiAnnouncements, recordedClocks } from "./clock.ts";
 import {
   reducer,
   boardAvailable,
@@ -288,6 +288,8 @@ export class Controller {
       moves: board.moves.length,
       last_move: board.moves.at(-1) ?? null,
       koStones: board.history.at(-1) ?? null,
+      clocks: recordedClocks(this.session.board, variation?.origin ?? board.moves.length),
+      totalPeriods: this.session.board.timeControl?.periods,
       variation,
       moveNumbers,
     } });

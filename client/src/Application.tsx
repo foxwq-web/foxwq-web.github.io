@@ -32,7 +32,7 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
   const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
   const clock = s.clocks[color];
   const elapsed =
-    clock && !state.frozen && !s.counting && s.phase === "playing" && s.turn === color &&
+    clock && !state.review && !state.frozen && !s.counting && s.phase === "playing" && s.turn === color &&
     !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
       ? Math.max(0, state.now - clock.at)
       : 0;
@@ -41,7 +41,7 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
     ? Math.ceil(reading.overtime ? reading.seconds : reading.main)
     : 0;
   const total =
-    s.matchFields.find((field) => field.id === s.fieldId)?.periods ?? 3;
+    state.review?.totalPeriods ?? s.matchFields.find((field) => field.id === s.fieldId)?.periods ?? 3;
   const clockId = color === (s.color === 2 ? 2 : 1) ? "hours" : `${name}-hours`;
   const clockValue = clockInputValue(seconds);
   const clockText = seconds < 3600 ? clockValue.slice(3) : clockValue;
@@ -49,7 +49,7 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
     <section
       id={`${name}-player`}
       aria-labelledby={`${name}-player-title`}
-      className={`player-panel${s.phase === "playing" && s.turn === color ? " to-play" : ""}`}
+      className={`player-panel${!state.review && s.phase === "playing" && s.turn === color ? " to-play" : ""}`}
     >
       <p id={`${name}-player-title`} className="player-title">
         <span className={`player-stone ${name}`} />

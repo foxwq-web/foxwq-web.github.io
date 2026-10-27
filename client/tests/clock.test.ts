@@ -1,11 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clockInputValue, clockReading, ByoyomiAnnouncements } from '../src/clock.ts';
+import { clockInputValue, clockReading, ByoyomiAnnouncements, recordedClocks } from '../src/clock.ts';
+import { Board } from '../src/board.ts';
 import type { SessionState } from '../src/state.ts';
 import type { Fields } from '../src/wire.ts';
 import { Session } from '../src/session.ts';
 import { encode, decode } from '../src/wire.ts';
 import nativeTraces from './fixtures/native-countdown.json' with { type: 'json' };
+
+test('recorded clocks retain the last known reading across missing timing and omit unknown clocks', () => {
+  const board = new Board();
+  board.play(3, 3);
+  board.play(15, 15);
+  board.passTurn();
+  board.moveTimings[0] = { remaining: 25, periods: 2 };
+  assert.deepEqual(recordedClocks(board, 0), {});
+  assert.deepEqual(recordedClocks(board, 3), recordedClocks(board, 1));
+  assert.equal(recordedClocks(board, 3)[2], undefined);
+  board.timeControl = { main: 120, periods: 3, byoyomi: 30 };
+  assert.equal(recordedClocks(board, 3)[1].byoyomi, 25);
+  assert.equal(recordedClocks(board, 3)[2].main, 120);
+});
 
 test('native clock input values preserve seconds across minute and hour boundaries', () => {
   for (const [seconds, value] of [[0,'00:00:00'],[59,'00:00:59'],[60,'00:01:00'],[425,'00:07:05'],[3600,'01:00:00']] as const) {

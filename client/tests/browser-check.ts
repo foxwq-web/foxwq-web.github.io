@@ -79,11 +79,17 @@ if (process.argv.includes('--player-info')) {
   process.exit(0);
 }
 
+if (process.argv.includes('--replay-captures')) {
+  await import('./replay-captures-browser-check.ts');
+  process.exit(0);
+}
+
 if (process.argv.includes('--score-engines') || process.argv.includes('--score-production')) {
   await import('../../score-estimator/scripts/score-engine-browser-check.ts');
   process.exit(0);
 }
 await import('./network-log-browser-check.ts');
+if (!process.argv.includes('--production-shortcuts')) await import('./replay-captures-browser-check.ts');
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
@@ -291,6 +297,7 @@ try {
       continue;
     }
     await wait("document.getElementById('dev-menu-toggle') != null");
+    const before = await js("['black','white'].map(name=>{const el=document.getElementById(name+'-time');return el.querySelector('input')?.value ?? el.textContent})");
     const connectionStatus = {
       connecting: 'Connecting...',
       authenticating: 'Waiting for login response...',
@@ -384,6 +391,10 @@ try {
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
       assert.equal(await page.locator('#estimate-score').isEnabled(), true, fixture.id);
       assert.equal(await js("['pass','request-score','resign'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
+    }
+    if (fixture.phase === 'finished' && fixture.id !== 'room-left') {
+      assert.equal(await page.locator('.player-panel.to-play').count(), 0, fixture.id);
+      assert.equal(await js("[...document.querySelectorAll('.clock-display')].every(clock=>getComputedStyle(clock).color === 'rgb(153, 153, 153)')"), true, fixture.id);
     }
     if (fixture.id === 'finished') {
       const finalStones = await page.locator('#board .board-stones').innerHTML();
@@ -530,7 +541,6 @@ try {
       assert.match(await js("document.getElementById('status').textContent"), /Offline preview/);
       assert.equal(await js('document.cookie'), cookies);
     }
-    const before = await js("['black','white'].map(name=>{const el=document.getElementById(name+'-time');return el.querySelector('input')?.value ?? el.textContent})");
     await js('window.previewPageMarker=true');
     await call('Page.reload');
     await wait("!window.previewPageMarker && document.getElementById('pass') != null");

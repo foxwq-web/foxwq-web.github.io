@@ -1,4 +1,30 @@
 import type { Clock, SessionState } from "./state";
+import type { Board } from "./board.ts";
+
+export function recordedClocks(board: Board, move: number): Record<string, Clock> {
+  const control = board.timeControl;
+  const clocks: Record<string, Clock> = {};
+  if (control) {
+    for (const color of [1, 2]) clocks[color] = {
+      main: control.main, periods: control.periods, byoyomi: control.byoyomi,
+      periodLength: control.byoyomi, at: 0,
+    };
+  }
+  for (let index = 0; index < Math.min(move, board.moves.length); index++) {
+    const timing = board.moveTimings[index];
+    if (!timing) continue;
+    const color = board.moves[index][0];
+    const overtime = timing.periods !== undefined;
+    clocks[color] = {
+      main: overtime ? 0 : timing.remaining,
+      periods: timing.periods ?? control?.periods ?? 0,
+      byoyomi: overtime ? timing.remaining : control?.byoyomi ?? 0,
+      periodLength: control?.byoyomi,
+      at: 0,
+    };
+  }
+  return clocks;
+}
 export function clockInputValue(seconds: number): string {
   return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
     .map(value => String(value).padStart(2, "0"))

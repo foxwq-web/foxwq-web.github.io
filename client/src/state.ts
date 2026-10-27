@@ -80,6 +80,8 @@ export interface Prompt {
 export interface UIState {
   session: SessionState;
   review?: Pick<SessionState, "stones" | "captures" | "turn" | "passes" | "moves" | "last_move"> & {
+    clocks?: Record<string, Clock>;
+    totalPeriods?: number;
     koStones?: number[] | null;
     variation?: { origin: number; moves: [number, number | null, number | null][]; cursor: number };
     moveNumbers?: Record<number, number>;
