@@ -36,7 +36,8 @@ const blackMove = ({ session, notify }: Scenario) => {
     session.play(10, 10);
     notify(201, { 1: 0 });
   }
-  notify(203, { 1: 10, 2: 10, 3: 1 });
+  notify(203, { 1: 10, 2: 10, 3: 1,
+    ...(session.board.moveTimings.some(Boolean) ? { 4: { 2: 540 } } : {}) });
 };
 const requestCounting = ({ session }: Scenario) => session.requestCounting();
 const countingAcknowledged = (s: Scenario) => {
@@ -119,7 +120,7 @@ export const DEV_SCREENS: Screen[] = [
 ];
 
 
-function position({ session, notify }: Scenario) {
+function position({ session, notify }: Scenario, timed = false) {
   // AlphaGo (Black) vs Lee Sedol, game 2, 2016-03-10, through move 37 (P10).
   // https://media-iframe.britgo.org/files/2016/deepmind/alphago-leesedol2.sgf
   const moves = [
@@ -139,7 +140,12 @@ function position({ session, notify }: Scenario) {
       session.play(x, y);
       notify(201, { 1: 0 });
     }
-    notify(203, { 1: x, 2: y, 3: color });
+    // Synthetic clocks make finished-game review exercise the real timing path.
+    // Each player's last two turns show 11:11, then 09:09 for sizing checks.
+    const remaining = i >= moves.length - 2 ? 549 :
+      671 + Math.floor((moves.length - 3 - i) / 2) * 10;
+    notify(203, { 1: x, 2: y, 3: color,
+      ...(timed ? { 4: { 2: remaining } } : {}) });
   });
 }
 
@@ -242,7 +248,7 @@ export async function applyDevScreen(session: Session, id: string) {
         6: 2, 7: 192, 8: 2, 9: 60 },
     ] });
     if (stage === "started") return;
-    position(scenario);
+    position(scenario, fixture.phase === "finished");
   };
   try {
     await setup();

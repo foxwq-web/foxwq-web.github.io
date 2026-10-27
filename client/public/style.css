@@ -95,7 +95,8 @@ html { scrollbar-gutter: stable; }
 
 .player-panel:not(.to-play) .clock-display { color: #999; }
 
-.clock-text { position: relative; pointer-events: none; }
+/* Arial kerns pairs of ones even with tabular numerals, shrinking 11:11. */
+.clock-text { position: relative; pointer-events: none; font-kerning: none; }
 
 pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 [hidden] { display: none !important; }

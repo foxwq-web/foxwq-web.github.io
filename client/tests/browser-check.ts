@@ -90,6 +90,7 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
 }
 await import('./network-log-browser-check.ts');
 if (!process.argv.includes('--production-shortcuts')) await import('./replay-captures-browser-check.ts');
+if (!process.argv.includes('--production-shortcuts')) await import('./clock-sizing-browser-check.ts');
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const url = process.env.FOX_BROWSER_URL || 'http://127.0.0.1:5173';
