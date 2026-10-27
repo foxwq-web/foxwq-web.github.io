@@ -71,12 +71,14 @@ export class Controller {
     let prompt: UIState["prompt"] = null,
       menuError = "",
       error = "";
+    let variation: [number, number][] | undefined;
     if (import.meta.env.DEV) {
       const screen = new URLSearchParams(location.search).get("dev-screen");
       if (screen) {
         const { applyDevScreen } = await import("./dev-screens.ts");
         const fixture = await applyDevScreen(this.session, screen);
         this.preview = !!fixture;
+        variation = fixture?.fixture.variation;
         prompt = fixture?.prompt ?? null;
         menuError = fixture?.menuError ?? "";
         error = fixture?.boardError ?? "";
@@ -103,6 +105,10 @@ export class Controller {
         },
       },
     });
+    if (variation) {
+      this.review("previous");
+      for (const [x, y] of variation) this.playVariation(x, y);
+    }
     this.preloadGameplayAssets(session);
     this.audio();
     this.scheduleClock();
@@ -183,6 +189,10 @@ export class Controller {
     command: Command,
     body: { x?: number; y?: number; id?: number; accept?: boolean } = {},
   ) {
+    if (command === "play" && this.state.session.phase === "finished" && this.state.session.game_over) {
+      if (body.x !== undefined && body.y !== undefined) this.playVariation(body.x, body.y);
+      return;
+    }
     if (this.state.session.phase === "reconnecting" && command !== "disconnect") return;
     if (outOfTurn({
       phase: this.session.phase,
@@ -251,30 +261,80 @@ export class Controller {
       this.session.flushChanges();
     }
   }
-  review(direction: "first" | "previous" | "next" | "last") {
-    const s = this.state.session;
-    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s)) return;
-    const total = this.session.board.moves.length;
-    const current = this.state.review?.moves ?? total;
-    const move = direction === "first" ? 0 : direction === "last" ? total
-      : Math.max(0, Math.min(total, current + (direction === "next" ? 1 : -1)));
-    if (move === current) return;
+  private reviewBoard(move: number, variation?: NonNullable<UIState["review"]>["variation"]) {
     const board = new Board(this.session.board.size);
-    for (const [color, x, y] of this.session.board.moves.slice(0, move)) {
+    const numbers: Record<number, number> = {};
+    const moves = this.session.board.moves.slice(0, variation?.origin ?? move);
+    if (variation) moves.push(...variation.moves.slice(0, variation.cursor));
+    moves.forEach(([color, x, y], index) => {
       if (x === null || y === null) board.passTurn(color);
-      else board.play(x, y, color);
-    }
+      else {
+        board.play(x, y, color);
+        for (const point of Object.keys(numbers))
+          if (!board.stones[Number(point)]) delete numbers[Number(point)];
+        if (variation && index >= variation.origin)
+          numbers[y * board.size + x] = index - variation.origin + 1;
+      }
+    });
+    return { board, numbers };
+  }
+  private showReview(board: Board, variation?: NonNullable<UIState["review"]>["variation"], moveNumbers?: Record<number, number>) {
     this.session.clearEstimate();
     this.emit({ type: "review.position", position: {
       stones: board.stones,
       captures: board.captures,
       turn: board.turn,
       passes: board.passes,
-      moves: move,
+      moves: board.moves.length,
       last_move: board.moves.at(-1) ?? null,
+      koStones: board.history.at(-1) ?? null,
+      variation,
+      moveNumbers,
     } });
     this.session.changed();
     this.session.flushChanges();
+  }
+  playVariation(x: number, y: number) {
+    const s = this.state.session;
+    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s) || s.estimation || this.state.prompt) return;
+    const current = this.state.review;
+    const origin = current?.variation?.origin ?? current?.moves ?? s.moves;
+    const previous = current?.variation;
+    const variation = {
+      origin,
+      moves: previous?.moves.slice(0, previous.cursor) ?? [],
+      cursor: (previous?.cursor ?? 0) + 1,
+    };
+    const { board } = this.reviewBoard(current?.moves ?? s.moves, previous);
+    try { board.play(x, y); } catch { return; }
+    variation.moves.push(board.moves.at(-1)!);
+    const position = this.reviewBoard(board.moves.length, variation);
+    this.showReview(position.board, variation, position.numbers);
+  }
+  review(direction: "first" | "previous" | "next" | "last" | "main") {
+    const s = this.state.session;
+    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s) || s.estimation) return;
+    const total = this.session.board.moves.length;
+    const current = this.state.review?.moves ?? total;
+    const variation = this.state.review?.variation;
+    if (variation) {
+      if (direction === "last") return;
+      if (direction === "main" || direction === "first" ||
+          (direction === "previous" && variation.cursor === 1)) {
+        this.showReview(this.reviewBoard(variation.origin).board);
+        return;
+      }
+      const cursor = Math.min(variation.moves.length, variation.cursor + (direction === "next" ? 1 : -1));
+      if (cursor === variation.cursor) return;
+      const updated = { ...variation, cursor };
+      const position = this.reviewBoard(current, updated);
+      this.showReview(position.board, updated, position.numbers);
+      return;
+    }
+    if (direction === "main") return;
+    const move = direction === "first" ? 0 : direction === "last" ? total
+      : Math.max(0, Math.min(total, current + (direction === "next" ? 1 : -1)));
+    if (move !== current) this.showReview(this.reviewBoard(move).board);
   }
   raise(message: string) {
     this.emit({

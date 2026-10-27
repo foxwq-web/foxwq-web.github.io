@@ -79,7 +79,11 @@ export interface Prompt {
 }
 export interface UIState {
   session: SessionState;
-  review?: Pick<SessionState, "stones" | "captures" | "turn" | "passes" | "moves" | "last_move"> | null;
+  review?: Pick<SessionState, "stones" | "captures" | "turn" | "passes" | "moves" | "last_move"> & {
+    koStones?: number[] | null;
+    variation?: { origin: number; moves: [number, number | null, number | null][]; cursor: number };
+    moveNumbers?: Record<number, number>;
+  } | null;
   now: number;
   frozen: boolean;
   preview: number | null;

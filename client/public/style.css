@@ -63,6 +63,7 @@ main {
   user-select: none;
 }
 #board .byoyomi-countdown { font-weight: bold; }
+#board .variation-number { font-size: 24px; font-weight: normal; }
 aside {
   min-width: 0;
   display: flex;

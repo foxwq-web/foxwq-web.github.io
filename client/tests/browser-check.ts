@@ -378,7 +378,7 @@ try {
       assert.equal(await page.locator('.clock-display').count(), 0);
     }
     if (fixture.phase === 'finished') {
-      const result = {finished:'B+2.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R'}[fixture.id];
+      const result = {finished:'B+2.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R', 'replay-variation':'W+R'}[fixture.id];
       assert.equal(await js("document.getElementById('game-state-title').textContent"), 'Game over', fixture.id);
       assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), `Result: ${result}`, fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
@@ -409,9 +409,16 @@ try {
       await page.locator('#estimate-score').click();
       await wait("!document.getElementById('estimation-lead').hidden");
       await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('#board .stone').count(), 1);
+      assert.equal(await page.locator('#review-previous').isDisabled(), true);
+      assert.ok(await page.locator('.estimated-territory rect').count() > 0);
+      await page.locator('#estimate-score').click();
+      await page.keyboard.press('ArrowLeft');
       assert.equal(await page.locator('#board .stone').count(), 0);
       assert.equal(await page.locator('.estimated-territory rect').count(), 0);
       assert.equal(await page.locator('#estimation-panel').isVisible(), false);
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('#board .stone').count(), 0);
       await page.locator('#review-last').click();
       assert.equal(await page.locator('#board .board-stones').innerHTML(), finalStones);
       assert.equal(await page.locator('#review-next').isDisabled(), true);

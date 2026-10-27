@@ -41,13 +41,15 @@ export function playablePoint(
   state: UIState,
   point: number | null,
 ): number | null {
-  const s = state.session;
+  const s = state.review ? { ...state.session, ...state.review } : state.session;
+  const reviewing = s.phase === "finished" && s.game_over;
   if (
     point === null ||
     !boardAvailable(s) ||
-    blocked(s) ||
+    !!s.estimation ||
+    (!reviewing && blocked(s)) ||
     !!state.prompt ||
-    s.color !== s.turn ||
+    (!reviewing && s.color !== s.turn) ||
     !s.gameId
   )
     return null;
@@ -226,7 +228,14 @@ export function BoardView({
         )}
       </g>
       <g pointerEvents="none">
-        {marker && (countdown !== null ? (
+        {Object.entries(state.review?.moveNumbers ?? {}).map(([point, number]) => {
+          const { cx, cy } = location(Number(point));
+          return <text key={point} className="variation-number"
+            x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+            fontFamily="Arial, sans-serif" fontSize={radius * 1.6} fontWeight="bold"
+            fill={s.stones[Number(point)] === 1 ? "#fff" : "#000"}>{number}</text>;
+        })}
+        {marker && !state.review?.variation && (countdown !== null ? (
           <text
             className="byoyomi-countdown"
             x={marker.cx}

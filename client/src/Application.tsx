@@ -99,6 +99,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const displayState = state.review
     ? { ...state, session: { ...state.session, ...state.review } }
     : state;
+  const variation = state.review && "variation" in state.review ? state.review.variation : undefined;
   const reviewMove = state.review?.moves ?? state.session.moves;
   const s = state.session,
     playing = s.phase === "playing";
@@ -258,13 +259,14 @@ export function App({ controller: c }: { controller: Controller }) {
       if (
         event.type === "keydown" && !menuShown && current.session.game_over &&
         current.session.phase === "finished" &&
-        ["ArrowLeft", "ArrowRight"].includes(event.key) &&
+        ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) &&
         !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
         !(event.target instanceof HTMLElement &&
           (event.target.isContentEditable || event.target.closest("input, textarea, select, [role='dialog'], #dev-menu")))
       ) {
         event.preventDefault();
-        c.review(event.key === "ArrowLeft" ? "previous" : "next");
+        c.review(event.key === "Home" ? "first" : event.key === "End" ? "last"
+          : event.key === "ArrowLeft" ? "previous" : "next");
         return;
       }
       if (event.key === "Escape") {
@@ -277,6 +279,8 @@ export function App({ controller: c }: { controller: Controller }) {
         if (current.prompt) c.emit({ type: "prompt.close" });
         else if (current.session.confirmationKind?.startsWith("counting-"))
           c.command("confirm", { accept: false });
+        else if (current.review && "variation" in current.review && current.review.variation)
+          c.review("first");
       }
       if (
         !menuShown ||
@@ -537,6 +541,7 @@ export function App({ controller: c }: { controller: Controller }) {
                       id="save-sgf"
                       type="button"
                       className="secondary"
+                      disabled={!!estimate}
                       onClick={() => c.save("sgf")}
                     >
                       Download SGF
@@ -557,14 +562,14 @@ export function App({ controller: c }: { controller: Controller }) {
                 <div id="game-review" hidden={!s.game_over}>
                   <div className="actions" role="group" aria-label="Review game">
                     {([
-                      ["first", "First move", faBackwardStep, reviewMove === 0],
+                      ["first", "First move", faBackwardStep, !!variation || reviewMove === 0],
                       ["previous", "Previous move", faArrowLeft, reviewMove === 0],
-                      ["next", "Next move", faArrowRight, reviewMove === s.moves],
-                      ["last", "Last move", faForwardStep, reviewMove === s.moves],
+                      ["next", "Next move", faArrowRight, variation ? variation.cursor === variation.moves.length : reviewMove === s.moves],
+                      ["last", "Last move", faForwardStep, !!variation || reviewMove === s.moves],
                     ] as const).map(([direction, label, icon, disabled]) => (
                       <button key={direction} id={`review-${direction}`} type="button"
                         className="secondary" aria-label={label} title={label}
-                        disabled={disabled} onClick={() => c.review(direction)}>
+                        disabled={disabled || !!estimate} onClick={() => c.review(direction)}>
                         <svg viewBox={`0 0 ${icon.icon[0]} ${icon.icon[1]}`} aria-hidden="true" focusable="false">
                           <path fill="currentColor" d={Array.isArray(icon.icon[4]) ? icon.icon[4].join(" ") : icon.icon[4]} />
                         </svg>

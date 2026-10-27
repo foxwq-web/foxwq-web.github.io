@@ -24,6 +24,7 @@ type Screen = {
   phase: string;
   reach: string;
   playerName?: string;
+  variation?: [number, number][];
   run?: (scenario: Scenario) => void | Promise<void>;
 };
 const screen = (id: string, label: string, group: string, stage: Stage,
@@ -110,6 +111,8 @@ export const DEV_SCREENS: Screen[] = [
   }),
   screen("score-estimation-loading", "Estimate pending", "Estimation", "playing", "playing", "Estimate score; calculation is pending", s => { s.session.estimationFetcher = () => new Promise(() => {}); void s.session.estimateScore(); }),
 
+  { ...screen("replay-variation", "15-move variation", "Replay", "playing", "finished", "Finished game → Previous → play 15 local variation moves", finishedResignation),
+    variation: Array.from({ length: 15 }, (_, i) => [i + 2, 10] as [number, number]) },
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
   screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → confirm → Fox ends the game (W+R)", finishedResignation),
   screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(403, { 2: 0, 4: 8 })),

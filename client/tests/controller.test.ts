@@ -569,7 +569,7 @@ test("finished game review restores captures and passes silently without changin
   } finally { c.dispose(); }
 });
 
-test("review estimates use the displayed stones and captures and discard late results on navigation", async () => {
+test("review estimates use the displayed stones and captures and discard late results after closing", async () => {
   const c = new Controller();
   try {
     setupFoxGame(c.session);
@@ -613,6 +613,7 @@ test("review estimates use the displayed stones and captures and discard late re
     };
     c.command("estimate-score");
     assert.equal(c.getState().session.estimation?.phase, "loading");
+    c.command("return-game");
     c.review("previous");
     assert.equal(signal.aborted, true);
     finish({ ret: 0, board_size: 19, judge_status: '1'.repeat(361) });
@@ -622,5 +623,145 @@ test("review estimates use the displayed stones and captures and discard late re
     assert.equal(c.state.review?.moves, 3);
     assert.equal(board.sgf(), record);
     assert.equal(c.state.session.moves, 5);
+  } finally { c.dispose(); }
+});
+
+test("review board placement stays blocked while an estimate loads or is displayed", async () => {
+  const c = new Controller();
+  try {
+    await applyDevScreen(c.session, "finished-resign");
+    c.emit({ type: "initialize", state: initial(c.session) });
+    c.review("previous");
+    const point = 10 * 19 + 4;
+    assert.equal(playablePoint(c.state, point), point);
+    let finish!: (response: { ret: number; board_size: number; judge_status: string }) => void;
+    c.session.estimationFetcher = () => new Promise(resolve => { finish = resolve; });
+    const reviewed = c.state.review;
+    const record = c.session.board.sgf();
+    c.command("estimate-score");
+    assert.equal(c.state.session.estimation?.phase, "loading");
+    assert.equal(playablePoint(c.state, point), null);
+    for (const direction of ["first", "previous", "next", "last", "main"] as const)
+      c.review(direction);
+    assert.equal(c.state.review, reviewed);
+    c.command("play", { x: 4, y: 10 });
+    assert.equal(c.state.review, reviewed);
+    assert.equal(c.state.session.estimation?.phase, "loading");
+
+    finish({ ret: 0, board_size: 19, judge_status: '0'.repeat(361) });
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+    c.session.flushChanges();
+    const estimate = c.state.session.estimation;
+    assert.equal(estimate?.phase, "result");
+    assert.equal(playablePoint(c.state, point), null);
+    for (const direction of ["first", "previous", "next", "last", "main"] as const)
+      c.review(direction);
+    assert.equal(c.state.review, reviewed);
+    c.command("play", { x: 4, y: 10 });
+    assert.equal(c.state.review, reviewed);
+    assert.equal(c.state.session.estimation, estimate);
+    assert.equal(c.session.board.sgf(), record);
+
+    c.command("return-game");
+    assert.equal(playablePoint(c.state, point), point);
+    c.command("play", { x: 4, y: 10 });
+    assert.equal(c.state.review?.variation?.cursor, 1);
+    c.review("previous");
+    assert.equal(c.state.review?.variation, undefined);
+  } finally { c.dispose(); }
+});
+
+test("variations navigate locally, exit at their origin, and leave the main record unchanged", async () => {
+  const c = new Controller();
+  try {
+    await applyDevScreen(c.session, "finished-resign");
+    c.emit({ type: "initialize", state: initial(c.session) });
+    const record = c.session.board.sgf();
+    c.review("previous");
+    const origin = c.state.review!.moves;
+    const mainNext = c.session.board.moves[origin];
+    c.command("play", { x: 4, y: 10 });
+    assert.equal(c.state.review?.variation?.cursor, 1);
+    c.command("play", { x: 5, y: 10 });
+    assert.equal(c.state.review?.variation?.cursor, 2);
+    const last = c.state.review;
+    c.review("next");
+    c.review("last");
+    assert.equal(c.state.review, last);
+    c.review("previous");
+    assert.equal(c.state.review?.variation?.cursor, 1);
+    c.review("next");
+    assert.deepEqual(c.state.review?.stones, last?.stones);
+    c.review("previous");
+    c.review("previous");
+    assert.equal(c.state.review?.variation, undefined);
+    assert.equal(c.state.review?.moves, origin);
+    c.review("next");
+    assert.deepEqual(c.state.review?.last_move, mainNext);
+    c.playVariation(4, 10);
+    c.review("main");
+    assert.equal(c.state.review?.variation, undefined);
+    assert.equal(c.state.review?.moves, origin + 1);
+    c.playVariation(4, 10);
+    c.review("first");
+    assert.equal(c.state.review?.moves, origin + 1);
+    c.playVariation(4, 10);
+    const beforeIllegal = c.state.review;
+    c.playVariation(4, 10);
+    assert.equal(c.state.review, beforeIllegal);
+    assert.equal(c.session.board.sgf(), record);
+  } finally { c.dispose(); }
+});
+
+test("variation numbers follow surviving stones, and alternate continuations replace the old tail", () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    const board = c.session.board;
+    board.play(0, 1, 1);
+    board.play(1, 0, 1);
+    board.play(2, 1, 1);
+    board.turn = 2;
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.emit({ type: "initialize", state: initial(c.session) });
+    // Use an ordinary alternating variation with a capture of numbered stone 1.
+    c.review("first");
+    for (const [x, y] of [[1,1], [0,1], [10,10], [1,0], [11,10], [2,1], [12,10], [1,2]])
+      c.playVariation(x, y);
+    assert.equal(c.state.review?.stones[20], 0);
+    assert.equal(c.state.review?.moveNumbers?.[20], undefined);
+    assert.equal(c.state.review?.moveNumbers?.[39], 8);
+    c.review("previous");
+    assert.equal(c.state.review?.moveNumbers?.[20], 1);
+    c.playVariation(4, 4);
+    assert.equal(c.state.review?.variation?.moves.length, 8);
+    assert.deepEqual(c.state.review?.last_move, [2, 4, 4]);
+    const state = { ...c.state, session: { ...c.state.session, ...c.state.review } };
+    const svg = renderToStaticMarkup(createElement(BoardView, { state, hover() {}, play() {} }));
+    assert.equal((svg.match(/class="variation-number"/g) ?? []).length, 8);
+    assert.doesNotMatch(svg, /<polygon/);
+    assert.equal(playablePoint(state, 18), 18, "replay accepts either side's legal move");
+    assert.equal(playablePoint(state, 20), null, "occupied points cannot be played");
+  } finally { c.dispose(); }
+});
+
+test("variation previews and placement enforce ko from the displayed position", () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    for (const [x, y] of [[1,2], [2,2], [2,1], [1,3], [3,2], [3,3], [10,10], [2,4]])
+      c.session.board.play(x, y);
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.emit({ type: "initialize", state: initial(c.session) });
+    c.playVariation(2, 3);
+    assert.equal(c.state.review?.variation?.cursor, 1);
+    assert.equal(playablePoint(c.state, 2 + 2 * 19), null);
+    const before = c.state.review;
+    c.playVariation(2, 2);
+    assert.equal(c.state.review, before);
+    c.review("main");
+    assert.equal(playablePoint(c.state, 2 + 3 * 19), 2 + 3 * 19);
   } finally { c.dispose(); }
 });
