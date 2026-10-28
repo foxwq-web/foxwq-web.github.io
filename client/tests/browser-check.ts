@@ -393,8 +393,11 @@ try {
     }
     if (fixture.phase === 'finished') {
       const result = {finished:'B+2.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R', 'replay-variation':'W+R'}[fixture.id];
-      assert.equal(await js("document.getElementById('game-state-title').textContent"), 'Game over', fixture.id);
-      assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), `Result: ${result}`, fixture.id);
+      assert.equal(await js("document.getElementById('game-state-title').textContent"), `Game over: ${result}`, fixture.id);
+      assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), '', fixture.id);
+      const outcome = await page.locator('#game-result').getAttribute('class');
+      assert.equal(outcome, result === 'Void' ? '' : result?.startsWith('B+') ? 'win' : 'loss', fixture.id);
+      if (outcome) assert.equal(await page.locator('#game-result').evaluate(el => getComputedStyle(el).color), outcome === 'win' ? 'rgb(5, 172, 1)' : 'rgb(249, 53, 0)', fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
       assert.equal(await page.locator('#estimate-score').isEnabled(), true, fixture.id);
       assert.equal(await js("['pass','request-score','resign'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
@@ -1377,7 +1380,7 @@ try {
         matchSession.clocks={1:{main:600,periods:3,byoyomi:30,periodLength:30,at:Date.now()/1000},
                              2:{main:0,periods:2,byoyomi:30,periodLength:30,at:Date.now()/1000}};matchSession.changed()`);
       await wait(phase === 'finished'
-        ? "document.getElementById('board-status').textContent==='Result: W+123.5'"
+        ? "document.getElementById('game-state-title').textContent==='Game over: W+123.5'"
         : "document.getElementById('board-status').textContent.endsWith('playing')");
       assert.deepEqual(await sidebarBounds(), before, `Player panels moved within the sidebar at ${width}px during ${phase}`);
       if (phase === 'playing') {

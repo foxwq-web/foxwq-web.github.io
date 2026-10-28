@@ -159,15 +159,17 @@ export function App({ controller: c }: { controller: Controller }) {
     !s.game_over &&
     !promptCounting &&
     ((s.counting && !countingRequested && !countingResultPending) || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
-  const boardStatus = s.game_over
-    ? `Result: ${s.result || "Unknown"}`
-    : countingRequested
-      ? "Waiting for opponent..."
-      : countingResultPending
-        ? "Waiting for counting result..."
-        : s.pending && !s.counting && !s.quitRequested
-          ? "Waiting to confirm action"
-          : s.status;
+  const resultWinner = s.result.startsWith("B+") ? 1 : s.result.startsWith("W+") ? 2 : 0;
+  const resultClass = resultWinner && [1, 2].includes(s.color)
+    ? resultWinner === s.color ? "win" : "loss"
+    : "";
+  const boardStatus = countingRequested
+    ? "Waiting for opponent..."
+    : countingResultPending
+      ? "Waiting for counting result..."
+      : s.pending && !s.counting && !s.quitRequested
+        ? "Waiting to confirm action"
+        : s.status;
   const disconnectSeconds = Math.max(0, Math.ceil((s.opponentDisconnectDeadline ?? 0) - state.now));
   const ask = (command: Command) => {
     const prompt = promptForAction(command);
@@ -552,9 +554,9 @@ export function App({ controller: c }: { controller: Controller }) {
                   className="quest-panel"
                   hidden={gameHidden}
                 >
-                  <p id="game-state-title" hidden={!s.game_over && !promptCounting}>
+                  <p id="game-state-title" role={s.game_over ? "status" : undefined} hidden={!s.game_over && !promptCounting}>
                     {s.game_over
-                      ? "Game over"
+                      ? <>Game over: <span id="game-result" className={resultClass}>{s.result || "Unknown"}</span></>
                       : promptCounting
                         ? "Both players passed"
                         : ""}
@@ -562,7 +564,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   <p
                     id="board-status"
                     role="status"
-                    hidden={promptCounting || !boardStatus}
+                    hidden={s.game_over || promptCounting || !boardStatus}
                     className={
                       /failed|rejected|error/i.test(s.status) ? "is-error" : ""
                     }

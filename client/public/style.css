@@ -218,6 +218,7 @@ input:not([type="checkbox"]):not([type="radio"]) {
 .quest-panel { display: flex; flex-direction: column; gap: 12px; width: 100%; overflow-wrap: anywhere; }
 dialog.quest-panel:not([open]) { display: none; }
 .quest-panel p:empty { display: none; }
+#game-state-title { white-space: nowrap; }
 .actions { display: flex; gap: 8px; }
 .actions > button { flex: 1; }
 #game-downloads { display: grid; gap: 8px; }
@@ -250,8 +251,8 @@ button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-o
 .player-recent .loss::before, .player-recent .loss::after { content: ""; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: currentColor; transform: translateY(-50%) rotate(45deg); }
 .player-recent .loss::after { transform: translateY(-50%) rotate(-45deg); }
 .player-recent span:not(.win):not(.loss)::before { content: ""; position: absolute; top: 50%; inset-inline: 2px; height: 2px; background: #aaa; transform: translateY(-50%); }
-.player-info .win { color: #05ac01; }
-.player-info .loss { color: #f93500; }
+#game-result.win, .player-info .win { color: #05ac01; }
+#game-result.loss, .player-info .loss { color: #f93500; }
 .player-info-games { min-width: 0; }
 .player-info-games table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .player-info-games th { color: #aaa; text-align: left; }
