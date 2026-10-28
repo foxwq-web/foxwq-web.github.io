@@ -155,7 +155,7 @@ body:has(#connection-layer:not([hidden])) { overflow: hidden; }
 #login-form .remember input { flex: none; margin: 0; padding: 0; padding: 10px; }
 #connection-menu > button,
 #matchmaking > button { margin-top: 20px; }
-#matchmaking > #status.is-error { display: block; margin-top: 8px; }
+#connection-menu #status.is-error { display: block; margin-top: 16px; }
 #menu-title { margin: 0 0 20px; }
 .login-copy { font-size: 14px; line-height: 1.5; }
 #login-form .remember,

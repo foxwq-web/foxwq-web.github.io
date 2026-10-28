@@ -140,9 +140,9 @@ export function App({ controller: c }: { controller: Controller }) {
     prompt: Prompt | null;
     counting: boolean;
   } | null>(null);
-  const statusError = !!state.menuError || s.phase === "error";
+  const statusError = !!state.menuError || s.phase === "error" || s.status.startsWith("Matchmaking rejected:");
   const statusHidden =
-    !state.menuError &&
+    !statusError &&
     (s.phase === "disconnected" ||
       (["ready", "finished"].includes(s.phase) && s.matchFields.length > 0));
   const promptCounting = playing && s.passes >= 2 && !disabled && !s.counting && !s.confirmation;
@@ -378,7 +378,7 @@ export function App({ controller: c }: { controller: Controller }) {
       hidden={statusHidden}
       className={statusError ? "is-error" : ""}
     >
-      {!statusHidden && loginStep && statusError && <Icon icon={faTriangleExclamation} />}
+      {!statusHidden && statusError && <Icon icon={faTriangleExclamation} />}
       {!statusHidden && `${statusError ? "Error: " : ""}${statusError ? state.menuError || s.status : s.status}`}
     </span>
   );
@@ -705,8 +705,8 @@ export function App({ controller: c }: { controller: Controller }) {
               {statusHidden || statusError ? "Log in" : null}
               {loginStep && !statusError && status}
             </button>
-            {loginStep && statusError && status}
           </form>}
+          {loginStep && statusError && status}
           <div id="matchmaking" hidden={loginStep}>
             <section id="time-settings" aria-label="Time control">
               <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">

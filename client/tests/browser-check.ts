@@ -910,7 +910,7 @@ try {
   await js("window.checkSession.failed(window.checkSession.generation,'Fox login rejected')");
   await wait("document.getElementById('status').textContent==='Error: Fox login rejected'");
   assert.equal(await js("document.getElementById('login').textContent"), 'Log in');
-  assert.equal(await js("document.getElementById('status').parentElement.id"), 'login-form');
+  assert.equal(await js("document.getElementById('status').parentElement.id"), 'connection-menu');
   assert.equal(await js("document.getElementById('status').getBoundingClientRect().top>=document.getElementById('login').getBoundingClientRect().bottom"), true);
   assert.equal(await js("document.getElementById('password').value"), 'retained-test-password');
   assert.equal(await js("getComputedStyle(document.getElementById('status')).color"), await js("getComputedStyle(document.body).color"));
