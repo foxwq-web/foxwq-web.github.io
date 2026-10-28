@@ -687,7 +687,7 @@ try {
   assert.match(await js("document.getElementById('username').placeholder"), /username/i);
   assert.match(await js("document.getElementById('password').placeholder"), /password/i);
   assert.equal(await js("document.getElementById('login').textContent"), 'Log in');
-  assert.equal(await js("getComputedStyle(document.getElementById('connection-menu')).borderTopWidth"), '1px');
+  assert.equal(await js("getComputedStyle(document.getElementById('connection-menu')).borderTopWidth"), '0px');
   assert.equal(await js("document.querySelector('#connection-menu > legend, .player-turn, #events')"), null);
   assert.equal(await js("document.querySelector('label[for=username]').textContent"), '');
   assert.equal(await js("document.querySelector('label[for=password]').textContent"), '');
@@ -1387,9 +1387,9 @@ try {
         assert.equal(await js("getComputedStyle(document.getElementById('black-player')).borderTopWidth"), '1px');
         assert.equal(await js("getComputedStyle(document.getElementById('white-player')).borderTopWidth"), '1px');
         const activeColor = await js("getComputedStyle(document.querySelector('#white-player .clock-text')).color");
-        assert.equal(await js("getComputedStyle(document.getElementById('white-player')).borderTopColor"), activeColor);
+        assert.equal(await js("getComputedStyle(document.getElementById('white-player')).borderTopColor"), 'rgba(0, 0, 0, 0)');
         assert.equal(await js("getComputedStyle(document.querySelector('#white-player .clock-display')).borderTopColor"), activeColor);
-        assert.equal(await js("getComputedStyle(document.getElementById('black-player')).borderTopColor"), 'rgb(98, 98, 98)');
+        assert.equal(await js("getComputedStyle(document.getElementById('black-player')).borderTopColor"), 'rgba(0, 0, 0, 0)');
         assert.equal(await js("getComputedStyle(document.querySelector('#black-player .clock-display')).borderTopColor"), 'rgb(98, 98, 98)');
       }
     }

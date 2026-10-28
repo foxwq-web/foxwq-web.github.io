@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
   --app-background: #242424;
+  --panel-background: #303030;
   --app-text: #e7e7e7;
   --button-background: #3c3c3c;
   --border: #626262;
@@ -80,9 +81,24 @@ aside button, aside input { font-size: inherit; }
 
 .primary-actions-slot { min-height: 152px; }
 html { scrollbar-gutter: stable; }
-.player-panel, .quest-panel { box-sizing: border-box; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); }
-.player-panel { --player-row-height: 28px; position: relative; padding-block: 8px 6px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .35em; }
-.player-panel.to-play,
+.player-panel, .quest-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: var(--panel-background);
+  box-shadow: 1px 2px 2px #00000014, 2px 3px 1px -2px #0000002e, 2px 3px 5px #0000001a;
+}
+.player-panel {
+  --player-row-height: 28px;
+  position: relative;
+  padding-block: 8px 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: .35em;
+}
 .player-panel.to-play .clock-display { border-color: var(--app-text); }
 .player-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .player-title, .player-captures { min-height: var(--player-row-height); display: flex; align-items: center; }
@@ -122,12 +138,12 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   width: min(300px, 100%);
   max-width: 100%;
   padding: 32px;
-  border: 1px solid var(--border);
+  border: 0;
   margin-top: max(0px, calc(50dvh - 166px));
   max-height: min(calc(100dvh - 32px), calc(50dvh + 134px));
   overflow: auto;
-  background: var(--app-background);
-  box-shadow: 0 12px 48px #0004;
+  background: var(--panel-background);
+  box-shadow: 8px 12px 48px #0004;
 }
 #connection-menu:focus { outline: none; }
 html:has(#connection-layer:not([hidden])),
@@ -160,7 +176,7 @@ a:focus-visible { color: #fff; }
 .time-option > span { white-space: nowrap; }
 .time-option .field-population { margin-left: 4px; }
 .time-option input { flex: none; margin: 0; }
-#counting-dialog { position: static; color: inherit; background: var(--app-background); }
+#counting-dialog { position: static; color: inherit; }
 .player-stone { display: inline-block; width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%; box-shadow: 0 1px 2px #252b2526; vertical-align: middle; }
 .player-stone.black { background: #111; border: 1px solid #777; }
 .player-stone.white { background: #fff; border: 1px solid #c5cbbc; }
@@ -222,7 +238,7 @@ dialog.quest-panel:not([open]) { display: none; }
 button.player-name { display: inline; width: auto; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: default; text-decoration: none; }
 button.player-name:enabled:hover { background: transparent; }
 button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-offset: 3px; }
-.player-info { position: fixed; z-index: 1200; box-sizing: border-box; width: min(360px, calc(100vw - 16px)); padding: 12px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); background: var(--app-background); color: var(--app-text); box-shadow: 0 12px 48px #0004; font-size: 13px; }
+.player-info { position: fixed; z-index: 1200; box-sizing: border-box; width: min(360px, calc(100vw - 16px)); padding: 12px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); background: var(--app-background); color: var(--app-text); box-shadow: 8px 12px 48px #0004; font-size: 13px; }
 .player-info h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
 .player-info p { margin: 0; }
 .player-info-summary { display: grid; gap: 8px; }

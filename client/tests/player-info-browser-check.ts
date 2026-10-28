@@ -77,7 +77,7 @@ try {
     assert.equal(await card.evaluate(element => element.scrollHeight > element.clientHeight), false);
     assert.equal(await card.locator('.player-recent span').evaluateAll(elements =>
       elements.length === 20 && elements.every(element => element.getBoundingClientRect().top === elements[0].getBoundingClientRect().top)), true);
-    assert.equal(await page.locator('#connection-menu').evaluate(element => getComputedStyle(element).borderTopWidth), '1px');
+    assert.equal(await page.locator('#connection-menu').evaluate(element => getComputedStyle(element).borderTopWidth), '0px');
     await page.keyboard.press('Escape');
     await card.waitFor({ state: 'detached' });
   }
