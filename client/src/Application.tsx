@@ -224,6 +224,16 @@ export function App({ controller: c }: { controller: Controller }) {
       passwordInput.current.value = c.password;
   }, [state.form.passwordLength, loginStep, c]);
   useEffect(() => {
+    if (state.frozen || s.phase !== "playing" || s.game_over) return;
+    const confirmLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Browsers supply their own confirmation text.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", confirmLeave);
+    return () => window.removeEventListener("beforeunload", confirmLeave);
+  }, [state.frozen, s.phase, s.game_over]);
+  useEffect(() => {
     const clear = () => {
       if (c.state.preview !== null)
         c.emit({ type: "board.hover", point: null });
