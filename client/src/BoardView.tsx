@@ -1,4 +1,4 @@
-import React, { type PointerEvent, type MouseEvent } from "react";
+import React, { useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "react";
 import { Board } from "./board.ts";
 import { clockReading } from "./clock.ts";
 import { blocked, boardAvailable, type UIState } from "./state";
@@ -10,6 +10,7 @@ const step = (extent - 2 * margin) / (size - 1),
 const edgePadding = step * 0.025;
 const inset = margin - radius - edgePadding,
   width = extent - 2 * inset;
+const coordinateGutterPixels = 26.3;
 const location = (p: number) => ({
   cx: margin + (p % size) * step,
   cy: margin + Math.floor(p / size) * step,
@@ -27,8 +28,9 @@ export function pointAt(
     event.clientY > rect.bottom
   )
     return null;
-  const px = inset + ((event.clientX - rect.left) * width) / rect.width;
-  const py = inset + ((event.clientY - rect.top) * width) / rect.height;
+  const viewBox = event.currentTarget.viewBox.baseVal;
+  const px = viewBox.x + ((event.clientX - rect.left) * viewBox.width) / rect.width;
+  const py = viewBox.y + ((event.clientY - rect.top) * viewBox.height) / rect.height;
   const x = Math.round((px - margin) / step),
     y = Math.round((py - margin) / step);
   if (x < 0 || x >= size || y < 0 || y >= size) return null;
@@ -96,13 +98,32 @@ function Stone({
 }
 export function BoardView({
   state,
+  coordinates = false,
   hover,
   play,
 }: {
   state: UIState;
+  coordinates?: boolean;
   hover: (p: number | null) => void;
   play: (p: number) => void;
 }) {
+  const svg = useRef<SVGSVGElement>(null);
+  const [pixelWidth, setPixelWidth] = useState(width + coordinateGutterPixels);
+  useLayoutEffect(() => {
+    if (!coordinates || !svg.current) return;
+    const board = svg.current;
+    const resize = () => {
+      const measured = board.getBoundingClientRect().width;
+      if (measured > coordinateGutterPixels) setPixelWidth(measured);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, [coordinates]);
+  // Cancel the board's SVG scaling so coordinate text stays at 14 CSS pixels.
+  const coordinateScale = width / (pixelWidth - coordinateGutterPixels);
+  const coordinateGutter = coordinateGutterPixels * coordinateScale;
   const s = state.session,
     ownership =
       s.estimation?.phase === "result" ? s.estimation.ownership : null;
@@ -128,9 +149,10 @@ export function BoardView({
       : null;
   return (
     <svg
+      ref={svg}
       id="board"
       xmlns="http://www.w3.org/2000/svg"
-      viewBox={`${inset} ${inset} ${width} ${width}`}
+      viewBox={`${inset} ${inset} ${coordinates ? width + coordinateGutter : width} ${coordinates ? width + coordinateGutter : width}`}
       tabIndex={-1}
       style={{ cursor: "default" }}
       onPointerMove={(e) => hover(playablePoint(state, pointAt(e)))}
@@ -197,6 +219,22 @@ export function BoardView({
         height={width}
         fill="#d6b77d"
       />
+      {coordinates && (
+        <g className="board-coordinates" pointerEvents="none" fill="currentColor"
+          transform={`scale(${coordinateScale})`}
+          fontFamily="Arial, sans-serif" fontSize={14}
+          textAnchor="middle" dominantBaseline="central">
+          {Array.from({ length: size }, (_, i) => {
+            const p = margin + i * step;
+            const edge = extent - inset + coordinateGutter / 2;
+            const letter = "ABCDEFGHJKLMNOPQRST"[i];
+            return <React.Fragment key={i}>
+              <text x={p / coordinateScale} y={edge / coordinateScale}>{letter}</text>
+              <text x={edge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
+            </React.Fragment>;
+          })}
+        </g>
+      )}
       <g stroke="#000" strokeWidth={1}>
         {Array.from({ length: size }, (_, i) => {
           const p = margin + i * step;

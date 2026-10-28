@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useSyncExternalStore,
   useRef,
+  useState,
   lazy,
   Suspense,
 } from "react";
@@ -22,6 +23,7 @@ import {
 import { timeLabel } from "./game.ts";
 import { clockInputValue, clockReading } from "./clock.ts";
 import { bindAudioUnlock } from "./sound.ts";
+import { rememberedCoordinates, rememberCoordinates } from "./coordinate-preference.ts";
 
 const DevMenu = import.meta.env.DEV ? lazy(() => import("./DevMenu")) : null;
 
@@ -95,6 +97,8 @@ function countingText(s: UIState["session"]) {
 }
 
 export function App({ controller: c }: { controller: Controller }) {
+  const [coordinates, setCoordinates] = useState(rememberedCoordinates);
+  useEffect(() => rememberCoordinates(coordinates), [coordinates]);
   const state = useSyncExternalStore(c.subscribe, c.getState);
   const displayState = state.review
     ? { ...state, session: { ...state.session, ...state.review } }
@@ -267,6 +271,17 @@ export function App({ controller: c }: { controller: Controller }) {
       const current = c.state,
         menuShown = !boardAvailable(current.session);
       if (
+        event.type === "keydown" && !menuShown &&
+        event.key.toLowerCase() === "c" && !c.previewCoordinates && !event.repeat &&
+        !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
+        !(event.target instanceof HTMLElement &&
+          (event.target.isContentEditable || event.target.closest("input, textarea, select, [role='dialog'], #dev-menu")))
+      ) {
+        event.preventDefault();
+        setCoordinates((shown) => !shown);
+        return;
+      }
+      if (
         event.type === "keydown" && !menuShown && current.session.game_over &&
         current.session.phase === "finished" &&
         ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) &&
@@ -374,9 +389,10 @@ export function App({ controller: c }: { controller: Controller }) {
       <main
         inert={showMenu}
       >
-        <div className="layout">
+        <div className={`layout${c.previewCoordinates || coordinates ? " has-coordinates" : ""}`}>
           <section className="board-wrap">
             <BoardView
+              coordinates={c.previewCoordinates || coordinates}
               state={displayState}
               hover={(point) => {
                 if (point !== c.state.preview)

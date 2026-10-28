@@ -39,6 +39,7 @@ export class Controller {
   state!: UIState;
   password = "";
   preview = false;
+  previewCoordinates = false;
   private listeners = new Set<() => void>();
   getState = () => this.state;
   subscribe = (listener: () => void) => {
@@ -78,6 +79,7 @@ export class Controller {
         const { applyDevScreen } = await import("./dev-screens.ts");
         const fixture = await applyDevScreen(this.session, screen);
         this.preview = !!fixture;
+        this.previewCoordinates = fixture?.fixture.coordinates ?? false;
         variation = fixture?.fixture.variation;
         prompt = fixture?.prompt ?? null;
         menuError = fixture?.menuError ?? "";

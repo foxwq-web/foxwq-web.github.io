@@ -10,6 +10,53 @@ for (const screen of DEV_SCREENS) {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`/?dev-screen=${screen.id}`);
     await page.locator('#dev-menu-toggle').waitFor({ state: 'visible' });
+    if (screen.coordinates) {
+      await expect(page.locator('main')).toHaveCSS('padding-bottom', '0px');
+      const labels = page.locator('#board .board-coordinates text');
+      await expect(labels).toHaveCount(38);
+      await expect(labels).toHaveText(Array.from({ length: 19 }, (_, i) =>
+        ['ABCDEFGHJKLMNOPQRST'[i], String(19 - i)]).flat());
+      await page.keyboard.press('c');
+      await expect(labels).toHaveCount(38);
+      const layout = await page.locator('#board').evaluate(board => {
+        const svg = board as unknown as SVGSVGElement;
+        const view = svg.getBoundingClientRect();
+        const wood = svg.querySelector<SVGRectElement>('.board-surface')!.getBoundingClientRect();
+        return {
+          left: wood.x - view.x,
+          top: wood.y - view.y,
+          right: view.x + view.width - wood.x - wood.width,
+          bottom: view.y + view.height - wood.y - wood.height,
+          outside: [...svg.querySelectorAll<SVGTextElement>('.board-coordinates text')].every(label => {
+            const box = label.getBoundingClientRect();
+            return (box.x >= wood.x + wood.width || box.y >= wood.y + wood.height) &&
+              box.x + box.width <= view.x + view.width && box.y + box.height <= view.y + view.height;
+          }),
+        };
+      });
+      expect(layout.left).toBe(0);
+      expect(layout.top).toBe(0);
+      expect(layout.right).toBeCloseTo(26.3);
+      expect(layout.bottom).toBeCloseTo(26.3);
+      expect(layout.outside).toBe(true);
+      const renderedFontSizes = () => labels.evaluateAll(elements => elements.map(element => {
+        const text = element as SVGTextElement;
+        const matrix = text.getScreenCTM()!;
+        return Math.round(parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b) * 1000) / 1000;
+      }));
+      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      const viewport = page.viewportSize()!;
+      await page.setViewportSize({ ...viewport, width: test.info().project.name === 'mobile' ? 320 : 1024 });
+      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      await page.setViewportSize(viewport);
+      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      const gap = await page.locator('.layout').evaluate(element => {
+        const board = element.querySelector('.board-wrap')!.getBoundingClientRect();
+        const sidebar = element.querySelector('aside')!.getBoundingClientRect();
+        return innerWidth <= 800 ? sidebar.top - board.bottom : sidebar.left - board.right;
+      });
+      expect(gap).toBe(test.info().project.name === 'mobile' ? 0 : 4);
+    }
     if (screen.playerName) {
       await expect(page.locator(screen.playerName)).toHaveAttribute('aria-expanded', 'true');
       await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);

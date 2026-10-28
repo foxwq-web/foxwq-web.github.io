@@ -16,4 +16,4 @@
 | **Counting result**<br>[![Counting result](counting-result.png)](counting-result.png) | **Counting rejected**<br>[![Counting rejected](counting-rejected.png)](counting-rejected.png) |
 | **Counting error**<br>[![Counting error](counting-error.png)](counting-error.png) | **Score estimation**<br>[![Score estimation](score-estimation.png)](score-estimation.png) |
 | **Score estimation loading**<br>[![Score estimation loading](score-estimation-loading.png)](score-estimation-loading.png) | **Finished**<br>[![Finished](finished.png)](finished.png) |
-| **Finished resign**<br>[![Finished resign](finished-resign.png)](finished-resign.png) | **Finished void**<br>[![Finished void](finished-void.png)](finished-void.png) |
+| **Finished resign**<br>[![Finished resign](finished-resign.png)](finished-resign.png) | **Board coordinates**<br>[![Board coordinates](board-coordinates.png)](board-coordinates.png) | |

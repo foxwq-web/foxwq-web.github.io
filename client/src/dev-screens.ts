@@ -24,6 +24,7 @@ type Screen = {
   phase: string;
   reach: string;
   playerName?: string;
+  coordinates?: boolean;
   variation?: [number, number][];
   run?: (scenario: Scenario) => void | Promise<void>;
 };
@@ -88,6 +89,7 @@ export const DEV_SCREENS: Screen[] = [
   screen("room-left", "Ready for the next game", "Matchmaking", "playing", "ready", "Finished game → Quit room; return to matchmaking", s => { finishedResignation(s); s.session.quitRoom(); }),
 
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
+  { ...screen("board-coordinates", "Board coordinates", "Playing", "playing", "playing", "Sample board with coordinates always visible on the bottom and right edges"), coordinates: true },
   { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Hover Black’s player name in the main view"), playerName: "#black-player-name" },
   { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "AlphaGo vs Lee Sedol, game 2, after move 37"),

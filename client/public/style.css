@@ -47,6 +47,11 @@ main {
   gap: var(--board-gap);
 }
 .board-wrap { min-width: 0; }
+.layout.has-coordinates { column-gap: 4px; }
+main:has(.layout.has-coordinates) {
+  --board-size: calc(100dvh - var(--board-gap));
+  padding-bottom: 0;
+}
 #board {
   outline: none;
   display: block;
@@ -164,6 +169,7 @@ a:focus-visible { color: #fff; }
   body { margin: 0; }
   main { --page-padding: 0px; --board-gap: 0px; }
   .layout { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+  .layout.has-coordinates { row-gap: 0; }
   #board { width: 100%; }
   aside { margin-inline: 8px; }
   #sidebar-content { --sidebar-gap: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
