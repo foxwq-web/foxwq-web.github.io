@@ -79,6 +79,38 @@ test('own countdown speaks seconds and announces each local period rollover once
   assert.equal(sounds.at(-1), 'periods-1');
 });
 
+test('both players announce overtime, seconds and server period changes independently', () => {
+  for (const ownColor of [1, 2]) {
+    const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
+    const state: SessionState = { ...new Session().snapshot(), phase: 'playing', color: ownColor, turn: 1,
+      pending: false, moves: 0, clocks: {
+        1: { main: 1, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+        2: { main: 1, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+      } };
+    speaker.update(state, 0);
+    for (const color of [1, 2]) {
+      state.turn = color; state.moves++;
+      const clock = state.clocks[color];
+      clock.at = 0;
+      speaker.update(state, 0);
+      speaker.update(state, 1); speaker.update(state, 1);
+      for (let time = 22; time <= 30; time++) {
+        speaker.update(state, time); speaker.update(state, time);
+      }
+      for (const periods of [2, 1]) {
+        Object.assign(clock, { main: 0, periods, byoyomi: 30, at: 31 });
+        speaker.update(state, 31); speaker.update(state, 31);
+      }
+    }
+    const expected = ['byoyomi-start', ...Array.from({ length: 9 }, (_, i) => `count-${9 - i}`), 'periods-2', 'periods-1'];
+    assert.deepEqual(sounds, [...expected, ...expected], `own color ${ownColor}`);
+    state.turn = 1; state.moves++;
+    Object.assign(state.clocks[1], { byoyomi: 9, at: 32 });
+    speaker.update(state, 32); speaker.update(state, 32);
+    assert.deepEqual(sounds.slice(expected.length * 2), ['count-9'], 'countdown repeats on a new turn without repeating overtime');
+  }
+});
+
 test('main time stays silent, announces overtime once, and counts only in byoyomi', () => {
   const sounds: string[] = [], speaker = new ByoyomiAnnouncements(name => sounds.push(name));
   const state: SessionState = { ...new Session().snapshot(),  phase: 'playing', color: 1, turn: 1, pending: false, moves: 0,
@@ -133,6 +165,9 @@ test('native half-second cushion permits last-moment play and only own clocks ro
       session.uid = 42;
       session.gameMessage(108, decode(encode({ 2: 0, 3: 2, 4: 30, 5: 43 })), decode(encode({})));
       assert.equal(session.clocks[opponent].periods, 2, 'opponent period changes only on server data');
+      speaker.update(session.snapshot(), 0);
+      speaker.update(session.snapshot(), 0);
+      assert.deepEqual(sounds, ['periods-2', 'periods-2'], 'server rollover announces the opponent’s remaining periods once');
     } finally { session.close(); }
   }
 });

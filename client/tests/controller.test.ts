@@ -498,6 +498,31 @@ test('audio is active only during an ongoing game, including starts before UI up
   assert.equal(controller.sounds.active, false, 'closing the app releases audio');
 });
 
+test('controller plays both players’ countdowns without cancelling them and stops while paused', context => {
+  for (const ownColor of [1, 2]) for (const turn of [1, 2]) {
+    const controller = new Controller(), voices: string[] = [];
+    context.mock.method(controller.sounds, 'preload', () => {});
+    context.mock.method(controller.sounds, 'play', (name: string) => { voices.push(name); });
+    const stop = context.mock.method(controller.sounds, 'stopCountdown', () => {});
+    try {
+      const session = controller.session;
+      session.phase = 'playing'; session.color = ownColor; session.board.turn = turn;
+      session.clocks[turn] = { main: 0, periods: 3, byoyomi: 9, periodLength: 30, at: 0 };
+      controller.emit({ type: 'initialize', state: { ...initial(session), now: 0 } });
+      controller.audio();
+      assert.deepEqual(voices, ['count-9']);
+      assert.equal(stop.mock.callCount(), 0, `own color ${ownColor}, turn ${turn}`);
+      for (const flag of ['pending', 'counting', 'confirmation'] as const) {
+        controller.state.session[flag] = true;
+        controller.audio();
+        controller.state.session[flag] = false;
+      }
+      assert.equal(stop.mock.callCount(), 3);
+      assert.deepEqual(voices, ['count-9']);
+    } finally { controller.dispose(); }
+  }
+});
+
 test('controller persists the native rollover anchor before rendering and announcing it', context => {
   context.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
   const controller = new Controller(), voices: string[] = [];

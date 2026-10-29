@@ -58,14 +58,18 @@ export function clockReading(clock: Clock, elapsed = 0, periodLength = 60, own =
   return { main: 0, periods, seconds, overtime: true };
 }
 
+interface PlayerAnnouncements {
+  periods: number | null;
+  sawMain: boolean;
+  byoyomiAnnounced: boolean;
+}
+
 export class ByoyomiAnnouncements {
   play: (name: string) => void;
   game: string | null = null;
   turn: string | null = null;
-  periods: number | null = null;
   said = new Set<string>();
-  sawMain = false;
-  byoyomiAnnounced = false;
+  players = new Map<number, PlayerAnnouncements>();
   constructor(play: (name: string) => void) {
     this.play = play;
     this.reset();
@@ -73,10 +77,8 @@ export class ByoyomiAnnouncements {
   reset() {
     this.game = null;
     this.turn = null;
-    this.periods = null;
     this.said = new Set<string>();
-    this.sawMain = false;
-    this.byoyomiAnnounced = false;
+    this.players.clear();
   }
   update(state: SessionState, time = Date.now() / 1000) {
     if (state.phase !== "playing") {
@@ -88,25 +90,35 @@ export class ByoyomiAnnouncements {
       this.reset();
       this.game = game;
     }
-    const clock = state.clocks[state.color];
-    if (!clock) return;
-    const active =
-      state.turn === state.color &&
-      !state.pending &&
-      !state.counting &&
-      !state.confirmation;
-    const reading = clockReading(
-      clock,
-      active ? Math.max(0, time - clock.at) : 0,
-    );
-    const previousPeriods = this.periods;
-    this.periods = reading.periods;
-    this.sawMain ||= !reading.overtime;
-    if (!active) {
+    const active = !state.pending && !state.counting && !state.confirmation;
+    let current: {
+      clock: Clock;
+      reading: ReturnType<typeof clockReading>;
+      player: PlayerAnnouncements;
+      previousPeriods: number | null;
+    } | undefined;
+    for (const color of [1, 2]) {
+      const clock = state.clocks[color];
+      if (!clock) continue;
+      let player = this.players.get(color);
+      if (!player) {
+        player = { periods: null, sawMain: false, byoyomiAnnounced: false };
+        this.players.set(color, player);
+      }
+      const reading = clockReading(clock,
+        active && state.turn === color ? Math.max(0, time - clock.at) : 0,
+        60, color === state.color);
+      const previousPeriods = player.periods;
+      player.periods = reading.periods;
+      player.sawMain ||= !reading.overtime;
+      if (state.turn === color) current = { clock, reading, player, previousPeriods };
+    }
+    if (!active || !current) {
       this.turn = null;
       return;
     }
-    const turn = `${state.moves}:${state.color}`;
+    const { clock, reading, player, previousPeriods } = current;
+    const turn = `${state.moves}:${state.turn}`;
     if (turn !== this.turn) {
       this.said.clear();
       this.turn = turn;
@@ -114,14 +126,14 @@ export class ByoyomiAnnouncements {
     if (
       reading.overtime &&
       reading.periods > 0 &&
-      this.sawMain &&
-      !this.byoyomiAnnounced
+      player.sawMain &&
+      !player.byoyomiAnnounced
     ) {
-      this.byoyomiAnnounced = true;
+      player.byoyomiAnnounced = true;
       this.play("byoyomi-start");
     }
     // Native panel 008ef830 reacts to changes in the displayed period count,
-    // whether a local own-clock rollover or a server update supplied it. Its
+    // from a local own-clock rollover or either player’s server update. The
     // periodLength - 2 guard limits voices to the start of the new period.
     if (reading.overtime && previousPeriods !== null && previousPeriods > 0 &&
         reading.periods !== previousPeriods && [1, 2].includes(reading.periods) &&
