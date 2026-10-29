@@ -12,6 +12,7 @@ import type { Transport } from '../src/transport.ts';
 import type { SessionState } from '../src/state.ts';
 import { NetworkLog, type NetworkEntry } from '../src/network-log.ts';
 import * as game from '../src/game.ts';
+import timeoutResult from './fixtures/timeout-result.json' with { type: 'json' };
 
 function unpack(payload: Buffer): [Message, Message] {
   const [header, body] = game.unpack(payload);
@@ -179,6 +180,40 @@ test('final results decode Fox hundredths of zi to points for either winner', ()
     }
   }
 });
+test('recorded timeout result packets show White winning on time in the UI and SGF', () => {
+  const { s } = countingSession();
+  try {
+    assert.equal(timeoutResult.packets.length, 2);
+    for (const packet of timeoutResult.packets) {
+      const bytes = Buffer.from(packet.frame, 'base64');
+      const [decoded, size] = decodeOne(bytes)!;
+      assert.equal(size, bytes.length);
+      const [header, body] = game.unpack(decoded.payload);
+      assert.equal(header.number(1), packet.op);
+      assert.equal(signed(body.one(3)), -2);
+      s.gameMessage(packet.op, body, header);
+      assert.equal(s.phase, 'finished');
+      assert.equal(s.result, timeoutResult.expectedResult);
+      assert.equal(s.snapshot().status, 'Result: W+T');
+      assert.match(s.board.sgf(s.result), /RE\[W\+T\]/);
+    }
+  } finally { s.close(); }
+});
+
+test('timeout margins retain the winner for every game-end notification', () => {
+  for (const op of [402, 403, 405]) for (const winner of [1, 2]) {
+    const { s, notify } = countingSession();
+    try {
+      notify(op, { 1: 0, 2: winner, 3: -2, 4: 2 });
+      const result = `${winner === 1 ? 'B' : 'W'}+T`;
+      assert.equal(s.result, result);
+      assert.equal(s.status, `Result: ${result}`);
+      assert.equal(s.phase, 'finished');
+      assert.ok(s.board.sgf(s.result).includes(`RE[${result}]`));
+    } finally { s.close(); }
+  }
+});
+
 test('counting errors do not open a dialog, failed answers can be retried, disconnect clears dialogs', () => {
   const { s, notify } = countingSession();
   notify(303, { 1: -1, 2: 1 }); assert.equal(s.snapshot().confirmation, false);

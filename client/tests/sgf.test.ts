@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Board } from "../src/board.ts";
+import { recordedClocks } from "../src/clock.ts";
 import { Session } from "../src/session.ts";
 import { decode, encode, type Fields } from "../src/wire.ts";
 
@@ -83,4 +84,88 @@ test("untimed boards omit clock properties and SGF retains fractional seconds", 
   board.timeControl = { main: 2700, periods: 5, byoyomi: 30 };
   board.moveTimings[0] = { remaining: 2690.113 };
   assert.match(board.sgf(), /TM\[2700\]OT\[5x30 byo-yomi\].*;B\[dd\]BL\[2690\.113\]/);
+});
+
+
+test("byoyomi records the pre-reset countdown for both colors and replays it", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: 0 });
+  const s = game();
+  s.matchSettings!.byoyomi = 30;
+  s.board.timeControl = { main: 300, periods: 3, byoyomi: 30 };
+  s.clocks = {
+    1: { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+    2: { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+  };
+  try {
+    context.mock.timers.setTime(7000);
+    s.play(3, 3);
+    // Waiting for the server to confirm must not consume more thinking time.
+    context.mock.timers.setTime(10000);
+    notify(s, 203, { 1: 3, 2: 3, 3: 1, 4: { 2: 0, 3: 3, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[0], { remaining: 23, periods: 3 });
+    assert.equal(s.clocks[1].byoyomi, 30, "live clock resets for the next turn");
+    context.mock.timers.setTime(22000);
+    notify(s, 203, { 1: 15, 2: 15, 3: 2, 4: { 2: 0, 3: 3, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[1], { remaining: 18, periods: 3 });
+    assert.equal(recordedClocks(s.board, 1)[1].byoyomi, 23);
+    assert.equal(recordedClocks(s.board, 2)[2].byoyomi, 18);
+    assert.match(s.board.sgf(), /;B\[dd\]BL\[23\]OB\[3\];W\[pp\]WL\[18\]OW\[3\]/);
+  } finally { s.close(); }
+});
+
+test("byoyomi pass timing stops at submission and main-time transitions use only overtime elapsed", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: 0 });
+  const s = game();
+  s.matchSettings!.byoyomi = 30;
+  s.board.timeControl = { main: 300, periods: 3, byoyomi: 30 };
+  s.clocks = {
+    1: { main: 5, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+    2: { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 },
+  };
+  try {
+    context.mock.timers.setTime(12000);
+    s.passTurn();
+    context.mock.timers.setTime(15000);
+    notify(s, 206, { 1: { 2: 0, 3: 3, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[0], { remaining: 23, periods: 3 });
+    context.mock.timers.setTime(24000);
+    notify(s, 206, { 1: { 2: 0, 3: 3, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[1], { remaining: 21, periods: 3 });
+    assert.match(s.board.sgf(), /;B\[\]BL\[23\]OB\[3\];W\[\]WL\[21\]OW\[3\]/);
+  } finally { s.close(); }
+});
+
+test("byoyomi recording accounts for countdown updates and periods consumed during a move", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: 0 });
+  const s = game();
+  s.matchSettings!.byoyomi = 30;
+  s.board.timeControl = { main: 300, periods: 3, byoyomi: 30 };
+  s.clocks[1] = { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
+  try {
+    context.mock.timers.setTime(38000);
+    s.play(3, 3);
+    notify(s, 203, { 1: 3, 2: 3, 3: 1, 4: { 2: 0, 3: 2, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[0], { remaining: 22, periods: 2 });
+    // A later countdown notification replaces the opponent's time anchor.
+    context.mock.timers.setTime(58000);
+    notify(s, 108, { 2: 0, 3: 3, 4: 10, 5: 43 });
+    context.mock.timers.setTime(76000);
+    notify(s, 203, { 1: 15, 2: 15, 3: 2, 4: { 2: 0, 3: 2, 4: 30 } });
+    assert.deepEqual(s.board.moveTimings[1], { remaining: 22, periods: 2 });
+    assert.equal(s.clocks[2].byoyomi, 30);
+  } finally { s.close(); }
+});
+
+test("byoyomi recording trusts non-reset server readings and handles missing clocks", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: 0 });
+  const s = game();
+  try {
+    s.clocks = {};
+    notify(s, 203, { 1: 3, 2: 3, 3: 1, 4: { 2: 0, 3: 2, 4: 60 } });
+    assert.deepEqual(s.board.moveTimings[0], { remaining: 60, periods: 2 });
+    s.clocks[2] = { main: 0, periods: 2, byoyomi: 60, periodLength: 60, at: 0 };
+    context.mock.timers.setTime(5000);
+    notify(s, 203, { 1: 15, 2: 15, 3: 2, 4: { 2: 0, 3: 2, 4: 42 } });
+    assert.deepEqual(s.board.moveTimings[1], { remaining: 42, periods: 2 });
+  } finally { s.close(); }
 });

@@ -786,6 +786,7 @@ export class Session {
         const color = m.number(3),
           x = m.number(1),
           y = m.number(2);
+        const submittedClock = confirmsMove ? this.pendingMove?.clocks[color] : undefined;
         if (color === 3 - this.color) this.opponentDisconnectDeadline = null;
         if (confirmsMove) this.pendingMove = null;
         else {
@@ -794,7 +795,7 @@ export class Session {
           this.onSound(placementSound(captures));
         }
         this.sync = m.sub(5).number(1, this.sync);
-        this.clock(color, m.sub(4));
+        this.clock(color, m.sub(4), submittedClock);
         if (this.pendingAction !== 311) this.pending = false;
         this.status = "";
       } else if (op === 206) {
@@ -1033,10 +1034,27 @@ export class Session {
     this.clocks = this.pendingMove.clocks;
     this.pendingMove = null;
   }
-  clock(color: number, m: Message) {
+  clock(color: number, m: Message, previous = this.clocks[color]) {
     if (m.has(2) && (m.number(2) > 0 || m.has(4))) {
+      let remaining = Math.max(0, m.number(2) > 0 ? m.number(2) : m.number(4));
+      const length = previous?.periodLength || this.board.timeControl?.byoyomi ||
+        this.matchSettings?.byoyomi;
+      // Move notifications report the next period's full allowance, not the
+      // seconds left when the stone was played. Save the pre-reset countdown
+      // for SGF/review, while readClock still resets the live clock normally.
+      if (m.number(2) <= 0 && previous && length && remaining === length && m.has(3)) {
+        // Use the clock captured before optimistic placement, and stop our
+        // stones/passes at submission rather than confirmation receipt.
+        const time = color === this.color && this.pending ? this.pendingSince : now();
+        const paused = this.counting || !!this.pendingConfirmation ||
+          (color !== this.color && this.opponentDisconnectDeadline != null);
+        const elapsed = paused ? 0 : Math.floor(Math.max(0, time - previous.at) + 0.5);
+        const spentPeriods = Math.max(0, previous.periods - m.number(3));
+        remaining = Math.max(0, Math.min(length,
+          previous.byoyomi + spentPeriods * length - Math.max(0, elapsed - previous.main)));
+      }
       this.board.moveTimings[this.board.moves.length - 1] = {
-        remaining: Math.max(0, m.number(2) > 0 ? m.number(2) : m.number(4)),
+        remaining,
         ...(m.number(2) <= 0 && m.has(3) ? { periods: m.number(3) } : {}),
       };
     }
@@ -1096,8 +1114,9 @@ export class Session {
       this.result = `${winner === 1 ? "B" : "W"}+R`;
     } else if (reason === 8) {
       this.result = "Void";
+    } else if ([1, 2].includes(winner) && margin === -2) {
+      this.result = `${winner === 1 ? "B" : "W"}+T`;
     } else if ([1, 2].includes(winner)) {
-
       const points = m.has(3) && margin >= 0 ? margin / 50 : null;
       this.result = `${winner === 1 ? "B" : "W"}+${points ?? ""}`;
     }
