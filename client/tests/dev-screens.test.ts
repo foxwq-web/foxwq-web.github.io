@@ -121,19 +121,7 @@ test('previews preserve real pending, acknowledgement, rollback and pass semanti
   }
 });
 
-test('questions and final results come from shared prompts and complete game flows', async () => {
-  const { promptForAction } = await import('../src/state.ts');
-  for (const [id, command] of [
-    ['resign-confirm', 'resign'],
-  ] as const) {
-    const session = new Session();
-    try {
-      const preview = await applyDevScreen(session, id);
-      assert.ok(preview);
-      assert.deepEqual(preview.prompt, promptForAction(command));
-      assert.equal(session.pending, false);
-    } finally { session.close(); }
-  }
+test('final results come from complete game flows', async () => {
   for (const [id, result] of [['finished','B+2.5'], ['finished-resign','W+R'], ['finished-void','Void']]) {
     const session = new Session();
     try {

@@ -10,7 +10,8 @@ const step = (extent - 2 * margin) / (size - 1),
 const edgePadding = step * 0.025;
 const inset = margin - radius - edgePadding,
   width = extent - 2 * inset;
-const coordinateGutterPixels = 26.3;
+// Whole-pixel gutters keep the wood and adjacent player card edges aligned.
+const coordinateGutterPixels = 27;
 const location = (p: number) => ({
   cx: margin + (p % size) * step,
   cy: margin + Math.floor(p / size) * step,
@@ -108,13 +109,13 @@ export function BoardView({
   play: (p: number) => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
-  const [pixelWidth, setPixelWidth] = useState(width + coordinateGutterPixels);
+  const [pixelWidth, setPixelWidth] = useState(width + 2 * coordinateGutterPixels);
   useLayoutEffect(() => {
     if (!coordinates || !svg.current) return;
     const board = svg.current;
     const resize = () => {
       const measured = board.getBoundingClientRect().width;
-      if (measured > coordinateGutterPixels) setPixelWidth(measured);
+      if (measured > 2 * coordinateGutterPixels) setPixelWidth(measured);
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -122,7 +123,7 @@ export function BoardView({
     return () => observer.disconnect();
   }, [coordinates]);
   // Cancel the board's SVG scaling so coordinate text stays at 14 CSS pixels.
-  const coordinateScale = width / (pixelWidth - coordinateGutterPixels);
+  const coordinateScale = width / (pixelWidth - 2 * coordinateGutterPixels);
   const coordinateGutter = coordinateGutterPixels * coordinateScale;
   const s = state.session,
     estimate = s.estimation?.phase === "result" ? s.estimation : null,
@@ -153,7 +154,7 @@ export function BoardView({
       ref={svg}
       id="board"
       xmlns="http://www.w3.org/2000/svg"
-      viewBox={`${inset} ${inset} ${coordinates ? width + coordinateGutter : width} ${coordinates ? width + coordinateGutter : width}`}
+      viewBox={`${coordinates ? inset - coordinateGutter : inset} ${coordinates ? inset - coordinateGutter : inset} ${coordinates ? width + 2 * coordinateGutter : width} ${coordinates ? width + 2 * coordinateGutter : width}`}
       tabIndex={-1}
       style={{ cursor: "default" }}
       onPointerMove={(e) => hover(playablePoint(state, pointAt(e)))}
@@ -227,11 +228,14 @@ export function BoardView({
           textAnchor="middle" dominantBaseline="central">
           {Array.from({ length: size }, (_, i) => {
             const p = margin + i * step;
-            const edge = extent - inset + coordinateGutter / 2;
+            const nearEdge = inset - coordinateGutter / 2;
+            const farEdge = extent - inset + coordinateGutter / 2;
             const letter = "ABCDEFGHJKLMNOPQRST"[i];
             return <React.Fragment key={i}>
-              <text x={p / coordinateScale} y={edge / coordinateScale}>{letter}</text>
-              <text x={edge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
+              <text x={p / coordinateScale} y={nearEdge / coordinateScale}>{letter}</text>
+              <text x={p / coordinateScale} y={farEdge / coordinateScale}>{letter}</text>
+              <text x={nearEdge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
+              <text x={farEdge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
             </React.Fragment>;
           })}
         </g>

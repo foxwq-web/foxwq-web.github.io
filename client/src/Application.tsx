@@ -1,4 +1,4 @@
-import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faXmark, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { Icon } from "./Icon";
 import { PlayerName } from "./PlayerInfo";
 import {
@@ -108,7 +108,6 @@ export function App({ controller: c }: { controller: Controller }) {
   const s = state.session,
     playing = s.phase === "playing";
   const available = boardAvailable(s),
-    reviewing = available && s.phase === "finished" && s.game_over,
     showMenu = !available;
   const loginStep =
     [
@@ -120,7 +119,6 @@ export function App({ controller: c }: { controller: Controller }) {
       "gateway",
       "resuming",
     ].includes(s.phase);
-  const resignConfirm = state.prompt?.action === "resign";
   const loginPending = [
     "connecting",
     "authenticating",
@@ -140,7 +138,9 @@ export function App({ controller: c }: { controller: Controller }) {
     prompt: Prompt | null;
     counting: boolean;
   } | null>(null);
-  const statusError = !!state.menuError || s.phase === "error" || s.status.startsWith("Matchmaking rejected:");
+  const statusError = !!state.menuError ||
+    (s.phase === "error" && s.status !== "Another client logged in") ||
+    s.status.startsWith("matchmaking rejected:");
   const statusHidden =
     !statusError &&
     (s.phase === "disconnected" ||
@@ -186,7 +186,7 @@ export function App({ controller: c }: { controller: Controller }) {
     if (countingOpen && !previous.current?.counting)
       document.getElementById("counting-reject")?.focus();
     else if (state.prompt && state.prompt !== previous.current?.prompt)
-      document.getElementById(state.prompt.action === "resign" ? "resign" : "action-cancel")?.focus();
+      document.getElementById("action-cancel")?.focus();
     else if (
       showMenu &&
       (!previous.current?.menu || previous.current.login !== loginStep)
@@ -432,27 +432,18 @@ export function App({ controller: c }: { controller: Controller }) {
                   >
                     Request Counting
                   </button>
-                  <div className="resign-actions">
-                    <button
-                      id="resign"
-                      className={resignConfirm ? "secondary resign-confirm" : "secondary"}
-                      disabled={actionsBlocked(s)}
-                      onClick={() => resignConfirm ? command("resign") : ask("resign")}
-                    >
-                      {resignConfirm ? "Confirm Resignation" : "Resign"}
-                    </button>
-                    <button
-                      id="resign-cancel"
-                      className="secondary"
-                      aria-label="Cancel resignation" title="Cancel resignation"
-                      hidden={!resignConfirm}
-                      onClick={() => c.emit({ type: "prompt.close" })}
-                    ><Icon icon={faXmark} standalone /></button>
-                  </div>
+                  <button
+                    id="resign"
+                    className="secondary"
+                    disabled={actionsBlocked(s)}
+                    onClick={() => command("resign")}
+                  >
+                    Resign
+                  </button>
                   <button
                     id="estimate-score"
                     className="secondary"
-                    disabled={(!playing && !reviewing) || !!state.prompt || (!estimate && (reviewing ? s.pending : actionsBlocked(s)))}
+                    disabled={!playing || s.game_over || !!state.review || !!state.prompt || (!estimate && actionsBlocked(s))}
                     onClick={() => command(estimate ? "return-game" : "estimate-score")}
                   >
                     {estimate ? "Return to Game" : "Estimate Score"}
@@ -463,7 +454,7 @@ export function App({ controller: c }: { controller: Controller }) {
                 <section
                   id="action-panel"
                   className="quest-panel"
-                  hidden={!state.prompt || resignConfirm}
+                  hidden={!state.prompt}
                 >
                   <p id="action-title">{state.prompt?.title}</p>
                   <p id="action-description" hidden={!state.prompt?.description}>

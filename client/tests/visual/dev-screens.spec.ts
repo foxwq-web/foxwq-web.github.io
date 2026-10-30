@@ -11,45 +11,64 @@ for (const screen of DEV_SCREENS) {
     await page.goto(`/?dev-screen=${screen.id}`);
     await page.locator('#dev-menu-toggle').waitFor({ state: 'visible' });
     if (screen.coordinates) {
-      await expect(page.locator('main')).toHaveCSS('padding-bottom', '0px');
+      const padding = await page.locator('main').evaluate(main => {
+        const style = getComputedStyle(main);
+        return { top: style.paddingTop, bottom: style.paddingBottom };
+      });
+      expect(padding).toEqual({ top: '0px', bottom: '0px' });
       const labels = page.locator('#board .board-coordinates text');
-      await expect(labels).toHaveCount(38);
+      await expect(labels).toHaveCount(76);
       await expect(labels).toHaveText(Array.from({ length: 19 }, (_, i) =>
-        ['ABCDEFGHJKLMNOPQRST'[i], String(19 - i)]).flat());
+        ['ABCDEFGHJKLMNOPQRST'[i], 'ABCDEFGHJKLMNOPQRST'[i], String(19 - i), String(19 - i)]).flat());
       await page.keyboard.press('c');
-      await expect(labels).toHaveCount(38);
+      await expect(labels).toHaveCount(76);
       const layout = await page.locator('#board').evaluate(board => {
         const svg = board as unknown as SVGSVGElement;
         const view = svg.getBoundingClientRect();
         const wood = svg.querySelector<SVGRectElement>('.board-surface')!.getBoundingClientRect();
         return {
+          outerTop: view.top - svg.closest('main')!.getBoundingClientRect().top,
+          outerBottom: svg.closest('main')!.getBoundingClientRect().bottom - view.bottom,
           left: wood.x - view.x,
           top: wood.y - view.y,
           right: view.x + view.width - wood.x - wood.width,
           bottom: view.y + view.height - wood.y - wood.height,
           outside: [...svg.querySelectorAll<SVGTextElement>('.board-coordinates text')].every(label => {
             const box = label.getBoundingClientRect();
-            return (box.x >= wood.x + wood.width || box.y >= wood.y + wood.height) &&
+            return (box.x + box.width <= wood.x || box.y + box.height <= wood.y ||
+              box.x >= wood.x + wood.width || box.y >= wood.y + wood.height) &&
+              box.x >= view.x && box.y >= view.y &&
               box.x + box.width <= view.x + view.width && box.y + box.height <= view.y + view.height;
           }),
         };
       });
-      expect(layout.left).toBe(0);
-      expect(layout.top).toBe(0);
-      expect(layout.right).toBeCloseTo(26.3);
-      expect(layout.bottom).toBeCloseTo(26.3);
+      if (test.info().project.name === 'desktop')
+        expect(layout.outerBottom).toBeCloseTo(layout.outerTop);
+      expect(layout.left).toBeCloseTo(27);
+      expect(layout.top).toBeCloseTo(27);
+      expect(layout.right).toBeCloseTo(27);
+      expect(layout.bottom).toBeCloseTo(27);
       expect(layout.outside).toBe(true);
+      const playerAlignment = () => page.evaluate(() => {
+        const wood = document.querySelector('#board .board-surface')!.getBoundingClientRect();
+        const player = document.querySelector('.player-panel')!.getBoundingClientRect();
+        return Math.round((player.top - wood.top) * 1000) / 1000;
+      });
+      if (test.info().project.name === 'desktop')
+        await expect.poll(playerAlignment).toBeCloseTo(0, 1);
       const renderedFontSizes = () => labels.evaluateAll(elements => elements.map(element => {
         const text = element as SVGTextElement;
         const matrix = text.getScreenCTM()!;
         return Math.round(parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b) * 1000) / 1000;
       }));
-      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      await expect.poll(renderedFontSizes).toEqual(Array(76).fill(14));
       const viewport = page.viewportSize()!;
       await page.setViewportSize({ ...viewport, width: test.info().project.name === 'mobile' ? 320 : 1024 });
-      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      await expect.poll(renderedFontSizes).toEqual(Array(76).fill(14));
+      if (test.info().project.name === 'desktop')
+        await expect.poll(playerAlignment).toBeCloseTo(0, 1);
       await page.setViewportSize(viewport);
-      await expect.poll(renderedFontSizes).toEqual(Array(38).fill(14));
+      await expect.poll(renderedFontSizes).toEqual(Array(76).fill(14));
       const gap = await page.locator('.layout').evaluate(element => {
         const board = element.querySelector('.board-wrap')!.getBoundingClientRect();
         const sidebar = element.querySelector('aside')!.getBoundingClientRect();
@@ -75,19 +94,25 @@ for (const screen of DEV_SCREENS) {
     await page.evaluate(() => document.fonts.ready);
     for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {
       await expect(page.locator(`#${id}`)).toBeVisible();
-      if (!['playing', 'finished', 'reconnecting'].includes(screen.phase))
+      if (!['playing', 'finished', 'reconnecting'].includes(screen.phase) || (id === 'estimate-score' && screen.phase === 'finished'))
         await expect(page.locator(`#${id}`)).toBeDisabled();
     }
     if (screen.phase === 'finished') {
       const spacing = await page.evaluate(() => {
         const result = document.getElementById('game-state-panel')!.getBoundingClientRect();
         const review = document.getElementById('game-review')!.getBoundingClientRect();
+        const download = document.getElementById('save-sgf')!.getBoundingClientRect();
+        const quit = document.getElementById('quit-room')!.getBoundingClientRect();
+        const primary = getComputedStyle(document.getElementById('primary-actions')!);
         return {
+          downloadToQuit: innerWidth <= 800 ? quit.left - download.right : quit.top - download.bottom,
+          actionGap: parseFloat(primary.gap),
           resultToReview: review.top - result.bottom,
           sidebarGap: parseFloat(getComputedStyle(document.getElementById('sidebar-content')!).gap),
         };
       });
       expect(spacing.resultToReview).toBe(spacing.sidebarGap);
+      expect(spacing.downloadToQuit).toBe(spacing.actionGap);
       if (test.info().project.name === 'mobile') {
         const download = await page.locator('#save-sgf').boundingBox();
         const quit = await page.locator('#quit-room').boundingBox();
@@ -126,3 +151,31 @@ for (const screen of DEV_SCREENS) {
     await expect(page).toHaveScreenshot(`${screen.id}.png`, { fullPage: true });
   });
 }
+
+test('board-coordinates gutters ignore clicks and corner intersections stay aligned', async ({ page }) => {
+  await page.goto('/?dev-screen=board-coordinates');
+  const stones = page.locator('#board .board-stones > .stone');
+  const labels = page.locator('#board .board-coordinates text');
+  await expect(labels).toHaveCount(76);
+  const initialStones = await stones.count();
+  for (let side = 0; side < 4; side++) {
+    const label = await labels.nth(side).boundingBox();
+    await page.mouse.click(label!.x + label!.width / 2, label!.y + label!.height / 2);
+    await expect(stones).toHaveCount(initialStones);
+    await expect(page.locator('#board .stone-preview circle')).toHaveCount(0);
+  }
+  for (const [x, y] of [[48, 48], [792, 48], [48, 792], [792, 792]]) {
+    const point = await page.locator('#board').evaluate((element, [x, y]) => {
+      const svg = element as unknown as SVGSVGElement;
+      const screen = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM()!);
+      return { x: screen.x, y: screen.y };
+    }, [x, y]);
+    await page.mouse.move(point.x, point.y);
+    const preview = page.locator('#board .stone-preview circle');
+    await expect(preview).toHaveAttribute('cx', String(x));
+    await expect(preview).toHaveAttribute('cy', String(y));
+  }
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(stones).toHaveCount(initialStones + 1);
+});

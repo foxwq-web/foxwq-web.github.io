@@ -135,7 +135,7 @@ Import does not anonymize account names or game data elsewhere in the recording.
 
 Supported inferred actions are login, selecting the time control and matching,
 stone placement, passing, requesting counting, accepting/rejecting counting,
-and confirming resignation. A new match after a finished game implies leaving
+and resigning. A new match after a finished game implies leaving
 that room first. A resignation packet is replayed through Resign; the same
 packet can also have originated from Quit Room during play, so that intent
 cannot be distinguished. There is currently no production control for the

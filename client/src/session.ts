@@ -588,7 +588,7 @@ export class Session {
         } else if (op === 100)
           this.failed(
             generation,
-            "Session ended (another client may have logged in)",
+            "Another client logged in",
           );
       } else if (service === game.ROOM) this.roomMessage(op, m);
       else if (service === game.GAME) this.gameMessage(op, m, header);
@@ -666,7 +666,7 @@ export class Session {
         if (this.phase !== "matching") return;
         this.phase = signed(m.one(1)) ? "ready" : "matching";
         this.status = signed(m.one(1))
-          ? `Matchmaking rejected: ${signed(m.one(1))}`
+          ? `matchmaking rejected: ${signed(m.one(1))}`
           : `Searching for a game...`;
       } else if ([100132, 100139, 100141].includes(op)) {
         if (this.phase !== "matching") return;
@@ -828,7 +828,7 @@ export class Session {
           if (op === 304 && this.countingAnswer) {
             if (!this.countingAnswer.accept) {
               this.counting = false;
-              this.status = "Counting rejected. Continue playing.";
+              this.status = "Counting rejected. Continue.";
             }
             this.countingAnswer = null;
           }
@@ -840,7 +840,7 @@ export class Session {
         this.counting = Boolean(m.number(1));
         this.status = m.number(1)
           ? "Counting accepted"
-          : "Counting rejected. Continue playing.";
+          : "Counting rejected. Continue.";
       } else if ([108, 109].includes(op) && [1, 2].includes(this.color)) {
         // ResumeCountdownNotify (109) wraps the same clock data as 108.
         // Fox can answer a counting rejection with 304 status 1, then resume
@@ -851,7 +851,7 @@ export class Session {
           this.pendingConfirmation = null;
           this.countingAnswer = null;
           this.counting = false;
-          this.status = "Counting rejected. Continue playing.";
+          this.status = "Counting rejected. Continue.";
         }
         const timing = op === 109 ? m.sub(2) : m;
         if (timing.has(5)) {

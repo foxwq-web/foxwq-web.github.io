@@ -1,37 +1,20 @@
 import { test, expect } from 'playwright/test';
 
-test('replay controls and shortcuts stay disabled until the estimate is closed', async ({ page }) => {
-  let release!: () => void;
-  const waiting = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/*.wasm*', async route => {
-    await waiting;
-    await route.continue();
-  });
-  await page.goto('/?dev-screen=replay-variation');
-  const numbers = page.locator('#board .variation-number');
-  await expect(numbers).toHaveCount(15);
-  await page.locator('#estimate-score').click();
-  const checkBlocked = async () => {
-    for (const direction of ['first', 'previous', 'next', 'last'])
-      await expect(page.locator(`#review-${direction}`)).toBeDisabled();
-    await expect(page.locator('#save-sgf')).toBeDisabled();
-    await expect(page.locator('#quit-room')).toBeDisabled();
-    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'])
+test('Estimate Score stays disabled throughout game-over replay and variations', async ({ page }) => {
+  for (const screen of ['finished', 'replay-variation']) {
+    await page.goto(`/?dev-screen=${screen}`);
+    const estimate = page.locator('#estimate-score');
+    await expect(estimate).toBeVisible();
+    await expect(estimate).toBeDisabled();
+    await expect(page.locator('#save-sgf')).toBeEnabled();
+    await expect(page.locator('#quit-room')).toBeEnabled();
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape']) {
       await page.keyboard.press(key);
-    await expect(numbers).toHaveCount(15);
-    await expect(page.locator('#estimate-score')).toHaveText('Return to Game');
-  };
-  await checkBlocked();
-  release();
-  await expect(page.locator('#estimation-lead')).toBeVisible();
-  await checkBlocked();
-  await page.locator('#estimate-score').click();
-  await expect(page.locator('#review-previous')).toBeEnabled();
-  await expect(page.locator('#save-sgf')).toBeEnabled();
-  await page.keyboard.press('ArrowLeft');
-  await expect(numbers).toHaveCount(14);
-  await page.keyboard.press('Escape');
-  await expect(numbers).toHaveCount(0);
+      await expect(estimate).toBeVisible();
+      await expect(estimate).toBeDisabled();
+      await expect(page.locator('#estimation-panel')).toBeHidden();
+    }
+  }
 });
 
 test('Home and End jump to the beginning and end of replay', async ({ page }) => {

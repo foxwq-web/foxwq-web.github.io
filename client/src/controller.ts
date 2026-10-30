@@ -201,7 +201,6 @@ export class Controller {
       color: this.session.color,
       turn: this.session.board.turn,
     }, command)) return;
-    if (this.state.prompt?.action === "resign" && command !== "resign") return;
     const { username, remember } = this.state.form,
       password = this.password;
     if (command === "login" && (!username.trim() || !password)) return;

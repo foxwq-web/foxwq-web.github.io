@@ -320,16 +320,8 @@ test("subscribers receive the controller state without replaying transitions", a
     controller.session.flushChanges();
     controller.emit({ type: "board.hover", point: 60 });
     controller.command("play", { x: 3, y: 3 });
-    controller.emit({
-      type: "prompt.open",
-      prompt: {
-        action: "resign",
-        title: "Resign?",
-        description: "",
-        label: "Resign",
-      },
-    });
     controller.command("resign");
+    assert.equal(controller.state.prompt, null);
     assert.equal(controller.state, rendered);
     unsubscribe();
     controller.emit({ type: "board.hover", point: null });

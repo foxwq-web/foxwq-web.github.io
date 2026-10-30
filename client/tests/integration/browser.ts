@@ -132,7 +132,6 @@ export async function act(page: Page, action: Action, username: string, password
     case 'confirm': await click(action.accept ? '#counting-accept' : '#counting-reject'); break;
     case 'resign':
       await click('#resign');
-      if (await page.locator('#resign').textContent() === 'Confirm Resignation') await click('#resign');
       break;
     default: throw Error(`Unsupported inferred action: ${action.type}`);
   }

@@ -399,8 +399,8 @@ try {
       assert.equal(outcome, result === 'Void' ? '' : result?.startsWith('B+') ? 'win' : 'loss', fixture.id);
       if (outcome) assert.equal(await page.locator('#game-result').evaluate(el => getComputedStyle(el).color), outcome === 'win' ? 'rgb(5, 172, 1)' : 'rgb(249, 53, 0)', fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
-      assert.equal(await page.locator('#estimate-score').isEnabled(), true, fixture.id);
-      assert.equal(await js("['pass','request-score','resign'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
+      assert.equal(await page.locator('#estimate-score').isDisabled(), true, fixture.id);
+      assert.equal(await js("['pass','request-score','resign','estimate-score'].every(id=>{const button=document.getElementById(id);return button.checkVisibility() && button.disabled;})"), true, fixture.id);
     }
     if (fixture.phase === 'finished' && fixture.id !== 'room-left') {
       assert.equal(await page.locator('.player-panel.to-play').count(), 0, fixture.id);
@@ -420,26 +420,11 @@ try {
       assert.equal(await page.locator('#board .stone').count(), 0);
       await page.locator('#review-next').click();
       assert.equal(await page.locator('#board .stone').count(), 1);
-      await page.locator('#estimate-score').click();
-      await wait("!document.getElementById('estimation-lead').hidden");
-      assert.equal(await page.locator('#board .stone').count(), 1);
-      assert.ok(await page.locator('.estimated-territory rect').count() > 0);
-      await page.locator('#estimate-score').click();
-      assert.equal(await page.locator('.estimated-territory rect').count(), 0);
-      assert.equal(await page.locator('#board .stone').count(), 1);
-      await page.locator('#estimate-score').click();
-      await wait("!document.getElementById('estimation-lead').hidden");
-      await page.keyboard.press('ArrowLeft');
-      assert.equal(await page.locator('#board .stone').count(), 1);
-      assert.equal(await page.locator('#review-previous').isDisabled(), true);
-      assert.ok(await page.locator('.estimated-territory rect').count() > 0);
-      await page.locator('#estimate-score').click();
+      assert.equal(await page.locator('#estimate-score').isDisabled(), true);
       await page.keyboard.press('ArrowLeft');
       assert.equal(await page.locator('#board .stone').count(), 0);
       assert.equal(await page.locator('.estimated-territory rect').count(), 0);
       assert.equal(await page.locator('#estimation-panel').isVisible(), false);
-      await page.keyboard.press('ArrowLeft');
-      assert.equal(await page.locator('#board .stone').count(), 0);
       await page.locator('#review-last').click();
       assert.equal(await page.locator('#board .board-stones').innerHTML(), finalStones);
       assert.equal(await page.locator('#review-next').isDisabled(), true);
@@ -458,7 +443,7 @@ try {
     if (['playing', 'finished'].includes(fixture.phase)) {
       const geometry = await js<{ id: string; x: number; y: number; width: number; height: number; sidebarWidth: number; boxed: boolean; visible: boolean }[]>(`(() => {
         const bar = document.querySelector('aside').getBoundingClientRect();
-        return [...document.querySelectorAll('#primary-actions > button, #resign')].map(button => {
+        return [...document.querySelectorAll('#primary-actions > button, #resign')].filter(button => button.checkVisibility()).map(button => {
           const r = button.getBoundingClientRect();
           return {id:button.id, x:r.x-bar.x, y:r.y, width:r.width, height:r.height,
             sidebarWidth:bar.width, boxed:!!button.closest('fieldset,.quest-panel'), visible:!!button.getClientRects().length};
@@ -469,7 +454,7 @@ try {
         assert.equal(button.visible, true, fixture.id);
         assert.equal(button.boxed, false, fixture.id);
         assert.equal(button.x, 0, fixture.id);
-        assert.equal(button.width, button.sidebarWidth - (button.id === 'resign' && fixture.id === 'resign-confirm' ? 40 : 0), fixture.id);
+        assert.equal(button.width, button.sidebarWidth, fixture.id);
         assert.equal(button.height, geometry[0].height, fixture.id);
         if (i) assert.equal(button.y, geometry[i-1].y + button.height + 8, fixture.id);
       }
@@ -486,17 +471,6 @@ try {
       }
       console.log('Browser opponent-turn checks passed: Pass and Request counting disabled without prompts');
     }
-    if (fixture.id === 'resign-confirm') {
-      assert.equal(await js("document.getElementById('resign').textContent"), 'Confirm Resignation');
-      assert.equal(await js("['pass','request-score','estimate-score'].every(id=>document.getElementById(id).disabled)"), true);
-      assert.equal(await js("document.getElementById('resign').disabled"), false);
-      assert.equal(await js("document.getElementById('resign-cancel').hidden"), false);
-      assert.equal(await js("(()=>{const r=document.getElementById('resign-cancel').getBoundingClientRect();return r.width===r.height})()"), true);
-      await js("document.getElementById('resign-cancel').click()");
-      assert.equal(await js("document.getElementById('resign').textContent"), 'Resign');
-      assert.equal(await js("document.getElementById('resign-cancel').hidden"), true);
-      await js("document.getElementById('resign').click()");
-    }
     if (fixture.id === 'counting-waiting') {
       assert.equal(await js("document.getElementById('request-score').textContent"), 'Request Counting');
       assert.equal(await js("document.getElementById('request-score').disabled"), true);
@@ -507,7 +481,7 @@ try {
       assert.equal(await js("document.getElementById('board-status').checkVisibility()"), true);
       assert.equal(await js("document.getElementById('board-status').textContent"), 'Waiting for counting result...');
     }
-    if (process.env.FOX_BROWSER_SCREENSHOTS && ['matchmaking','board-black','counting-request','counting-result','score-estimation','finished','resign-confirm'].includes(fixture.id)) {
+    if (process.env.FOX_BROWSER_SCREENSHOTS && ['matchmaking','board-black','counting-request','counting-result','score-estimation','finished'].includes(fixture.id)) {
       await mkdir(process.env.FOX_BROWSER_SCREENSHOTS, {recursive:true});
       await call('Emulation.setDeviceMetricsOverride', {width:1280,height:900,deviceScaleFactor:1,mobile:false});
       const { data } = await call('Page.captureScreenshot', {captureBeyondViewport:true});
@@ -540,10 +514,8 @@ try {
       await wait("document.getElementById('estimation-panel').hidden");
       assert.equal(await js("document.getElementById('counting-dialog').open"), true);
       await js("document.getElementById('resign').click()");
-      await wait("!document.getElementById('resign-cancel').hidden");
-      assert.equal(await js("document.getElementById('counting-accept').disabled"), true);
-      await js("document.getElementById('resign-cancel').click()");
-      assert.equal(await js("document.getElementById('counting-accept').disabled"), false);
+      assert.equal(await js("document.getElementById('resign-cancel')"), null);
+      assert.equal(await js("document.getElementById('action-panel').hidden"), true);
     }
     if (fixture.id === 'login') {
       const cookies = await js('document.cookie');
@@ -854,8 +826,6 @@ try {
   assert.equal(await js('checkSession.phase'), 'playing');
   await pointerAt(4, 3); assert.equal(await previewCount(), 1);
   await js("document.getElementById('resign').click()");
-  await wait("!document.getElementById('resign-cancel').hidden");
-  await js("document.getElementById('resign').click()");
   await wait("document.getElementById('board-status').textContent==='Result: B+R'");
   assert.equal(await js("document.getElementById('save-sgf').tagName"), 'BUTTON');
   assert.equal(await js("document.getElementById('save-sgf').textContent"), 'Download SGF');
@@ -919,6 +889,10 @@ try {
   assert.equal(await js("getComputedStyle(document.getElementById('status')).color"), await js("getComputedStyle(document.body).color"));
   assert.equal(await js("document.getElementById('disconnect')"), null);
   assert.ok(await js("document.getElementById('connection-menu').getBoundingClientRect().width") < 400);
+  await js("window.checkSession.failed(window.checkSession.generation,'Another client logged in')");
+  await wait("document.getElementById('status').textContent==='Another client logged in'");
+  assert.equal(await js("document.getElementById('status').hidden"), false);
+  assert.equal(await js("document.querySelector('#status .icon')"), null);
   await js("window.CheckSession.prototype.login=function(){throw Error('Invalid test credentials')};document.getElementById('password').value='test';document.getElementById('login-form').requestSubmit()");
   assert.equal(await js("document.getElementById('status').textContent"), 'Error: Invalid test credentials');
   assert.equal(await js("getComputedStyle(document.getElementById('status')).color"), await js("getComputedStyle(document.body).color"));
@@ -1092,11 +1066,6 @@ try {
   assert.equal(await js("document.querySelector('main').inert"), false);
   assert.equal(await js("document.activeElement.id"), 'board');
   assert.equal(await js("document.getElementById('menu')"), null);
-  await js("document.getElementById('resign').click()");
-  assert.equal(await js("document.getElementById('resign-cancel').hidden"), false);
-  await js("document.getElementById('resign-cancel').click()");
-  assert.equal(await js("matchSession.phase"), 'playing');
-
   await js("matchSession.quitRoom()");
   assert.equal(await js("document.getElementById('connection-layer').hidden"), true);
   assert.equal(await js("matchSession.quitRequested"), true);

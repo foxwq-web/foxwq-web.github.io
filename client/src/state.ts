@@ -193,12 +193,6 @@ export function reducer(state: UIState, event: UIEvent): UIState {
 }
 
 export const actionPrompts: Partial<Record<Command, Prompt>> = {
-  resign: {
-    action: "resign",
-    title: "Resign this game?",
-    description: "",
-    label: "Resign",
-  },
   "quit-room": {
     action: "quit-room",
     title: "Leave this room?",

@@ -99,8 +99,6 @@ export const DEV_SCREENS: Screen[] = [
   screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(108, { 5: 42, 2: 0, 3: 1, 4: 9 })),
   screen("action-rejected", "Move rejected", "Playing", "playing", "playing", "Play a stone; Fox rejects it and rolls it back", s => { s.session.play(10, 10); s.notify(201, { 1: -1 }); }),
 
-  screen("resign-confirm", "Confirm resignation", "Questions", "playing", "playing", "Resign → inline confirmation with cancel; other actions disabled", s => s.ask("resign")),
-
   screen("counting-waiting", "Waiting for opponent", "Counting", "playing", "playing", "Fox acknowledges your counting request", countingAcknowledged),
   screen("counting-request", "Opponent requests counting", "Counting", "playing", "playing", "Fox forwards the opponent’s request", opponentCounting),
   screen("counting-accepted", "Waiting for counting result", "Counting", "playing", "playing", "Request counting → opponent accepts", s => { countingAcknowledged(s); s.notify(306, { 1: 1, 2: 1 }); }),
@@ -117,7 +115,7 @@ export const DEV_SCREENS: Screen[] = [
   { ...screen("replay-variation", "15-move variation", "Replay", "playing", "finished", "Finished game → Previous → play 15 local variation moves", finishedResignation),
     variation: Array.from({ length: 15 }, (_, i) => [i + 2, 10] as [number, number]) },
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
-  screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → confirm → Fox ends the game (W+R)", finishedResignation),
+  screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → Fox ends the game (W+R)", finishedResignation),
   screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(403, { 2: 0, 4: 8 })),
 ];
 
