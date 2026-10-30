@@ -1,6 +1,36 @@
 import { test, expect } from 'playwright/test';
 import { DEV_SCREENS } from '../../src/dev-screens';
 
+test('game-over and counting-result share text-to-button spacing', async ({ page }) => {
+  const gaps: number[][] = [];
+  for (const screen of ['finished', 'counting-result']) {
+    await page.goto(`/?dev-screen=${screen}`);
+    const panel = page.locator(screen === 'finished' ? '#game-state-panel' : '#counting-dialog');
+    await expect(panel).toBeVisible();
+    const measured: number[] = [];
+    for (const gap of [12, 20]) {
+      measured.push(await panel.evaluate((element, value) => {
+        (element as HTMLElement).style.setProperty('--quest-gap', `${value}px`);
+        const title = element.querySelector('p')!.getBoundingClientRect();
+        const button = element.querySelector('button')!.getBoundingClientRect();
+        return button.top - title.bottom;
+      }, gap));
+      const padding = await panel.evaluate(element => {
+        const style = getComputedStyle(element);
+        return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].map(parseFloat);
+      });
+      expect(padding).toEqual(Array(4).fill(gap));
+      const buttonGap = await panel.evaluate(element => {
+        const [first, second] = [...element.querySelectorAll('button')].map(button => button.getBoundingClientRect());
+        return first.top === second.top ? second.left - first.right : second.top - first.bottom;
+      });
+      expect(buttonGap).toBe(8);
+    }
+    gaps.push(measured);
+  }
+  expect(gaps).toEqual([[12, 20], [12, 20]]);
+});
+
 for (const screen of DEV_SCREENS) {
   test(screen.id, async ({ page }) => {
     // Keep sample clocks and history dates identical across runs without
@@ -142,7 +172,7 @@ for (const screen of DEV_SCREENS) {
           const style = getComputedStyle(panel);
           return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft, style.gap].map(parseFloat);
         });
-        expect(panelSpacing).toEqual(Array(5).fill(spacing.sidebarGap));
+        expect(panelSpacing).toEqual([12, 12, 12, 12, spacing.actionGap]);
       }
       const offsets = await page.locator('#game-review button').evaluateAll(buttons =>
         buttons.map(button => {

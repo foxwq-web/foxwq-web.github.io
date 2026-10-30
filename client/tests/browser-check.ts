@@ -1167,7 +1167,7 @@ try {
     })()`);
     await wait(`document.getElementById('board-status').textContent===${JSON.stringify(name + ' check')} && document.getElementById('connection-layer').hidden`);
     await pointerAt(1,1);assert.equal(await previewCount(),0);
-    assert.equal(await js("document.getElementById('board').style.cursor"),'default');
+    assert.equal(await js("getComputedStyle(document.getElementById('board')).cursor"),'default');
     await pointerAt(1,1,'click');
     assert.equal(await js('JSON.stringify(matchSession.board)===boardBeforeIllegal'),true);
     assert.equal(await js('illegalPackets'),0);assert.equal(await js('illegalSounds'),0);

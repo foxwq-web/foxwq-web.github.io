@@ -8,7 +8,7 @@ export function PlayerName({ controller: c, uid, name, rank = '', id }: {
   controller: Controller; uid?: number; name: string; rank?: string; id?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [position, setPosition] = useState({ left: 0, top: 0 });
   const trigger = useRef<HTMLButtonElement>(null), card = useRef<HTMLDivElement>(null);
   const enter = useRef<ReturnType<typeof setTimeout>>(undefined), leave = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dismissing = useRef(false);
@@ -53,11 +53,12 @@ export function PlayerName({ controller: c, uid, name, rank = '', id }: {
       const anchor = trigger.current?.getBoundingClientRect(), popup = card.current;
       if (!anchor || !popup) return;
       const width = popup.offsetWidth, height = popup.offsetHeight;
-      const right = anchor.right + 8;
-      const left = right + width <= innerWidth - 8 ? right
-        : anchor.left - width - 8 >= 8 ? anchor.left - width - 8
-        : Math.min(Math.max(8, anchor.left), innerWidth - width - 8);
-      setPosition({ left, top: Math.max(8, Math.min(anchor.top, innerHeight - height - 8)) });
+      const inset = parseFloat(getComputedStyle(popup).getPropertyValue('--player-info-inset'));
+      const right = anchor.right + inset;
+      const left = right + width <= innerWidth - inset ? right
+        : anchor.left - width - inset >= inset ? anchor.left - width - inset
+        : Math.min(Math.max(inset, anchor.left), innerWidth - width - inset);
+      setPosition({ left, top: Math.max(inset, Math.min(anchor.top, innerHeight - height - inset)) });
     };
     place();
     window.addEventListener('resize', place);

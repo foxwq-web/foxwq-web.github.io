@@ -11,7 +11,7 @@ const edgePadding = step * 0.025;
 const inset = margin - radius - edgePadding,
   width = extent - 2 * inset;
 // Whole-pixel gutters keep the wood and adjacent player card edges aligned.
-const coordinateGutterPixels = 27;
+export const coordinateGutterPixels = 27;
 const location = (p: number) => ({
   cx: margin + (p % size) * step,
   cy: margin + Math.floor(p / size) * step,
@@ -122,7 +122,7 @@ export function BoardView({
     observer.observe(board);
     return () => observer.disconnect();
   }, [coordinates]);
-  // Cancel the board's SVG scaling so coordinate text stays at 14 CSS pixels.
+  // Cancel the board's SVG scaling so coordinate text keeps its CSS font size.
   const coordinateScale = width / (pixelWidth - 2 * coordinateGutterPixels);
   const coordinateGutter = coordinateGutterPixels * coordinateScale;
   const s = state.session,
@@ -156,7 +156,6 @@ export function BoardView({
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`${coordinates ? inset - coordinateGutter : inset} ${coordinates ? inset - coordinateGutter : inset} ${coordinates ? width + 2 * coordinateGutter : width} ${coordinates ? width + 2 * coordinateGutter : width}`}
       tabIndex={-1}
-      style={{ cursor: "default" }}
       onPointerMove={(e) => hover(playablePoint(state, pointAt(e)))}
       onPointerLeave={() => hover(null)}
       onPointerCancel={() => hover(null)}
@@ -224,7 +223,6 @@ export function BoardView({
       {coordinates && (
         <g className="board-coordinates" pointerEvents="none" fill="currentColor"
           transform={`scale(${coordinateScale})`}
-          fontFamily="Arial, sans-serif" fontSize={14}
           textAnchor="middle" dominantBaseline="central">
           {Array.from({ length: size }, (_, i) => {
             const p = margin + i * step;
@@ -275,7 +273,6 @@ export function BoardView({
           const { cx, cy } = location(Number(point));
           return <text key={point} className="variation-number"
             x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
-            fontFamily="Arial, sans-serif" fontSize={radius * 1.6} fontWeight="bold"
             fill={s.stones[Number(point)] === 1 ? "#fff" : "#000"}>{number}</text>;
         })}
         {marker && !state.review?.variation && (countdown !== null ? (
@@ -285,9 +282,6 @@ export function BoardView({
             y={marker.cy}
             textAnchor="middle"
             dominantBaseline="central"
-            fontFamily="Arial, sans-serif"
-            fontSize={24}
-            fontWeight="bold"
             fill={last?.[0] === 1 ? "#fff" : "#000"}
           >
             {countdown}

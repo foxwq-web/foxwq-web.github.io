@@ -9,8 +9,9 @@ import {
   useState,
   lazy,
   Suspense,
+  type CSSProperties,
 } from "react";
-import { BoardView } from "./BoardView";
+import { BoardView, coordinateGutterPixels } from "./BoardView";
 import { Controller } from "./controller";
 import {
   boardAvailable,
@@ -389,6 +390,7 @@ export function App({ controller: c }: { controller: Controller }) {
   return (
     <>
       <main
+        style={{ "--coordinate-gutter": `${coordinateGutterPixels}px` } as CSSProperties}
         inert={showMenu}
       >
         <div className={`layout${c.previewCoordinates || coordinates ? " has-coordinates" : ""}`}>
