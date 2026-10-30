@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "react";
+import React, { memo, useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "react";
 import { Board } from "./board.ts";
 import { clockReading } from "./clock.ts";
 import { blocked, boardAvailable, type UIState } from "./state";
@@ -97,6 +97,23 @@ function Stone({
     </g>
   );
 }
+// Stones only change when the position changes, not on clocks or hover.
+const BoardStones = memo(function BoardStones({ stones }: { stones: number[] }) {
+  return (
+    <g className="board-stones" pointerEvents="none">
+      {stones.map((color, p) =>
+        color ? (
+          <Stone
+            key={p}
+            point={p}
+            color={color}
+          />
+        ) : null,
+      )}
+    </g>
+  );
+});
+
 export function BoardView({
   state,
   coordinates = false,
@@ -257,17 +274,7 @@ export function BoardView({
           )),
         )}
       </g>
-      <g className="board-stones" pointerEvents="none">
-        {s.stones.map((color, p) =>
-          color ? (
-            <Stone
-              key={p}
-              point={p}
-              color={color}
-            />
-          ) : null,
-        )}
-      </g>
+      <BoardStones stones={s.stones} />
       <g pointerEvents="none">
         {Object.entries(state.review?.moveNumbers ?? {}).map(([point, number]) => {
           const { cx, cy } = location(Number(point));

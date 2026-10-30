@@ -1,0 +1,1087 @@
+{
+  "environment": {
+    "node": "v26.11.0",
+    "browser": "156.0.8078.4",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M6"
+  },
+  "samples": [
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "clock",
+      "repeat": 0,
+      "workMs": 40.40000009536743,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 41.19999980926514,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.044374,
+        "ScriptDuration": 0.000437,
+        "LayoutDuration": 0.00007700000000000003,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 335896,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "clock",
+      "repeat": 1,
+      "workMs": 40.40000009536743,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 41.299999713897705,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.044684,
+        "ScriptDuration": 0.000525,
+        "LayoutDuration": 0.00008299999999999998,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 332860,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "clock",
+      "repeat": 2,
+      "workMs": 44.700000286102295,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 45.5,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.048706000000000006,
+        "ScriptDuration": 0.00047099999999999996,
+        "LayoutDuration": 0.00007799999999999997,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 332476,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "clock",
+      "repeat": 3,
+      "workMs": 42.200000286102295,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 43,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.046518,
+        "ScriptDuration": 0.00046100000000000004,
+        "LayoutDuration": 0.00007999999999999997,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 332996,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "clock",
+      "repeat": 4,
+      "workMs": 42.200000286102295,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 43.09999990463257,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.046622000000000004,
+        "ScriptDuration": 0.00046200000000000006,
+        "LayoutDuration": 0.000078,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 333316,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "cpu-profile",
+      "top": [
+        [
+          "dg:8",
+          266
+        ],
+        [
+          "ms:7",
+          212
+        ],
+        [
+          "Rs:7",
+          111
+        ],
+        [
+          "(garbage collector):-1",
+          88
+        ],
+        [
+          "et:7",
+          85
+        ],
+        [
+          "O2:9",
+          82
+        ],
+        [
+          "mp:9",
+          67
+        ],
+        [
+          "(anonymous):9",
+          66
+        ],
+        [
+          "Vt:8",
+          65
+        ],
+        [
+          "A:7",
+          61
+        ],
+        [
+          "(program):-1",
+          51
+        ],
+        [
+          "St:7",
+          45
+        ],
+        [
+          "Me:7",
+          36
+        ],
+        [
+          "r:0",
+          36
+        ],
+        [
+          "S0:7",
+          33
+        ]
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "hover",
+      "repeat": 0,
+      "workMs": 50.5,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 51.40000009536743,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.054900000000000004,
+        "ScriptDuration": 0.006698,
+        "LayoutDuration": 0.001067,
+        "RecalcStyleDuration": 0.0029510000000000005,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 385184,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "hover",
+      "repeat": 1,
+      "workMs": 51.5,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 52.30000019073486,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.055936,
+        "ScriptDuration": 0.0069700000000000005,
+        "LayoutDuration": 0.001043,
+        "RecalcStyleDuration": 0.0029850000000000002,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386484,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "hover",
+      "repeat": 2,
+      "workMs": 51.30000019073486,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 52,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.055607,
+        "ScriptDuration": 0.007155999999999999,
+        "LayoutDuration": 0.00105,
+        "RecalcStyleDuration": 0.002856,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386848,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "hover",
+      "repeat": 3,
+      "workMs": 49.80000019073486,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 50.59999990463257,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.054093999999999996,
+        "ScriptDuration": 0.006821000000000001,
+        "LayoutDuration": 0.000989,
+        "RecalcStyleDuration": 0.0028780000000000003,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 385240,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "hover",
+      "repeat": 4,
+      "workMs": 50.40000009536743,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 51.09999990463257,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.05448600000000001,
+        "ScriptDuration": 0.007024000000000001,
+        "LayoutDuration": 0.0010249999999999999,
+        "RecalcStyleDuration": 0.002979,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 387308,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "retention",
+      "retained": [
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3919012
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3928220
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3937456
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3942240
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3952252
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3959800
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3967972
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3962972
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "kind": "idle",
+      "repeat": 0,
+      "workMs": 2001.3999996185303,
+      "mutationTargets": {},
+      "elapsedMs": 2005,
+      "mutations": 0,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 0,
+        "BoardView": 0,
+        "Stone": 0
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"172\" cy=\"213.33333333333334\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.008335999999999996,
+        "ScriptDuration": 0.000015000000000000256,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 30860,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "clock",
+      "repeat": 0,
+      "workMs": 40.09999990463257,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 40.90000009536743,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.044510999999999995,
+        "ScriptDuration": 0.00044600000000000005,
+        "LayoutDuration": 0.000087,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 334392,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "clock",
+      "repeat": 1,
+      "workMs": 43.5,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 44.30000019073486,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.048101000000000005,
+        "ScriptDuration": 0.00048799999999999994,
+        "LayoutDuration": 0.00009000000000000002,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 335340,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "clock",
+      "repeat": 2,
+      "workMs": 41.90000009536743,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 43,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.047082,
+        "ScriptDuration": 0.000621,
+        "LayoutDuration": 0.00011100000000000004,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 331756,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "clock",
+      "repeat": 3,
+      "workMs": 40.90000009536743,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 41.80000019073486,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.045034,
+        "ScriptDuration": 0.000528,
+        "LayoutDuration": 0.00009399999999999995,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 332336,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "clock",
+      "repeat": 4,
+      "workMs": 41.5,
+      "mutationTargets": {
+        "#text:characterData": 180,
+        "TIME:datetime": 180
+      },
+      "elapsedMs": 42.299999713897705,
+      "mutations": 360,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 720,
+        "BoardView": 720,
+        "Stone": 0
+      },
+      "elements": 261,
+      "stones": 38,
+      "clock": "03:45",
+      "preview": "",
+      "metrics": {
+        "TaskDuration": 0.045843,
+        "ScriptDuration": 0.00048400000000000006,
+        "LayoutDuration": 0.00008900000000000005,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 334324,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "cpu-profile",
+      "top": [
+        [
+          "dg:8",
+          254
+        ],
+        [
+          "ms:7",
+          248
+        ],
+        [
+          "Rs:7",
+          101
+        ],
+        [
+          "et:7",
+          95
+        ],
+        [
+          "O2:9",
+          89
+        ],
+        [
+          "(garbage collector):-1",
+          82
+        ],
+        [
+          "Vt:8",
+          71
+        ],
+        [
+          "(anonymous):9",
+          71
+        ],
+        [
+          "(program):-1",
+          57
+        ],
+        [
+          "A:7",
+          54
+        ],
+        [
+          "mp:9",
+          52
+        ],
+        [
+          "St:7",
+          46
+        ],
+        [
+          "Rm:9",
+          36
+        ],
+        [
+          "q0:7",
+          34
+        ],
+        [
+          "r:0",
+          31
+        ]
+      ]
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "hover",
+      "repeat": 0,
+      "workMs": 51.09999990463257,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 51.90000009536743,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.05488,
+        "ScriptDuration": 0.00709,
+        "LayoutDuration": 0.0009410000000000001,
+        "RecalcStyleDuration": 0.0030420000000000004,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386408,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "hover",
+      "repeat": 1,
+      "workMs": 50.30000019073486,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 51.09999990463257,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.054385,
+        "ScriptDuration": 0.007044999999999999,
+        "LayoutDuration": 0.00093,
+        "RecalcStyleDuration": 0.00289,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386452,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "hover",
+      "repeat": 2,
+      "workMs": 54.5,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 55.299999713897705,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.058640000000000005,
+        "ScriptDuration": 0.007462,
+        "LayoutDuration": 0.00101,
+        "RecalcStyleDuration": 0.0031220000000000006,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 387652,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "hover",
+      "repeat": 3,
+      "workMs": 50.30000019073486,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 51.09999990463257,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.054631000000000006,
+        "ScriptDuration": 0.006733,
+        "LayoutDuration": 0.0009339999999999999,
+        "RecalcStyleDuration": 0.0029440000000000004,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386800,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "hover",
+      "repeat": 4,
+      "workMs": 49.59999990463257,
+      "mutationTargets": {
+        "circle:cx": 594,
+        "circle:cy": 38,
+        "g:childList": 100
+      },
+      "elapsedMs": 50.5,
+      "mutations": 732,
+      "added": 50,
+      "removed": 50,
+      "calls": {
+        "App": 694,
+        "BoardView": 694,
+        "Stone": 644
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"709.3333333333334\" cy=\"792\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.053914000000000004,
+        "ScriptDuration": 0.006801999999999999,
+        "LayoutDuration": 0.0009299999999999999,
+        "RecalcStyleDuration": 0.0028989999999999997,
+        "LayoutCount": 694,
+        "RecalcStyleCount": 694,
+        "JSHeapUsedSize": 386564,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "retention",
+      "retained": [
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3915732
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3924060
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3933912
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3938708
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3948900
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3956460
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3964272
+        },
+        {
+          "JSEventListeners": 204,
+          "Nodes": 312,
+          "JSHeapUsedSize": 3958960
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "kind": "idle",
+      "repeat": 0,
+      "workMs": 2001.0999999046326,
+      "mutationTargets": {},
+      "elapsedMs": 2007.5999999046326,
+      "mutations": 0,
+      "added": 0,
+      "removed": 0,
+      "calls": {
+        "App": 0,
+        "BoardView": 0,
+        "Stone": 0
+      },
+      "elements": 263,
+      "stones": 38,
+      "clock": "07:05",
+      "preview": "<g class=\"stone stone-black\" filter=\"url(#stone-shadow)\"><circle cx=\"172\" cy=\"213.33333333333334\" r=\"20.666666666666668\" fill=\"url(#black-stone)\"></circle></g>",
+      "metrics": {
+        "TaskDuration": 0.007873000000000002,
+        "ScriptDuration": 0.00001299999999999999,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 30860,
+        "Nodes": 0,
+        "JSEventListeners": 0
+      },
+      "errors": []
+    }
+  ]
+}

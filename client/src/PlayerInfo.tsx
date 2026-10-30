@@ -1,5 +1,5 @@
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Controller } from './controller';
 import type { PlayerInfo } from './player-info';
@@ -90,7 +90,8 @@ export function PlayerName({ controller: c, uid, name, rank = '', id }: {
     </div>, document.body)}
   </>;
 }
-function InfoContent({ info: h }: { info: PlayerInfo }) {
+// Keep the history table stable during parent clock and popup-position updates.
+const InfoContent = memo(function InfoContent({ info: h }: { info: PlayerInfo }) {
   const [downloadError, setDownloadError] = useState('');
   const [downloading, setDownloading] = useState('');
   const gameUrl = (id: string) => `https://h5.foxwq.com/yehuDiamond/chessbook_local/YHWQFetchChess?chessid=${encodeURIComponent(id)}`;
@@ -152,4 +153,4 @@ function InfoContent({ info: h }: { info: PlayerInfo }) {
         </tr>)}</tbody></table>}
     </div>
   </>;
-}
+});

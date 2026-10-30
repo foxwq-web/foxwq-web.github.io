@@ -46,6 +46,11 @@ changes, adding `-- --update-messages` to regenerate outgoing packets as well.
 
 The static app is built into `client/dist/`. Serve that directory with a static host; `npm run preview` previews the build locally. The Worker is deployed separately.
 
+The [DOM/runtime benchmark and full feature survey](tests/performance/README.md)
+run offline against an instrumented production build with `npm run bench:runtime`.
+Their checked-in reports and [findings](tests/performance/FINDINGS.md) include
+before/after evidence for the measured rendering improvements.
+
 Browser checks start their own local server and mute audio:
 
 ```sh

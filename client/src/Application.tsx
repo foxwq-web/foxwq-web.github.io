@@ -2,6 +2,7 @@ import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faTriangleExc
 import { Icon } from "./Icon";
 import { PlayerName } from "./PlayerInfo";
 import {
+  memo,
   useEffect,
   useLayoutEffect,
   useSyncExternalStore,
@@ -86,6 +87,48 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
     </section>
   );
 }
+// Clock and pointer updates do not change matchmaking options.
+const TimeControls = memo(function TimeControls({ fields, populations, selected, disabled, controller: c }: {
+  fields: UIState["session"]["matchFields"];
+  populations: UIState["session"]["fieldPlayers"];
+  selected: UIState["session"]["fieldId"];
+  disabled: boolean;
+  controller: Controller;
+}) {
+  return (
+    <section id="time-settings" aria-label="Time control">
+      <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">
+        {fields.map((field) => (
+          <label key={field.id} className="time-option">
+            <input
+              type="radio"
+              id={`time-control-${field.id}`}
+              name="time-control"
+              value={field.id}
+              checked={selected === field.id}
+              disabled={disabled}
+              onChange={() =>
+                c.command("select-time", { id: field.id })
+              }
+            />
+            <span>
+              <span>19,{timeLabel(field)}</span>
+              <span
+                className="field-population"
+                data-field-id={field.id}
+              >
+                {populations[field.id] == null
+                  ? "(— players)"
+                  : `(${populations[field.id]} ${populations[field.id] === 1 ? "player" : "players"})`}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+});
+
 function countingText(s: UIState["session"]) {
   if (s.confirmationKind !== "counting-result") return "";
   const score = s.countingResult;
@@ -703,36 +746,8 @@ export function App({ controller: c }: { controller: Controller }) {
           </form>}
           {loginStep && statusError && status}
           <div id="matchmaking" hidden={loginStep}>
-            <section id="time-settings" aria-label="Time control">
-              <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">
-                {s.matchFields.map((field) => (
-                  <label key={field.id} className="time-option">
-                    <input
-                      type="radio"
-                      id={`time-control-${field.id}`}
-                      name="time-control"
-                      value={field.id}
-                      checked={s.fieldId === field.id}
-                      disabled={!["ready", "finished"].includes(s.phase)}
-                      onChange={() =>
-                        c.command("select-time", { id: field.id })
-                      }
-                    />
-                    <span>
-                      <span>19,{timeLabel(field)}</span>
-                      <span
-                        className="field-population"
-                        data-field-id={field.id}
-                      >
-                        {s.fieldPlayers[field.id] == null
-                          ? "(— players)"
-                          : `(${s.fieldPlayers[field.id]} ${s.fieldPlayers[field.id] === 1 ? "player" : "players"})`}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </section>
+            <TimeControls fields={s.matchFields} populations={s.fieldPlayers}
+              selected={s.fieldId} disabled={!["ready", "finished"].includes(s.phase)} controller={c} />
             <button
               id="match"
               disabled={

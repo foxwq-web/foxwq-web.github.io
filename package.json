@@ -31,7 +31,8 @@
     "score-estimator:build": "node score-estimator/scripts/build-docker.ts",
     "score-estimator:check-instructions": "make -C score-estimator check-instructions",
     "test:browser:install": "playwright install --with-deps chromium",
-    "score-estimator:build:native": "make -C score-estimator build"
+    "score-estimator:build:native": "make -C score-estimator build",
+    "bench:runtime": "node --import tsx client/tests/performance/run.ts"
   },
   "dependencies": {
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
