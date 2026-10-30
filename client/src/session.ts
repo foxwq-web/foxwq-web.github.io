@@ -262,7 +262,7 @@ export class Session {
       confirmation: this.pendingConfirmation !== null,
       counting: this.counting,
       confirmationKind: this.pendingConfirmation?.[0] ?? null,
-      countingResult: this.pendingConfirmation?.[2] ?? null,
+      countingResult: this.pendingConfirmation?.[2] ?? this.countingAnswer?.confirmation[2] ?? null,
       estimation: this.estimation,
       gatewayAvailable: !!this.gateway,
       koStones: this.board.history.at(-1) ?? null,

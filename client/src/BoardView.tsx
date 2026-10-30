@@ -125,12 +125,13 @@ export function BoardView({
   const coordinateScale = width / (pixelWidth - coordinateGutterPixels);
   const coordinateGutter = coordinateGutterPixels * coordinateScale;
   const s = state.session,
-    ownership =
-      s.estimation?.phase === "result" ? s.estimation.ownership : null;
+    estimate = s.estimation?.phase === "result" ? s.estimation : null,
+    counted = !estimate && !!s.countingResult?.ownership,
+    ownership = estimate?.ownership ?? s.countingResult?.ownership;
   const preview = playablePoint(state, state.preview);
   const last = s.last_move;
   const marker =
-    last && last[1] !== null && last[2] !== null
+    !counted && last && last[1] !== null && last[2] !== null
       ? location(last[2] * size + last[1])
       : null;
   const clock = s.clocks[s.turn];
@@ -295,12 +296,12 @@ export function BoardView({
         ))}
       </g>
       <g
-        className="estimated-territory"
+        className={counted ? "counted-territory" : "estimated-territory"}
         pointerEvents="none"
       >
         {ownership?.map((color, p) => {
           // Keep the overlay fixed even as incoming moves change the live stones.
-          if (!color || (s.estimation?.phase === "result" && s.estimation.stones[p] === color))
+          if (!color || (estimate?.stones ?? s.stones)[p] === color)
             return null;
           const side = step * 0.28,
             { cx, cy } = location(p);

@@ -108,6 +108,7 @@ export function countingResult(message: Message) {
     black?: number;
     white?: number;
     komi?: number;
+    ownership?: number[];
   } = {
     winner:
       (
@@ -117,6 +118,10 @@ export function countingResult(message: Message) {
         >
       )[winner] ?? null,
   };
+  // Native 00813e70 -> 006ec320 -> 00594880 reads the first 19×19
+  // ASCII points from field 5. Captures include two trailing zeroes.
+  const map = message.bytes(5).subarray(0, 361).toString("utf8");
+  if (/^[012]{361}$/.test(map)) result.ownership = Array.from(map, Number);
   if (message.has(6)) {
     const bytes = new DataView(new ArrayBuffer(4));
     bytes.setUint32(0, message.number(6), true);

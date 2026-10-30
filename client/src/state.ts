@@ -47,6 +47,7 @@ export interface SessionState {
     black?: number;
     white?: number;
     komi?: number;
+    ownership?: number[];
   } | null;
   estimation:
     | null

@@ -13,6 +13,7 @@ import type { SessionState } from '../src/state.ts';
 import { NetworkLog, type NetworkEntry } from '../src/network-log.ts';
 import * as game from '../src/game.ts';
 import timeoutResult from './fixtures/timeout-result.json' with { type: 'json' };
+import countingMap from './fixtures/counting-map.json' with { type: 'json' };
 
 function unpack(payload: Buffer): [Message, Message] {
   const [header, body] = game.unpack(payload);
@@ -259,6 +260,18 @@ test('counting result decodes the float area and server winner without using fin
   assert.deepEqual(game.countingResult(decode(encode({ 8: 3 }))), { winner: 'Draw' });
   count.writeFloatLE(NaN);
   assert.deepEqual(game.countingResult(decode(Buffer.concat([Buffer.from([0x35]), count]))), { winner: null });
+});
+
+test('counting map matches the captured server response and ignores trailing padding', () => {
+  const result = game.countingResult(decode(encode({ 5: countingMap.map, 8: countingMap.winner })));
+  assert.equal(result.winner, 'White wins');
+  assert.equal(result.ownership!.length, 361);
+  assert.deepEqual(result.ownership, [...countingMap.map.slice(0, 361)].map(Number));
+  assert.equal(result.ownership![0], 1);
+  assert.equal(result.ownership!.filter(owner => owner === 2).length, 99);
+  for (const map of ['', '1'.repeat(360), '1'.repeat(180) + 'x' + '2'.repeat(180)]) {
+    assert.deepEqual(game.countingResult(decode(encode({ 5: map, 8: 2 }))), { winner: 'White wins' });
+  }
 });
 
 

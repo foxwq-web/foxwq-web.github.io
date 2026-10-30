@@ -141,6 +141,39 @@ test("byoyomi replaces the last-move marker with contrasting seconds and restore
   } finally { session.close(); }
 });
 
+test("counting overlay marks territory and dead stones, survives an answer, and clears on rejection", async () => {
+  const s = new Session();
+  try {
+    setupFoxGame(s);
+    s.board.play(1, 0, 1);
+    s.board.play(2, 0, 2);
+    const notify = (op: number, fields: Parameters<typeof encode>[0]) =>
+      s.gameMessage(op, decode(encode(fields)), decode(encode({})));
+    notify(303, { 1: 0, 2: 2, 5: '1112' + '0'.repeat(357), 8: 1 });
+    const render = () => renderToStaticMarkup(createElement(BoardView, {
+      state: initial(s), hover() {}, play() {},
+    }));
+    const before = render();
+    assert.equal((before.match(/class="territory-black"/g) ?? []).length, 2); // Empty and dead White; skip living Black.
+    assert.equal((before.match(/class="territory-white"/g) ?? []).length, 1);
+    assert.match(before, /class="counted-territory"/);
+    assert.equal((before.match(/class="stone stone-/g) ?? []).length, 2);
+    s.estimation = { phase: "result", ownership: Array(361).fill(2), stones: [...s.board.stones], lead: 0 };
+    assert.match(render(), /class="estimated-territory"/);
+    assert.doesNotMatch(render(), /class="counted-territory"/);
+    s.estimation = null;
+    assert.equal(render(), before);
+    s.confirm(false);
+    assert.equal(render(), before);
+    notify(304, { 1: -1 }); // Failed answer restores the same confirmation and map.
+    assert.equal(render(), before);
+    s.confirm(false);
+    notify(304, { 1: 0 });
+    assert.doesNotMatch(render(), /class="counted-territory"/);
+    assert.equal(s.snapshot().countingResult, null);
+  } finally { s.close(); }
+});
+
 test("opponent stone appears while the rendered estimate markers stay unchanged", async () => {
   const s = new Session();
   try {
