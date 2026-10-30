@@ -12,7 +12,7 @@
 | **Opponent passed**<br>[![Opponent passed](opponent-passed.png)](opponent-passed.png) | **Both passed**<br>[![Both passed](both-passed.png)](both-passed.png) |
 | **Byoyomi**<br>[![Byoyomi](byoyomi.png)](byoyomi.png) | **Action rejected**<br>[![Action rejected](action-rejected.png)](action-rejected.png) |
 | **Counting waiting**<br>[![Counting waiting](counting-waiting.png)](counting-waiting.png) | **Counting request**<br>[![Counting request](counting-request.png)](counting-request.png) |
-| **Counting accepted**<br>[![Counting accepted](counting-accepted.png)](counting-accepted.png) | **Counting result**<br>[![Counting result](counting-result.png)](counting-result.png) |
+| **Counting accepted**<br>[![Counting accepted](counting-accepted.png)](counting-accepted.png) | **Counting result with territory map**<br>[![Counting result](counting-result.png)](counting-result.png) |
 | **Counting rejected**<br>[![Counting rejected](counting-rejected.png)](counting-rejected.png) | **Counting error**<br>[![Counting error](counting-error.png)](counting-error.png) |
 | **Score estimation**<br>[![Score estimation](score-estimation.png)](score-estimation.png) | **Score estimation loading**<br>[![Score estimation loading](score-estimation-loading.png)](score-estimation-loading.png) |
 | **Finished**<br>[![Finished](finished.png)](finished.png) | **Finished resign**<br>[![Finished resign](finished-resign.png)](finished-resign.png) |

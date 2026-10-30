@@ -1,4 +1,6 @@
 import { PlayerInfoStore, PLAYER_INFO_SERVICE } from "./player-info";
+import { PREVIEW_PLAYERS } from "./dev-players";
+import { COUNTING_PREVIEW } from "./dev-counting";
 
 import type { Session } from "./session.ts";
 import { promptForAction, type Command, type Prompt } from "./state";
@@ -55,14 +57,15 @@ const countingResult = (s: Scenario) => {
   s.notify(304, { 1: 0 });
   s.notify(306, { 1: 1, 2: 1 });
   const area = new DataView(new ArrayBuffer(4));
-  area.setFloat32(0, 185.5, true);
-  s.notify(303, { 1: 0, 2: 2, 8: 1, 6: area.getUint32(0, true) });
+  area.setFloat32(0, COUNTING_PREVIEW.black, true);
+  s.notify(303, { 1: 0, 2: 2, 5: COUNTING_PREVIEW.ownership + "00",
+    8: COUNTING_PREVIEW.winner, 6: area.getUint32(0, true) });
 };
 const finishedCounting = (s: Scenario) => {
   countingResult(s);
   s.session.confirm(true);
   s.notify(304, { 1: 0 });
-  s.notify(402, { 1: 0, 2: 1, 3: 125, 4: 2 });
+  s.notify(402, { 1: 0, 2: COUNTING_PREVIEW.winner, 3: COUNTING_PREVIEW.margin * 50, 4: 2 });
 };
 const finishedResignation = (s: Scenario) => {
   s.session.resign();
@@ -81,7 +84,7 @@ export const DEV_SCREENS: Screen[] = [
   screen("resuming", "Restoring a game", "Connection", "discovery", "resuming", "Login discovers an existing game; synchronization is pending"),
   screen("login-error", "Login or connection error", "Connection", "authenticating", "error", "Fox rejects credentials; transport failures use this same error screen"),
 
-  screen("matchmaking", "Choose time control", "Matchmaking", "discovery", "ready", "Login completes; populations include unknown, zero, one and many players"),
+  screen("matchmaking", "Choose time control", "Matchmaking", "discovery", "ready", "Login completes; show the advertised 1m20s, 5m30s and 20m60s controls and player counts"),
   { ...screen("matchmaking-player-info", "Your player info", "Matchmaking", "discovery", "ready", "Hover your player name in matchmaking"), playerName: "#matchmaking-player .player-name" },
   screen("matching", "Searching", "Matchmaking", "matching", "matching", "Play; Fox accepts the search"),
   screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(100130, { 1: -1 })),
@@ -89,14 +92,14 @@ export const DEV_SCREENS: Screen[] = [
   screen("room-left", "Ready for the next game", "Matchmaking", "playing", "ready", "Finished game → Quit room; return to matchmaking", s => { finishedResignation(s); s.session.quitRoom(); }),
 
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
-  { ...screen("board-coordinates", "Board coordinates", "Playing", "playing", "playing", "Sample board with coordinates always visible on the bottom and right edges"), coordinates: true },
+  { ...screen("board-coordinates", "Board coordinates", "Playing", "playing", "playing", "Sample board with coordinates always visible on all four edges"), coordinates: true },
   { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Hover Black’s player name in the main view"), playerName: "#black-player-name" },
   { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "AlphaGo vs Lee Sedol, game 2, after move 37"),
   screen("opponent-turn", "Opponent’s turn", "Playing", "playing", "playing", "Black plays; White is next", blackMove),
   screen("opponent-passed", "Opponent passed", "Playing", "playing", "playing", "Opponent’s turn → opponent passes", s => { blackMove(s); s.notify(206); }),
   screen("both-passed", "Both players passed", "Playing", "playing", "playing", "Pass → Fox confirms → opponent passes; counting is available", s => { s.session.passTurn(); s.notify(204, { 1: 0 }); s.notify(206); s.notify(206); }),
-  screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(108, { 5: 42, 2: 0, 3: 1, 4: 9 })),
+  screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(108, { 5: s.session.uid, 2: 0, 3: 1, 4: 9 })),
   screen("action-rejected", "Move rejected", "Playing", "playing", "playing", "Play a stone; Fox rejects it and rolls it back", s => { s.session.play(10, 10); s.notify(201, { 1: -1 }); }),
 
   screen("counting-waiting", "Waiting for opponent", "Counting", "playing", "playing", "Fox acknowledges your counting request", countingAcknowledged),
@@ -112,8 +115,11 @@ export const DEV_SCREENS: Screen[] = [
   }),
   screen("score-estimation-loading", "Estimate pending", "Estimation", "playing", "playing", "Estimate score; calculation is pending", s => { s.session.estimationFetcher = () => new Promise(() => {}); void s.session.estimateScore(); }),
 
-  { ...screen("replay-variation", "15-move variation", "Replay", "playing", "finished", "Finished game → Previous → play 15 local variation moves", finishedResignation),
-    variation: Array.from({ length: 15 }, (_, i) => [i + 2, 10] as [number, number]) },
+  { ...screen("replay-variation", "5-move variation", "Replay", "playing", "finished", "Finished game → Previous → replay moves 38–42 of AlphaGo vs Lee Sedol, game 2", finishedResignation),
+    // Actual continuation after move 37, from the SGF cited in position().
+    variation: [
+      [14, 8], [13, 9], [12, 7], [6, 15], [6, 16],
+    ] },
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
   screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → Fox ends the game (W+R)", finishedResignation),
   screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(403, { 2: 0, 4: 8 })),
@@ -152,8 +158,9 @@ function position({ session, notify }: Scenario, timed = false) {
 export async function applyDevScreen(session: Session, id: string) {
   const fixture = DEV_SCREENS.find(screen => screen.id === id);
   if (!fixture) return null;
-  const blackUid = id === "board-white" ? 43 : 42;
-  const playerName = (uid: number) => uid === blackUid ? "Black" : "White";
+  const [self, opponent] = PREVIEW_PLAYERS;
+  const [black, white] = id === "board-white" ? [opponent, self] : [self, opponent];
+  const player = (uid: number) => PREVIEW_PLAYERS.find(player => player.uid === uid)!;
   const transport = { send() {}, close() {} };
   const waiting = () => new Promise<never>(() => {});
   session.connectionFactory = async () => {
@@ -171,24 +178,16 @@ export async function applyDevScreen(session: Session, id: string) {
     session.generation, { command, flags: 0, payload: encode(fields) });
   const message = (service: number, op: number, fields: Fields = {}) => session.receive(
     session.generation, { command: 26200, flags: 0,
-      payload: game.envelope(42, service, op, fields, 63) });
+      payload: game.envelope(self.uid, service, op, fields, 63) });
   // Hover cards use the same store and wire response path in offline previews.
   session.playerInfo = new PlayerInfoStore(fields => {
-    const uid = Number(fields[1]);
+    const profile = player(Number(fields[1]));
     queueMicrotask(() => message(PLAYER_INFO_SERVICE, 1001, {
-      1: 0, 2: fields[3], 3: uid, 7: 35, 8: { 5: playerName(uid) },
-      9: { 1: { 1: 9, 2: 13, 3: 10 }, 2: "-+--++-+-++--++-+--++" }, 16: [{ 1: 0, 2: 128, 3: 104 }],
+      ...profile.summary, 2: fields[3],
     }));
   }, () => session.changed(), () => session, async input => {
-    const uid = Number(new URL(String(input)).searchParams.get("uid"));
-    return Response.json({ result: 0, chesslist: Array.from({ length: 20 }, (_, i) => ({
-      chessid: String(1791872071030044736n + BigInt(i)),
-      blackuid: uid, whiteuid: 44, blackenname: playerName(uid),
-      // Ten wide letters stress the chosen-name limit; generated names can reach eleven.
-      whiteenname: i % 2 ? "WWWWWWWWWW" : "V1234567890", whitedan: 35,
-      gamestarttime: String(1791872071 - i * 3600), winner: i % 3 ? 1 : 2,
-      reason: i % 2 ? 3 : 1, point: i % 2 ? -1 : 325, movenum: 80 + i * 9,
-    })) });
+    const profile = player(Number(new URL(String(input)).searchParams.get("uid")));
+    return Response.json({ result: 0, chesslist: profile.games });
   });
   const scenario: Scenario = {
     session,
@@ -214,11 +213,11 @@ export async function applyDevScreen(session: Session, id: string) {
   const setup = async () => {
     const { stage } = fixture;
     if (stage === "login") return;
-    session.login(playerName(42), "sample-password");
+    session.login(self.name, "sample-password");
     if (stage === "connecting") return;
     await settled(() => !!session.connection);
     if (stage === "authenticating") return;
-    packet(2005, { 1: 0, 2: 42, 3: { 1: 42, 2: playerName(42), 3: playerName(42), 4: 35 }, 8: Buffer.from("sample-token") });
+    packet(2005, { 1: 0, 2: self.uid, 3: { 1: self.uid, 2: self.name, 3: self.name, 4: self.rank }, 8: Buffer.from("sample-token") });
     if (stage === "bootstrap") return;
     packet(3005, { 3: [{ 1: 1, 21: "offline.invalid", 22: 10000 }] });
     if (stage === "gateway") return;
@@ -228,12 +227,12 @@ export async function applyDevScreen(session: Session, id: string) {
     scenario.room(100115, id === "resuming"
       ? { 1: 0, 2: game.GAME, 3: 63 } : { 1: 107004 });
     scenario.room(100150, { 1: [
-      [1, 0, 30], [2, 300, 30], [3, 600, 60], [4, 1200, 60],
+      [1, 60, 20], [2, 300, 30], [3, 1200, 60],
     ].map(([field, main, byoyomi]) => ({
       1: field, 2: 19, 3: main, 4: 3, 5: byoyomi, 7: 0, 12: 1,
     })) });
 
-    scenario.room(100145, { 1: 0, 2: [[1, 128], [2, 1], [3, 0]]
+    scenario.room(100145, { 1: 0, 2: [[1, 727], [2, 612], [3, 493]]
       .map(([field, count]) => ({ 1: field, 2: count })) });
     if (stage === "discovery") return;
     session.match();
@@ -242,9 +241,9 @@ export async function applyDevScreen(session: Session, id: string) {
     scenario.room(100140, { 1: 0, 2: game.GAME, 3: 63, 4: 100, 7: 200 });
     if (stage === "joining") return;
     scenario.notify(107, { 1: { 7: 60 }, 6: 100, 7: 200, 9: [
-      { 1: id === "board-white" ? 43 : 42, 3: "Black", 4: 35,
+      { 1: black.uid, 3: black.name, 4: black.rank,
         6: 1, 7: 425, 8: 3, 9: 60 },
-      { 1: id === "board-white" ? 42 : 43, 3: "White", 4: 35,
+      { 1: white.uid, 3: white.name, 4: white.rank,
         6: 2, 7: 192, 8: 2, 9: 60 },
     ] });
     if (stage === "started") return;

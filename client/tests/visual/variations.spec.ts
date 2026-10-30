@@ -36,21 +36,23 @@ test('Home and End jump to the beginning and end of replay', async ({ page }) =>
 test('variation navigation and board placement', async ({ page }) => {
   await page.goto('/?dev-screen=replay-variation');
   const numbers = page.locator('#board .variation-number');
-  await expect(numbers).toHaveCount(15);
-  await expect(numbers).toHaveText(Array.from({ length: 15 }, (_, i) => String(i + 1)));
+  await expect(numbers).toHaveCount(5);
+  // Labels render in board order; the actual continuation crosses several rows.
+  await expect.poll(async () => (await numbers.allTextContents()).map(Number).sort((a, b) => a - b))
+    .toEqual(Array.from({ length: 5 }, (_, i) => i + 1));
   await expect(page.locator('#review-first')).toHaveAccessibleName('First move');
   await expect(page.locator('#review-first')).toBeDisabled();
   await expect(page.locator('#review-last')).toBeDisabled();
   await expect(page.locator('#review-next')).toBeDisabled();
   await page.keyboard.press('ArrowRight');
-  await expect(numbers).toHaveCount(15);
+  await expect(numbers).toHaveCount(5);
   await page.keyboard.press('ArrowLeft');
-  await expect(numbers).toHaveCount(14);
+  await expect(numbers).toHaveCount(4);
   await expect(page.locator('#review-next')).toBeEnabled();
   await page.locator('#review-next').click();
-  await expect(numbers).toHaveCount(15);
+  await expect(numbers).toHaveCount(5);
   await page.keyboard.press('ArrowUp');
-  await expect(numbers).toHaveCount(15);
+  await expect(numbers).toHaveCount(5);
   await page.keyboard.press('Escape');
   await expect(numbers).toHaveCount(0);
   await expect(page.locator('#review-first')).toHaveAccessibleName('First move');

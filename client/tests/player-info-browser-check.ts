@@ -8,16 +8,17 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   for (const screen of ['board-black', 'matchmaking']) {
     await page.goto(`${url}/?dev-screen=${screen}`);
+    const recentCount = screen === 'board-black' ? 20 : 10;
     const name = page.locator(screen === 'board-black' ? '#white-player-name' : '#matchmaking-player button');
     await name.hover();
     const card = page.locator('.player-info');
     await card.waitFor();
     await page.waitForFunction(() => document.querySelectorAll('.player-info tbody tr').length === 10);
-    assert.match(await card.innerText(), /9 wins to promote \(13 for 2 ranks\) \/ 10 losses to demote/);
+    assert.match(await card.innerText(), screen === 'board-black' ? /10 wins to promote \/ 2 losses to demote/ : /6 wins to promote \/ 9 losses to demote/);
     assert.doesNotMatch(await card.innerText(), /Recent games|last 20|↑|↓|·/);
     assert.match(await card.locator('tbody td').first().innerText(), /^[A-Z][a-z]{2} \d{1,2}$/);
     assert.equal(await name.evaluate(element => getComputedStyle(element).textDecorationLine), 'none');
-    assert.equal(await card.locator('.player-recent span').count(), 20);
+    assert.equal(await card.locator('.player-recent span').count(), recentCount);
     assert.equal(await card.locator('.player-recent').innerText(), '');
     assert.equal(await card.locator('.player-recent .win').first().evaluate(element =>
       getComputedStyle(element, '::before').borderRadius), '50%');
@@ -54,7 +55,7 @@ try {
     const downloadPromise = page.waitForEvent('download');
     await link.click();
     const download = await downloadPromise;
-    assert.equal(download.suggestedFilename(), '1791872071030044736.sgf');
+    assert.equal(download.suggestedFilename(), screen === 'board-black' ? '1793333770030061788.sgf' : '1793308330030064800.sgf');
     const stream = await download.createReadStream();
     let contents = '';
     for await (const chunk of stream) contents += chunk.toString();
@@ -76,7 +77,7 @@ try {
     assert.equal(await page.locator('.player-info-games').evaluate(element => element.scrollHeight > element.clientHeight), false);
     assert.equal(await card.evaluate(element => element.scrollHeight > element.clientHeight), false);
     assert.equal(await card.locator('.player-recent span').evaluateAll(elements =>
-      elements.length === 20 && elements.every(element => element.getBoundingClientRect().top === elements[0].getBoundingClientRect().top)), true);
+      elements.length === 10 && elements.every(element => element.getBoundingClientRect().top === elements[0].getBoundingClientRect().top)), true);
     assert.equal(await page.locator('#connection-menu').evaluate(element => getComputedStyle(element).borderTopWidth), '0px');
     await page.keyboard.press('Escape');
     await card.waitFor({ state: 'detached' });

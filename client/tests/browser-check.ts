@@ -265,9 +265,9 @@ try {
     } else if (screen === 'matchmaking') {
       assert.equal(await js("document.getElementById('matchmaking').hidden"), false);
       assert.equal(await js("document.getElementById('login-form')"), null);
-      assert.equal(await js("document.querySelectorAll('.time-option').length"), 4);
+      assert.equal(await js("document.querySelectorAll('.time-option').length"), 3);
       assert.equal(await js("document.getElementById('match').disabled"), false);
-      assert.equal(await js("document.querySelector('.field-population').textContent"), '(128 players)');
+      assert.equal(await js("document.querySelector('.field-population').textContent"), '(727 players)');
       await clickControl('#time-controls input[value="2"]');
       assert.equal(await js("document.querySelector('#time-controls input:checked').value"), '2');
       await clickControl('.time-option:nth-child(3) > span');
@@ -326,7 +326,7 @@ try {
     assert.equal(await js("document.querySelector('fieldset')"), null, fixture.id);
     if (fixture.playerName) {
       await wait(`document.querySelector(${JSON.stringify(fixture.playerName)})?.getAttribute('aria-expanded') === 'true' && document.querySelectorAll('.player-info-games tbody tr').length === 10`);
-      const expectedName = fixture.id === 'board-white-player-info' ? 'White' : 'Black';
+      const expectedName = fixture.id === 'board-white-player-info' ? '拉依苏圣泉' : '黑白双杀29';
       assert.equal(await js("document.querySelector('.player-info').getAttribute('aria-label')"), `${expectedName} player information`, fixture.id);
       assert.equal(await js("document.querySelectorAll('.player-info').length"), 1, fixture.id);
       await page.keyboard.press('Escape');
@@ -392,7 +392,7 @@ try {
       assert.equal(await page.locator('.clock-display').count(), 0);
     }
     if (fixture.phase === 'finished') {
-      const result = {finished:'B+2.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R', 'replay-variation':'W+R'}[fixture.id];
+      const result = {finished:'B+33.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R', 'replay-variation':'W+R'}[fixture.id];
       assert.equal(await js("document.getElementById('game-state-title').textContent"), `Game over: ${result}`, fixture.id);
       assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), '', fixture.id);
       const outcome = await page.locator('#game-result').getAttribute('class');
@@ -435,11 +435,11 @@ try {
         document.getElementById('save-sgf').click();URL.createObjectURL=create;HTMLAnchorElement.prototype.click=click;
         return {contents:await saved.text(),filename};
       })()`);
-      assert.match(record.contents, /PB\[Black\]PW\[White\]/);
-      assert.match(record.filename, /^Black-White-\d{8}T\d{4}\.sgf$/);
+      assert.match(record.contents, /PB\[黑白双杀29\]PW\[拉依苏圣泉\]/);
+      assert.match(record.filename, /^黑白双杀29-拉依苏圣泉-\d{8}T\d{4}\.sgf$/);
     }
     if (inBoard) assert.deepEqual(await js("['black','white'].map(name=>document.getElementById(name+'-player-name').textContent)"),
-      ['Black (9p)','White (9p)'], fixture.id);
+      fixture.id === 'board-white' ? ['拉依苏圣泉 (4d)', '黑白双杀29 (2d)'] : ['黑白双杀29 (2d)', '拉依苏圣泉 (4d)'], fixture.id);
     if (['playing', 'finished'].includes(fixture.phase)) {
       const geometry = await js<{ id: string; x: number; y: number; width: number; height: number; sidebarWidth: number; boxed: boolean; visible: boolean }[]>(`(() => {
         const bar = document.querySelector('aside').getBoundingClientRect();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Board } from '../src/board.ts';
 import { Session } from '../src/session.ts';
 import { DEV_SCREENS, applyDevScreen } from '../src/dev-screens.ts';
+import { COUNTING_PREVIEW } from '../src/dev-counting.ts';
 
 test('playing previews include AlphaGo move 37 and preserve the player’s turn', async () => {
   for (const [id, color, moveCount] of [['board-white', 2, 37], ['board-black', 1, 38]] as const) {
@@ -24,7 +25,10 @@ test('offline player cards load recent games for the requested player', async ()
   const session = new Session();
   try {
     await applyDevScreen(session, 'board-black');
-    for (const [uid, name] of [[42, 'Black'], [43, 'White']] as const) {
+    for (const [uid, name, rank, wins, losses, result, color, moves, id, opponent, opponentRank] of [
+      [531127799, '黑白双杀29', '2d', 427, 407, 'W+T', 'Black', 166, '1793308330030064800', 'products', '3d'],
+      [533702962, '拉依苏圣泉', '4d', 157, 43, 'W+F', 'Black', 12, '1793333770030061788', '风往北吹11', '4d'],
+    ] as const) {
       session.playerInfo.open(uid, name);
       await new Promise(resolve => setImmediate(resolve));
       const info = session.playerInfo.current!;
@@ -32,8 +36,16 @@ test('offline player cards load recent games for the requested player', async ()
       assert.equal(info.error, '');
       assert.equal(info.summaryError, '');
       assert.equal(info.name, name);
-      assert.equal(info.rank, '9p');
+      assert.equal(info.rank, rank);
+      assert.equal(info.wins, wins);
+      assert.equal(info.losses, losses);
       assert.equal(info.games.length, 20);
+      assert.equal(info.games[0].id, id);
+      assert.equal(info.games[0].result, result);
+      assert.equal(info.games[0].color, color);
+      assert.equal(info.games[0].moves, moves);
+      assert.equal(info.games[0].opponent, opponent);
+      assert.equal(info.games[0].opponentRank, opponentRank);
     }
   } finally { session.close(); }
 });
@@ -60,6 +72,23 @@ test('all offline fixtures cover session phases, have valid histories and forbid
     assert.deepEqual(replay.captures, session.board.captures, fixture.id);
     session.close();
   }
+});
+
+test('counting preview uses the estimator map for its exact board and consistent area totals', async () => {
+  const session = new Session();
+  try {
+    await applyDevScreen(session, 'counting-result');
+    assert.equal(session.board.stones.join(''), COUNTING_PREVIEW.stones);
+    const result = session.snapshot().countingResult!;
+    assert.equal(result.ownership!.join(''), COUNTING_PREVIEW.ownership);
+    const areas = [0, 0, 0];
+    result.ownership!.forEach((owner, p) => areas[owner || session.board.stones[p]]++);
+    assert.deepEqual(areas, [158, 122, 81]);
+    assert.equal(result.black, areas[1] + areas[0] / 2);
+    assert.equal(result.white, areas[2] + areas[0] / 2);
+    assert.equal(result.black! - result.white! - result.komi!, COUNTING_PREVIEW.margin);
+    assert.equal(result.winner, 'Black wins');
+  } finally { session.close(); }
 });
 
 test('counting previews accept and reject offline through real session commands', async () => {
@@ -122,7 +151,7 @@ test('previews preserve real pending, acknowledgement, rollback and pass semanti
 });
 
 test('final results come from complete game flows', async () => {
-  for (const [id, result] of [['finished','B+2.5'], ['finished-resign','W+R'], ['finished-void','Void']]) {
+  for (const [id, result] of [['finished','B+33.5'], ['finished-resign','W+R'], ['finished-void','Void']]) {
     const session = new Session();
     try {
       await applyDevScreen(session, id);

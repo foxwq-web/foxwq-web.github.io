@@ -79,10 +79,26 @@ for (const screen of DEV_SCREENS) {
     if (screen.playerName) {
       await expect(page.locator(screen.playerName)).toHaveAttribute('aria-expanded', 'true');
       await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);
-      await expect(page.locator('.player-info-summary')).toContainText('128 wins');
+      await expect(page.locator('.player-info-summary')).toContainText(screen.id === 'board-white-player-info' ? '157 wins' : '427 wins');
+    }
+    if (screen.id === 'matchmaking-rejected') {
+      await expect(page.locator('#status')).toHaveText('Error: matchmaking rejected: -1');
+    }
+    if (screen.id === 'matchmaking') {
+      await expect(page.locator('.time-option > span')).toHaveText([
+        '19,1m20s(727 players)',
+        '19,5m30s(612 players)',
+        '19,20m60s(493 players)',
+      ]);
     }
     if (screen.id === 'score-estimation') {
       await expect(page.locator('#estimation-lead')).toBeVisible();
+    }
+    if (screen.id === 'counting-result') {
+      await expect(page.locator('#board .counted-territory .territory-black').first()).toBeVisible();
+      await expect(page.locator('#board .counted-territory .territory-white').first()).toBeVisible();
+      await expect(page.locator('#counting-dialog')).toBeVisible();
+      await expect(page.locator('#counting-result')).toHaveText('B+33.5');
     }
     if (screen.id === 'byoyomi') {
       await expect(page.locator('#board .byoyomi-countdown')).toHaveText('9');
