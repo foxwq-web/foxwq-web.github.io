@@ -72,5 +72,16 @@
     "fixturePackets": 4469,
     "clientPacketCountChanges": {},
     "serverEntriesSha256": "4dcda0635e79b5a2a41175ea64a7e35b0e9e7a140340d6426b433d9bbe392a7f"
+  },
+  {
+    "source": "fox-network-log-20261030T0642.json",
+    "sourceSha256": "cd72c25dc483e5818d054ae2b2c8f19c04ba16668ed4b16788f4f13d58a30468",
+    "sourceEntries": 7961,
+    "discardedEntries": 4209,
+    "fixture": "fox-network-log-20261030T0642.network.json",
+    "normalizedPackets": 3995,
+    "fixturePackets": 3995,
+    "clientPacketCountChanges": {},
+    "serverEntriesSha256": "ef89f382d592d4bbb1deef69eeb14819061533546319f56b9881b22643dba691"
   }
 ]

@@ -12,6 +12,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { applyDevScreen } from "../src/dev-screens";
 import { rememberedCredentials, rememberCredentials } from "../src/credentials.ts";
 import { Buffer } from "buffer";
+import { decodeOne } from "../src/framing.ts";
+import { envelope } from "../src/game.ts";
+import postGameDisconnection from "./fixtures/post-game-disconnection.json" with { type: "json" };
 
 function initial(session = new Session()): UIState {
   return {
@@ -25,6 +28,71 @@ function initial(session = new Session()): UIState {
     focused: null,
     form: { username: "", passwordLength: 0, remember: false },
   };
+}
+
+for (const failure of ["recorded server logout", "socket close", "heartbeat timeout"]) {
+  test(`finished review survives ${failure} from the latest populated Downloads log`, async context => {
+    context.mock.timers.enable({ apis: ["Date"] });
+    const c = new Controller(), s = c.session;
+    c.sounds.preload = () => {};
+    const closed: string[] = [];
+    s.gateway = { send() {}, close() { closed.push("gateway"); } };
+    s.connection = { send() {}, close() { closed.push("login"); } };
+    s.uid = postGameDisconnection.uid;
+    s.phase = "joining";
+    c.emit({ type: "initialize", state: initial(s) });
+    const frames = postGameDisconnection.entries.map(entry => decodeOne(Buffer.from(entry.payload, "base64"))![0]);
+    try {
+      for (const frame of frames.slice(0, -1)) s.receive(s.generation, frame);
+      s.flushChanges();
+      assert.equal(c.state.session.phase, "finished");
+      assert.equal(c.state.session.result, "W+T");
+      assert.equal(s.board.moves.length, 166);
+      c.review("previous");
+      const position = c.state.review;
+      const before = s.snapshot(), sgf = s.board.sgf(s.result);
+      let finishEstimate!: (value: { ret: number; board_size: number; judge_status: string }) => void;
+      s.estimationFetcher = () => new Promise(resolve => { finishEstimate = resolve; });
+      const estimate = s.estimateScore(position!);
+      const generation = s.generation;
+      // Late discovery/synchronization and duplicate result packets on a live
+      // connection must not interrupt review either.
+      s.receive(generation, frames[1]);
+      s.receive(generation, { command: 26200, flags: 0,
+        payload: envelope(s.uid, 30006, 100115, { 1: 0, 2: 31000, 3: 64 }) });
+      s.receive(generation, frames.at(-2)!);
+      s.flushChanges();
+      assert.equal(s.phase, "finished");
+      assert.equal(s.estimation?.phase, "loading");
+      assert.equal(c.state.review, position);
+      if (failure === "recorded server logout") s.receive(generation, frames.at(-1)!);
+      else if (failure === "socket close") s.failed(generation, "Proxy connection closed");
+      else { context.mock.timers.tick(25000); s.heartbeat(generation); }
+      s.flushChanges();
+      assert.deepEqual(closed.sort(), ["gateway", "login"]);
+      assert.deepEqual(s.snapshot(), { ...before, estimation: { phase: "loading" }, gatewayAvailable: false });
+      assert.equal(c.state.review, position, "disconnect must preserve the review cursor");
+      assert.ok(boardAvailable(c.state.session));
+      assert.equal(s.board.sgf(s.result), sgf, "the downloadable game stays intact");
+      // Callbacks from the closed sockets cannot reset the finished game.
+      s.receive(generation, frames[0]);
+      s.failed(generation, "Another client logged in");
+      finishEstimate({ ret: 0, board_size: 19, judge_status: "0".repeat(361) });
+      await estimate;
+      s.flushChanges();
+      assert.equal(c.state.session.estimation?.phase, "result");
+      c.command("return-game");
+      s.flushChanges();
+      c.review("first");
+      assert.equal(c.state.review?.moves, 0);
+      c.command("play", { x: 3, y: 3 });
+      assert.equal(c.state.review?.variation?.cursor, 1, "variations remain playable offline");
+      c.review("main");
+      c.review("last");
+      assert.equal(c.state.review?.moves, 166);
+      assert.equal(c.state.session.phase, "finished");
+    } finally { s.close(); }
+  });
 }
 
 test("remembered credentials are replaced only after Fox accepts the submitted login", context => {
@@ -196,51 +264,45 @@ test("opponent stone appears while the rendered estimate markers stay unchanged"
 });
 
 for (const screen of ["finished", "board-black"]) {
-  for (const action of screen === "finished" ? ["timeout", "disconnect"] : ["disconnect"]) {
-    test(`${action} from ${screen} clears the board and sidebar when login opens`, async () => {
-      const controller = new Controller();
-      try {
-        await applyDevScreen(controller.session, screen);
-        controller.emit({ type: "initialize", state: initial(controller.session) });
-        if (screen === "finished") controller.review("previous");
-        controller.session.komi = 6.5;
-        controller.session.opponentDisconnectDeadline = 1234;
-        controller.session.pendingAction = 301;
-        controller.session.pendingSince = 100;
-        controller.session.counting = true;
-        controller.session.pendingConfirmation = ["counting-request", {}];
-        controller.session.estimation = { phase: "loading" };
-        controller.emit({ type: "error.raised", message: "Previous game error", menu: false });
-        controller.emit({ type: "board.hover", point: 5 });
-        controller.emit({ type: "prompt.open", prompt: {
-          action: "quit-room", title: "Leave this room?", description: "", label: "Leave",
-        } });
-        if (action === "timeout") {
-          controller.session.failed(controller.session.generation, "Network response timed out");
-          controller.session.flushChanges();
-        } else controller.command("disconnect");
-        const state = controller.state;
-        assert.equal(state.session.phase, action === "timeout" ? "error" : "disconnected");
-        if (action === "timeout") assert.equal(state.session.status, "Network response timed out");
-        const empty = new Session().snapshot();
-        for (const key of [
-          "stones", "captures", "turn", "passes", "moves", "last_move", "koStones", "komi",
-          "players", "clocks", "result", "game_over", "gameId", "color", "pending", "pendingMove",
-          "quitRequested", "confirmation", "confirmationKind", "counting", "countingResult",
-          "estimation", "opponentDisconnectDeadline", "playerInfo",
-        ] as const) {
-          assert.deepEqual(state.session[key], empty[key], key);
-        }
-        assert.equal(state.review, null);
-        assert.equal(state.prompt, null);
-        assert.equal(state.preview, null);
-        assert.equal(state.error, "");
-        assert.equal(controller.session.pendingAction, null);
-        assert.equal(controller.session.pendingSince, 0);
-        assert.equal(controller.session.boardRoomKey, "");
-      } finally { controller.dispose(); }
-    });
-  }
+  test(`disconnect from ${screen} clears the board and sidebar when login opens`, async () => {
+    const controller = new Controller();
+    try {
+      await applyDevScreen(controller.session, screen);
+      controller.emit({ type: "initialize", state: initial(controller.session) });
+      if (screen === "finished") controller.review("previous");
+      controller.session.komi = 6.5;
+      controller.session.opponentDisconnectDeadline = 1234;
+      controller.session.pendingAction = 301;
+      controller.session.pendingSince = 100;
+      controller.session.counting = true;
+      controller.session.pendingConfirmation = ["counting-request", {}];
+      controller.session.estimation = { phase: "loading" };
+      controller.emit({ type: "error.raised", message: "Previous game error", menu: false });
+      controller.emit({ type: "board.hover", point: 5 });
+      controller.emit({ type: "prompt.open", prompt: {
+        action: "quit-room", title: "Leave this room?", description: "", label: "Leave",
+      } });
+      controller.command("disconnect");
+      const state = controller.state;
+      assert.equal(state.session.phase, "disconnected");
+      const empty = new Session().snapshot();
+      for (const key of [
+        "stones", "captures", "turn", "passes", "moves", "last_move", "koStones", "komi",
+        "players", "clocks", "result", "game_over", "gameId", "color", "pending", "pendingMove",
+        "quitRequested", "confirmation", "confirmationKind", "counting", "countingResult",
+        "estimation", "opponentDisconnectDeadline", "playerInfo",
+      ] as const) {
+        assert.deepEqual(state.session[key], empty[key], key);
+      }
+      assert.equal(state.review, null);
+      assert.equal(state.prompt, null);
+      assert.equal(state.preview, null);
+      assert.equal(state.error, "");
+      assert.equal(controller.session.pendingAction, null);
+      assert.equal(controller.session.pendingSince, 0);
+      assert.equal(controller.session.boardRoomKey, "");
+    } finally { controller.dispose(); }
+  });
 }
 
 test("quitting a finished room resets the game and review while preserving matchmaking", async () => {

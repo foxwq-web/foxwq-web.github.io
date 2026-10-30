@@ -138,6 +138,10 @@ test('SGF eligibility requires a completed game and resets on disconnect', async
   session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true);
   session.gameMessage(501, decode(encode({ 6: 3 })), decode(encode({})));
+  assert.equal(session.snapshot().game_over, true, 'late synchronization cannot replace the finished review');
+  session.close();
+  setupFoxGame(session);
+  session.gameMessage(501, decode(encode({ 6: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, false, 'restoring an active game hides SGF');
   session.gameMessage(501, decode(encode({ 6: 5 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true, 'restoring a finished game enables SGF');

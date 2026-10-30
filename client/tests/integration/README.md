@@ -24,8 +24,9 @@ The original download is left untouched. Existing fixture names cannot be
 overwritten by import.
 
 If replay succeeds, the first run creates `fixtures/my-game.golden.json`.
-Review both files and commit them. The checked-in fixtures come from six actual
-app exports in `/Users/olivier/Downloads/logs/`, imported on 2026-10-26:
+Review both files and commit them. The first six checked-in fixtures were
+imported from app exports on 2026-10-26. The October 30 export was imported
+on 2026-10-30:
 
 | Recording | Retained session | Packets |
 | --- | --- | ---: |
@@ -35,6 +36,12 @@ app exports in `/Users/olivier/Downloads/logs/`, imported on 2026-10-26:
 | `fox-network-log-20261020T0851` | Login and lobby discovery | 32 |
 | `fox-network-log-20261021T2028` | Two matches, moves, resignation | 378 |
 | `fox-network-log-20261024T0705` | Match retries, 76 moves, opponent resignation | 4469 |
+| `fox-network-log-20261030T0642` | 166 confirmed moves, timeout result, then server logout during review | 3995 |
+
+The October 30 recording ends with the server logout that previously cleared
+the finished game. Its golden retains the board, `Game over: W+T`, enabled
+review navigation and SGF download after that logout.
+Controller tests additionally exercise offline variations and a pending estimate.
 
 The October 24 evening recording was removed after measuring overlapping
 production-code coverage. The retained recordings preserve the lobby, void game,

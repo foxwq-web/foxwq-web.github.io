@@ -390,6 +390,19 @@ export class Session {
   failed(generation: number, reason: string) {
     try {
       if (generation !== this.generation) return;
+      if (this.phase === "finished" && this.gameOver) {
+        // Review is local. Losing the optional connection for the next game
+        // must not reset the board, variations, or an in-progress estimate.
+        this.generation++;
+        clearTimeout(this.timer ?? undefined);
+        clearTimeout(this.bootstrapTimer);
+        clearTimeout(this.reconnectTimer);
+        this.timer = null;
+        this.gateway?.close();
+        this.connection?.close();
+        this.gateway = this.connection = null;
+        return;
+      }
       if (this.loginPacket &&
           (this.reconnectBoard || (this.phase === "playing" && [1, 2].includes(this.color)))) {
         const first = !this.reconnectBoard;
@@ -614,6 +627,7 @@ export class Session {
           this.send(game.ROOM, operation);
         this.fieldPlayersRequestedAt = Math.floor(performance.now());
       } else if (op === 100115) {
+        if (this.phase === "finished" && this.gameOver) return;
         this.gameLockChecked = true;
         if (m.number(1) === 0 && m.number(2) === game.GAME) {
           this.phase = "resuming";
@@ -714,6 +728,9 @@ export class Session {
   }
   gameMessage(op: number, m: Message, header: Message) {
     try {
+      // Results may arrive in multiple packets; other late room events must
+      // never replace a completed game or disturb its offline review.
+      if (this.phase === "finished" && this.gameOver && ![402, 403, 405].includes(op)) return;
       // Only a full synchronization may replace the board during recovery.
       if (this.reconnectBoard && ![107, 501].includes(op)) return;
       if (["ready", "disconnected", "error"].includes(this.phase)) return;
@@ -728,7 +745,7 @@ export class Session {
         this.pendingMove.x === m.number(1) && this.pendingMove.y === m.number(2);
       const opponentMove = (op === 203 && m.number(3) === 3 - this.color) ||
         (op === 206 && this.board.turn === 3 - this.color);
-      if ([107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove && !opponentMove)
+      if (!this.gameOver && [107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove && !opponentMove)
         this.clearEstimate();
       if (op === 105) {
         if (signed(m.one(1))) throw Error("Game room rejected entry");
