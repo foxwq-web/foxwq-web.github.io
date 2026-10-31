@@ -36,9 +36,10 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
     player = s.players[color];
   const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
   const clock = s.clocks[color];
+  const disconnected = color === 3 - s.color && s.opponentDisconnectDeadline != null;
   const elapsed =
     clock && !state.review && !state.frozen && !s.paused && !s.counting && s.phase === "playing" && s.turn === color &&
-    !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
+    !disconnected
       ? Math.max(0, state.now - clock.at)
       : 0;
   const reading = clock ? clockReading(clock, elapsed, 60, color === s.color) : null;
@@ -54,7 +55,7 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
     <section
       id={`${name}-player`}
       aria-labelledby={`${name}-player-title`}
-      className={`player-panel${!state.review && s.phase === "playing" && s.turn === color ? " to-play" : ""}`}
+      className={`player-panel${!state.review && s.phase === "playing" && s.turn === color && !disconnected ? " to-play" : ""}`}
     >
       <p id={`${name}-player-title`} className="player-title">
         <span className={`player-stone ${name}`} />

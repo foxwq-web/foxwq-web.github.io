@@ -69,6 +69,11 @@ if (!process.env.FOX_BROWSER_URL) {
   process.exit(process.exitCode ?? 0);
 }
 
+if (process.argv.includes('--disconnect-clocks')) {
+  await import('./disconnect-clocks-browser-check.ts');
+  process.exit(0);
+}
+
 if (process.argv.includes('--history')) {
   await import('./history-browser-check.ts');
   process.exit(0);
@@ -93,6 +98,7 @@ if (process.argv.includes('--score-engines') || process.argv.includes('--score-p
   await import('../../score-estimator/scripts/score-engine-browser-check.ts');
   process.exit(0);
 }
+if (!process.argv.includes('--production-shortcuts')) await import('./disconnect-clocks-browser-check.ts');
 await import('./network-log-browser-check.ts');
 await import('./history-browser-check.ts');
 if (!process.argv.includes('--production-shortcuts')) await import('./replay-captures-browser-check.ts');

@@ -614,6 +614,36 @@ test('controller plays both players’ countdowns without cancelling them and st
   }
 });
 
+test('disconnect stops the opponent countdown for either color and reconnect resumes it', context => {
+  for (const ownColor of [1, 2]) {
+    const controller = new Controller(), voices: string[] = [];
+    context.mock.method(controller.sounds, 'play', (name: string) => { voices.push(name); });
+    const stop = context.mock.method(controller.sounds, 'stopCountdown', () => {});
+    try {
+      const session = controller.session, opponent = 3 - ownColor;
+      session.phase = 'playing'; session.color = ownColor; session.board.turn = opponent;
+      session.clocks[opponent] = { main: 0, periods: 3, byoyomi: 9, periodLength: 30, at: 0 };
+      controller.emit({ type: 'initialize', state: { ...initial(session), now: 0 } });
+      controller.audio();
+      assert.deepEqual(voices, ['count-9']);
+      controller.state.session.opponentDisconnectDeadline = 90;
+      controller.state.now = 1;
+      controller.audio();
+      assert.deepEqual(voices, ['count-9'], 'disconnected clocks stay silent');
+      assert.equal(stop.mock.callCount(), 1, 'cancel the voice already playing');
+      controller.state.now = 100;
+      controller.audio();
+      assert.deepEqual(voices, ['count-9'], 'expiry does not restart the clock');
+      controller.state.session.opponentDisconnectDeadline = null;
+      controller.state.session.clocks[opponent].at = 100;
+      controller.state.now = 101;
+      controller.audio();
+      assert.equal(voices.at(-1), 'count-8');
+      assert.equal(stop.mock.callCount(), 2);
+    } finally { controller.dispose(); }
+  }
+});
+
 test('controller persists the native rollover anchor before rendering and announcing it', context => {
   context.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
   const controller = new Controller(), voices: string[] = [];
