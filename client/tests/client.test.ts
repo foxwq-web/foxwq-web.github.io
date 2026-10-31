@@ -606,6 +606,57 @@ test('finished rooms quit immediately; rejected or failed resignation stays in t
   assert.throws(() => s.quitRoom(), /No room to quit/); s.close();
 });
 
+test('matchmaking outcomes explain why searching stopped and allow retrying', () => {
+  const outcomes = [
+    [RoomMessageID.RM_AUTO_INVITE_REQUEST, { 1: -1 }, 'matchmaking rejected: -1'],
+    [RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, {}, 'Matchmaking timed out'],
+    [RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, { 1: 0 }, 'Matchmaking cancelled'],
+    [RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, {}, 'Matchmaking cancelled'],
+  ] as const;
+  for (const [messageId, fields, status] of outcomes) {
+    const s = new Session();
+    try {
+      s.phase = 'ready'; s.fieldId = 101;
+      s.fgwConnection = { send() {}, close() {} };
+      s.match();
+      s.gameSvrMgrProcess(messageId, decode(encode(fields)));
+      assert.equal(s.snapshot().phase, 'ready');
+      assert.equal(s.snapshot().status, status);
+      assert.equal(s.fieldId, 101);
+
+      // Refreshes and duplicate terminal messages must preserve the explanation.
+      s.gameSvrMgrProcess(RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST, decode(encode({ 1: 0 })));
+      s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+      assert.equal(s.status, status);
+      s.match();
+      assert.equal(s.phase, 'matching');
+      assert.equal(s.status, 'Requesting a match...');
+      s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+      assert.equal(s.phase, 'matching');
+      assert.equal(s.status, 'Searching for a game...');
+    } finally {
+      s.close();
+    }
+  }
+});
+
+test('late matchmaking endings do not interrupt joining or playing', () => {
+  const s = new Session();
+  try {
+    for (const phase of ['joining', 'playing'] as const) {
+      s.phase = phase; s.status = 'Game in progress';
+      for (const messageId of [RoomMessageID.RM_AUTO_INVITE_REQUEST, RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY,
+        RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY]) {
+        s.gameSvrMgrProcess(messageId, decode(encode({ 1: -1 })));
+        assert.equal(s.phase, phase);
+        assert.equal(s.status, 'Game in progress');
+      }
+    }
+  } finally {
+    s.close();
+  }
+});
+
 test('a failed matchmaking send preserves the finished game screen and result', () => {
   const {s, notify} = countingSession();
   notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, {1:0,2:2,4:3}); s.fieldId = 101;

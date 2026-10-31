@@ -1093,7 +1093,28 @@ try {
     await call('Emulation.setDeviceMetricsOverride', {width,height,deviceScaleFactor:1,mobile:false});
     assert.equal(await js(`(() => {const r=document.getElementById('connection-menu').getBoundingClientRect();return r.left>=0&&r.right<=${width}&&r.top>=0&&r.bottom<=${height}})()`), true);
   }
-  await js("document.getElementById('match').click()");
+  for (const [messageId, fields, expected] of [
+    [100130, {1:-1}, 'Error: matchmaking rejected: -1'],
+    [100132, {}, 'Matchmaking timed out'],
+    [100139, {1:0}, 'Matchmaking cancelled'],
+    [100141, {}, 'Matchmaking cancelled'],
+  ] as const) {
+    await page.locator('#match').click();
+    await wait("document.getElementById('status').textContent==='Requesting a match...'");
+    assert.equal(await js("document.getElementById('status').parentElement.id"), 'match');
+    await js(`(async()=>{const {decode,encode}=await import('/src/wire.ts');
+      matchSession.gameSvrMgrProcess(${messageId},decode(encode(${JSON.stringify(fields)})));})()`);
+    await page.locator('#status').filter({hasText:expected}).waitFor({state:'visible'});
+    assert.equal(await page.locator('#status').textContent(), expected);
+    assert.equal(await js("document.getElementById('status').parentElement.id"), 'matchmaking');
+    assert.equal(await js("document.getElementById('status').getBoundingClientRect().top>=document.getElementById('match').getBoundingClientRect().bottom"), true);
+    assert.equal(await page.locator('#match').textContent(), 'Play');
+    assert.equal(await page.locator('#match').isEnabled(), true);
+    assert.equal(await page.locator('#time-controls input:disabled').count(), 0);
+    assert.equal(await js("window.matchSession.fieldId"), 102);
+  }
+  await page.locator('#match').click();
+  await wait("document.getElementById('status').textContent==='Requesting a match...'");
   assert.equal(await js("window.matchSession.fieldId"), 102);
   assert.equal(await js("document.querySelectorAll('#time-controls input:disabled').length"), 3);
   assert.equal(await js("document.getElementById('cancel')"), null);

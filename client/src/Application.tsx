@@ -187,8 +187,10 @@ export function App({ controller: c }: { controller: Controller }) {
   const statusError = !!state.menuError ||
     (s.phase === "error" && s.status !== "Another client logged in") ||
     s.status.startsWith("matchmaking rejected:");
+  const statusSeparate = statusError ||
+    (s.phase === "ready" && s.status.startsWith("Matchmaking "));
   const statusHidden =
-    !statusError &&
+    !statusSeparate &&
     (s.phase === "disconnected" ||
       (["ready", "finished"].includes(s.phase) && s.matchFields.length > 0));
   const promptCounting = playing && s.passes >= 2 && !disabled && !s.counting && !s.confirmation;
@@ -426,6 +428,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const status = (
     <span
       id="status"
+      role="status"
       hidden={statusHidden}
       className={statusError ? "is-error" : ""}
     >
@@ -767,10 +770,10 @@ export function App({ controller: c }: { controller: Controller }) {
               }
               onClick={() => command("match")}
             >
-              {statusHidden || statusError ? "Play" : null}
-              {!loginStep && !statusError && status}
+              {statusHidden || statusSeparate ? "Play" : null}
+              {!loginStep && !statusSeparate && status}
             </button>
-            {!loginStep && statusError && status}
+            {!loginStep && statusSeparate && status}
           </div>
         </div>
       </div>

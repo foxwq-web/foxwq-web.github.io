@@ -835,7 +835,9 @@ export class Session {
         if (this.phase !== "matching") return;
         this.pendingConfirmation = null;
         this.phase = "ready";
-        this.status = "Matchmaking ended";
+        this.status = messageId === RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY
+          ? "Matchmaking timed out"
+          : "Matchmaking cancelled";
       } else if (messageId === RoomMessageID.RM_ENTER_ROOM_NOTIFY) {
         if (!["matching", "joining", "playing"].includes(this.phase)) return;
         if (this.phase === "matching" && signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
