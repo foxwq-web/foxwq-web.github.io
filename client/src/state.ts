@@ -37,6 +37,8 @@ export interface SessionState {
   players: Record<string, { id?: number; name: string; rank?: string }>;
   clocks: Record<string, Clock>;
   opponentDisconnectDeadline?: number | null;
+  paused?: boolean;
+  pauseTimeSeconds?: number | null;
   gameId: string;
   last_move: [number, number | null, number | null] | null;
   confirmation: boolean;
@@ -125,6 +127,7 @@ export function blocked(s: SessionState): boolean {
   return (
     s.phase !== "playing" ||
     s.pending ||
+    s.paused ||
     s.counting ||
     s.confirmation ||
     !!s.estimation
@@ -132,7 +135,7 @@ export function blocked(s: SessionState): boolean {
 }
 
 export function actionsBlocked(s: SessionState): boolean {
-  return s.phase !== "playing" || (s.pending && !s.pendingMove) || !!s.estimation ||
+  return s.phase !== "playing" || !!s.paused || (s.pending && !s.pendingMove) || !!s.estimation ||
     (s.confirmationKind !== "counting-request" && (s.counting || s.confirmation));
 }
 

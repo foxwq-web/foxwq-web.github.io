@@ -1128,6 +1128,17 @@ try {
   assert.equal(await js("Object.keys(matchSession.roomKey).length"), 0);
   await js("document.getElementById('match').click();gameNotice(107,{6:25,7:204,9:[{1:42,6:1},{1:43,6:2}]})");
   await wait("document.getElementById('connection-layer').hidden");
+  await js("gameNotice(218,{1:{1:10},2:30,3:42,4:[{2:120,3:3,4:60,5:42},{2:234,3:3,4:60,5:43}]})");
+  await wait("document.getElementById('board-status').checkVisibility() && document.getElementById('board-status').textContent==='Game paused'");
+  for (const id of ['pass', 'request-score', 'resign', 'estimate-score'])
+    assert.equal(await js(`document.getElementById('${id}').disabled`), true);
+  assert.equal(await js("document.getElementById('hours').dateTime"), 'PT120S');
+  await pause(1200);
+  assert.equal(await js("document.getElementById('hours').dateTime"), 'PT120S');
+  await js("gameNotice(219,{1:{1:11},2:43,3:[{2:119,3:3,4:60,5:42},{2:233,3:3,4:60,5:43}]})");
+  await wait("!document.getElementById('resign').disabled && matchSession.board.turn===2");
+  await wait("document.getElementById('white-hours').dateTime==='PT232S'");
+  console.log('Browser pause/resume passed: status, blocked actions, frozen clock, authoritative turn and resumed clock');
   await js("matchSession.board.turn=2;matchSession.clocks[2]={main:1200,periods:3,byoyomi:60,at:Date.now()/1000-10}");
   await js("gameNotice(503,{1:43,2:90,3:1})");
   await wait("document.getElementById('opponent-connection-status').checkVisibility() && document.getElementById('opponent-connection-status').textContent==='Opponent disconnected (1:30)'");

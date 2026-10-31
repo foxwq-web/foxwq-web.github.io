@@ -128,6 +128,8 @@ export class Session {
   startedRoom: string | null;
   clocks: Record<string, Clock>;
   opponentDisconnectDeadline: number | null = null;
+  paused = false;
+  pauseTimeSeconds: number | null = null;
   pendingConfirmation: Confirmation | null;
   private countingActive = false;
   get counting() { return this.countingActive; }
@@ -135,7 +137,7 @@ export class Session {
     if (active === this.countingActive) return;
     const time = now(), color = this.board.turn, clock = this.clocks[color];
     if (clock && this.phase === "playing") {
-      if (active && !(color !== this.color && this.opponentDisconnectDeadline != null)) {
+      if (active && !this.paused && !(color !== this.color && this.opponentDisconnectDeadline != null)) {
         const reading = clockReading(clock, time - clock.at, DuMiaoConst.DU_MIAO_60_SEC, color === this.color);
         Object.assign(clock, {
           main: reading.main, periods: reading.periods, byoyomi: reading.seconds,
@@ -278,6 +280,8 @@ export class Session {
       playerInfo: this.playerInfo.current,
       clocks: this.clocks,
       opponentDisconnectDeadline: this.opponentDisconnectDeadline,
+      paused: this.paused,
+      pauseTimeSeconds: this.pauseTimeSeconds,
       gameId: Object.values(this.roomKey).join(":"),
       last_move: this.board.moves.at(-1) ?? null,
       confirmation: this.pendingConfirmation !== null,
@@ -307,6 +311,8 @@ export class Session {
     this.gameOver = false;
     this.startedRoom = null;
     this.opponentDisconnectDeadline = null;
+    this.paused = false;
+    this.pauseTimeSeconds = null;
     this.synSeqId = 0;
     this.pendingMessageId = null;
     this.pendingSince = 0;
@@ -524,13 +530,15 @@ export class Session {
     }
     if (!this.gameOver) this.clearEstimate();
     const clock = this.clocks[this.board.turn];
-    if (clock && this.phase === "playing" && !this.counting &&
+    if (clock && this.phase === "playing" && !this.paused && !this.counting &&
         !(this.board.turn !== this.color && this.opponentDisconnectDeadline != null)) {
       const reading = clockReading(clock, now() - clock.at, DuMiaoConst.DU_MIAO_60_SEC, this.board.turn === this.color);
       Object.assign(clock, { main: reading.main, periods: reading.periods, byoyomi: reading.seconds, at: now() });
     }
     this.phase = [StoneColor.BLACK, StoneColor.WHITE].includes(this.color) && Object.keys(this.roomKey).length ? "kicked" : "error";
     this.status = reason;
+    this.paused = false;
+    this.pauseTimeSeconds = null;
     this.gameEnvRecovery = null;
     this.expectedRoomKey = null;
     this.reconnectBoard = null;
@@ -945,6 +953,8 @@ export class Session {
         this.expectedRoomKey = null;
         this.players = {};
         this.opponentDisconnectDeadline = null;
+        this.paused = false;
+        this.pauseTimeSeconds = null;
         this.board = new Board();
         this.boardRoomKey = Object.values(this.roomKey).join(":");
         this.board.timeControl = this.matchSettings ? {
@@ -1069,7 +1079,7 @@ export class Session {
       ) {
         // OpponentOfflineNotify: player ID, remaining allowance in seconds.
         const color = 3 - this.color, clock = this.clocks[color];
-        if (clock && this.opponentDisconnectDeadline == null && this.board.turn === color) {
+        if (clock && !this.paused && this.opponentDisconnectDeadline == null && this.board.turn === color) {
           const remaining = clockReading(clock, Math.max(0, now() - clock.at), DuMiaoConst.DU_MIAO_60_SEC, false);
           Object.assign(clock, {
             main: remaining.main,
@@ -1128,9 +1138,20 @@ export class Session {
         this.gameOver = true;
         this.updateGameResult(m);
         if (this.quitRequested) this.leaveFinishedRoom();
-      } else if ([GoGameMessageID.GC_GAME_PAUSE_NOTIFY, GoGameMessageID.GC_GAME_RESUME_NOTIFY].includes(messageId))
+      } else if ([GoGameMessageID.GC_GAME_PAUSE_NOTIFY, GoGameMessageID.GC_GAME_RESUME_NOTIFY].includes(messageId)) {
+        const pause = messageId === GoGameMessageID.GC_GAME_PAUSE_NOTIFY;
+        const current = this.colorForUid(m.number(pause ? Game.GamePauseNotify.cur_round_uid : Game.GameResumeNotify.cur_round_uid));
+        this.setPaused(pause, current || this.board.turn);
+        this.pauseTimeSeconds = pause ? (m.has(Game.GamePauseNotify.pause_time_s) ? m.number(Game.GamePauseNotify.pause_time_s) : this.pauseTimeSeconds) : null;
         this.synSeqId = m.sub(Game.GamePauseNotify.check_syn).number(Game.CheckSyn.syn_seq_id, this.synSeqId);
-      else if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST) {
+        if (current) this.board.turn = current;
+        for (const bytes of m.get(pause ? Game.GamePauseNotify.countdowns : Game.GameResumeNotify.countdowns) ?? []) {
+          const timing = decode(bytes), color = this.colorForUid(timing.number(Game.GameCountdownNotify.uid));
+          if (color) this.readClock(color, timing);
+        }
+        if (!this.counting && !this.pendingConfirmation && !this.pending)
+          this.status = pause ? "Game paused" : "Game resumed";
+      } else if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST) {
         const resuming = this.phase !== "joining";
         if (signed(m.one(Game.FetchGameEnvResponse.result))) throw Error("Game synchronization failed");
         // Decode before replacing the board or clearing reconnect/recovery state.
@@ -1192,6 +1213,10 @@ export class Session {
           this.countingAnswer = null;
         }
         this.gameOver = m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END;
+        // An explicit pause countdown is authoritative; legacy same-room
+        // snapshots without it must not silently release an existing pause.
+        this.paused = !this.gameOver && (m.has(Game.FetchGameEnvResponse.game_pause_left_time_s) ? m.number(Game.FetchGameEnvResponse.game_pause_left_time_s) > 0 : sameGame && this.paused);
+        this.pauseTimeSeconds = this.paused ? (m.has(Game.FetchGameEnvResponse.game_pause_left_time_s) ? m.number(Game.FetchGameEnvResponse.game_pause_left_time_s) : this.pauseTimeSeconds) : null;
         if ((this.reconnectBoard || this.gameEnvRecovery) && ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color))
           throw Error("Game synchronization did not restore the player");
         if (this.gameEnvRecovery) this.pendingMessageId = null;
@@ -1202,7 +1227,7 @@ export class Session {
         clearTimeout(this.bootstrapTimer);
         this.phase = this.gameOver ? "finished" : "playing";
         this.result = "";
-        this.status = this.gameOver ? "Game ended" : "Game synchronized";
+        this.status = this.gameOver ? "Game ended" : this.paused ? "Game paused" : "Game synchronized";
         if (restoredResult) {
           // GameResult uses 1/2/3, unlike the top-level 402/403 result fields.
           this.setGameResult(restoredResult.winner, restoredResult.margin, restoredResult.reason);
@@ -1265,7 +1290,7 @@ export class Session {
         // Use the clock captured before optimistic placement, and stop our
         // stones/passes at submission rather than confirmation receipt.
         const time = color === this.color && this.pending ? this.pendingSince : now();
-        const paused = this.counting || !!this.pendingConfirmation ||
+        const paused = this.paused || this.counting || !!this.pendingConfirmation ||
           (color !== this.color && this.opponentDisconnectDeadline != null);
         const elapsed = paused ? 0 : Math.floor(Math.max(0, time - previous.at) + 0.5);
         const spentPeriods = Math.max(0, previous.periods - m.number(Game.GameCountdownNotify.remaining_dumiao_num));
@@ -1281,7 +1306,7 @@ export class Session {
     if (this.clocks[3 - color]) this.clocks[3 - color].at = now();
   }
   tickClock(time = now()) {
-    if (this.phase !== "playing" || this.pending || this.counting || this.pendingConfirmation ||
+    if (this.phase !== "playing" || this.paused || this.pending || this.counting || this.pendingConfirmation ||
         this.board.turn !== this.color) return false;
     const clock = this.clocks[this.color];
     if (!clock) return false;
@@ -1306,7 +1331,7 @@ export class Session {
       if (countdown && previous && control && m.number(Game.GameCountdownNotify.remaining_jushi_time) === 0 &&
           m.number(Game.GameCountdownNotify.remaining_dumiao_num) > 0 && m.number(Game.GameCountdownNotify.remaining_dumiao_num) === control.periods &&
           byoyomi > 0 && byoyomi === control.byoyomi) {
-        const elapsed = this.board.turn === color && !this.pending && !this.counting &&
+        const elapsed = this.board.turn === color && !this.paused && !this.pending && !this.counting &&
           !this.pendingConfirmation && !(color !== this.color && this.opponentDisconnectDeadline != null)
           ? time - previous.at : 0;
         byoyomi = Math.min(byoyomi, clockReading(previous, elapsed, DuMiaoConst.DU_MIAO_60_SEC, color === this.color).seconds);
@@ -1321,10 +1346,28 @@ export class Session {
       };
     }
   }
+  private colorForUid(uid: number) {
+    if (!uid) return 0;
+    return [StoneColor.BLACK, StoneColor.WHITE].find(color => this.players[color]?.id === uid || (color === this.color && this.uid === uid)) ?? 0;
+  }
+  private setPaused(paused: boolean, current: number) {
+    if (paused === this.paused && current === this.board.turn) return;
+    const time = now(), color = this.board.turn, clock = this.clocks[color];
+    if (!this.paused && clock && this.phase === "playing" && !this.pending && !this.counting &&
+        !this.pendingConfirmation && !(color !== this.color && this.opponentDisconnectDeadline != null)) {
+      const reading = clockReading(clock, Math.max(0, time - clock.at), DuMiaoConst.DU_MIAO_60_SEC, color === this.color);
+      Object.assign(clock, { main: reading.main, periods: reading.periods, byoyomi: reading.seconds });
+    }
+    for (const clock of Object.values(this.clocks)) clock.at = time;
+    this.paused = paused;
+    if (!paused) this.pauseTimeSeconds = null;
+  }
   updateGameResult(m: Message) {
     this.setGameResult(m.number(Game.SetGameEndNotify.winner), m.has(Game.SetGameEndNotify.points) ? signed(m.one(Game.SetGameEndNotify.points)) : null, m.number(Game.SetGameEndNotify.reason));
   }
   private setGameResult(winner: number, margin: number | null, reason: number) {
+    this.paused = false;
+    this.pauseTimeSeconds = null;
     this.pendingConfirmation = null;
     this.counting = false;
     this.countingAnswer = null;
@@ -1347,6 +1390,7 @@ export class Session {
       ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
     )
       throw Error("Score estimation requires an active game");
+    if (this.paused) throw Error("Game is paused");
     if ((this.pending && !this.awaitingMove) ||
       (this.pendingConfirmation?.[0] !== "counting-request" &&
         (this.counting || this.pendingConfirmation)))
@@ -1517,6 +1561,7 @@ export class Session {
         ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
       )
         throw Error("No active game");
+      if (this.paused && messageId !== GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST) throw Error("Game is paused");
       if (this.estimation) throw Error("Return to the game before playing");
       if (this.pending && !(messageId === GoGameMessageID.GC_GIVE_UP_REQUEST && this.awaitingMove))
         throw Error("Waiting to confirm the previous action");

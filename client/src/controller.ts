@@ -159,7 +159,7 @@ export class Controller {
     this.sounds.setActive(s.phase === "playing" && !s.game_over);
     this.announcements.update(s, this.state.now);
     if (s.phase !== "playing") this.sounds.stopVoice();
-    else if (s.pending || s.counting || s.confirmation) this.sounds.stopCountdown();
+    else if (s.paused || s.pending || s.counting || s.confirmation) this.sounds.stopCountdown();
   }
   scheduleClock() {
     clearTimeout(this.clockTimer);

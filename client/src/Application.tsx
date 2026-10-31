@@ -37,7 +37,7 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
   const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
   const clock = s.clocks[color];
   const elapsed =
-    clock && !state.review && !state.frozen && !s.counting && s.phase === "playing" && s.turn === color &&
+    clock && !state.review && !state.frozen && !s.paused && !s.counting && s.phase === "playing" && s.turn === color &&
     !(color === 3 - s.color && s.opponentDisconnectDeadline != null)
       ? Math.max(0, state.now - clock.at)
       : 0;
@@ -194,7 +194,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const promptCounting = playing && s.passes >= 2 && !disabled && !s.counting && !s.confirmation;
   const gameMessage =
     playing &&
-    (s.counting ||
+    (s.paused || s.counting ||
       /passed|counting|rejected|failed|leaving/i.test(s.status));
   const countingRequested =
     s.counting && s.status === "Counting requested; waiting for opponent";
@@ -205,18 +205,21 @@ export function App({ controller: c }: { controller: Controller }) {
     s.phase !== "kicked" &&
     !s.game_over &&
     !promptCounting &&
+    !s.paused &&
     ((s.counting && !countingRequested && !countingResultPending) || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
   const resultWinner = s.result.startsWith("B+") ? 1 : s.result.startsWith("W+") ? 2 : 0;
   const resultClass = resultWinner && [1, 2].includes(s.color)
     ? resultWinner === s.color ? "win" : "loss"
     : "";
-  const boardStatus = countingRequested
-    ? "Waiting for opponent..."
-    : countingResultPending
-      ? "Waiting for counting result..."
-      : s.pending && !s.counting && !s.quitRequested
-        ? "Waiting to confirm action"
-        : s.status;
+  const boardStatus = s.paused && !s.confirmation && !s.counting
+    ? "Game paused"
+    : countingRequested
+      ? "Waiting for opponent..."
+      : countingResultPending
+        ? "Waiting for counting result..."
+        : s.pending && !s.counting && !s.quitRequested
+          ? "Waiting to confirm action"
+          : s.status;
   const disconnectSeconds = Math.max(0, Math.ceil((s.opponentDisconnectDeadline ?? 0) - state.now));
   const ask = (command: Command) => {
     const prompt = promptForAction(command);

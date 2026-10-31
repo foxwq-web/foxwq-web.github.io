@@ -90,7 +90,7 @@ export class ByoyomiAnnouncements {
       this.reset();
       this.game = game;
     }
-    const active = !state.pending && !state.counting && !state.confirmation;
+    const active = !state.paused && !state.pending && !state.counting && !state.confirmation;
     let current: {
       clock: Clock;
       reading: ReturnType<typeof clockReading>;

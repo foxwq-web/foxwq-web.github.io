@@ -32,6 +32,8 @@ const countdownFields: Partial<Record<number, number>> = {
   [ID.GC_SET_PIECE_NOTIFY]: Game.SetPieceNotify.countdown,
   [ID.GC_SKIP_SET_PIECE_NOTIFY]: Game.SkipSetPieceNotify.countdown,
   [ID.GC_RESUME_COUNTDOWN_NOTIFY]: Game.ResumeCountdownNotify.countdown,
+  [ID.GC_GAME_PAUSE_NOTIFY]: Game.GamePauseNotify.countdowns,
+  [ID.GC_GAME_RESUME_NOTIFY]: Game.GameResumeNotify.countdowns,
 };
 
 export interface ValidatedGameRoom {
