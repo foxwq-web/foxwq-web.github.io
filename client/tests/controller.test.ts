@@ -17,6 +17,29 @@ import { Buffer } from "buffer";
 import { extractNetMsgFromBytes } from "../src/framing.ts";
 import { encodeFgwMessage } from "../src/game.ts";
 import postGameDisconnection from "./fixtures/post-game-disconnection.json" with { type: "json" };
+import { NetworkLog } from "../src/network-log.ts";
+
+test("network log export reports unavailable storage instead of downloading an empty file", async () => {
+  const controller = new Controller();
+  try {
+    controller.emit({ type: "initialize", state: initial(controller.session) });
+    for (const duringRead of [false, true]) {
+      const store = {
+        enabled: duringRead,
+        error: "NotFoundError: Missing log store",
+        put() {},
+        read() { this.enabled = false; return []; },
+      };
+      controller.session.networkLog = new NetworkLog(store);
+      // A download would access document, which is absent in this test.
+      await controller.save("network-log");
+      assert.equal(controller.state.menuError,
+        "Network log unavailable: NotFoundError: Missing log store. Reload the page to try again.");
+    }
+  } finally {
+    controller.dispose();
+  }
+});
 
 function initial(session = new Session()): UIState {
   return {

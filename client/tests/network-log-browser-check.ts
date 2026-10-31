@@ -9,6 +9,10 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
     const context = await browser.newContext();
     await context.addInitScript("globalThis.__name = value => value;");
     const page = await context.newPage();
+    const warnings: string[] = [];
+    page.on("console", message => {
+      if (message.type() === "warning") warnings.push(message.text());
+    });
     await page.goto(url);
     const result = await page.evaluate(async () => {
       const path = "/src/network-log-store.ts", logPath = "/src/network-log.ts", framingPath = "/src/framing.ts";
@@ -20,6 +24,36 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
         key: `2026-01-01T00:00:00.000Z:test:${String(i).padStart(16, "0")}`,
         entry: { timestamp: "2026-01-01T00:00:00.000Z", source: "client:test:1", destination: "fox:10000", payload },
       });
+      // Existing profiles can have an older version-1 database with entries
+      // but no metadata store. Fresh databases do not exercise this path.
+      for (const hasMetadata of [false, true]) {
+        const legacyName = crypto.randomUUID();
+        const request = indexedDB.open(legacyName, 1);
+        request.onupgradeneeded = () => {
+          const entries = request.result.createObjectStore("entries", { keyPath: "key" });
+          const row = record(0);
+          entries.put({ ...row, bytes: JSON.stringify(row).length * 2 });
+          if (hasMetadata) request.result.createObjectStore("metadata").put(JSON.stringify(row).length * 2, "bytes");
+        };
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        db.close();
+        const upgraded = new IndexedDBNetworkLogStore(indexedDB, legacyName, 12000);
+        const upgradeLog = new NetworkLog(upgraded), connection = upgradeLog.connection("fox", 10000);
+        upgradeLog.traffic(connection, "inbound", netMsgToBytes(3005, new Uint8Array([1, 2, 3])));
+        const exported = JSON.parse(await upgradeLog.serialize());
+        check(upgraded.enabled && exported.length === 1, `version-1 upgrade records and exports traffic (${hasMetadata})`);
+        check(exported[0].payload !== "bytes", "upgrade discards old log");
+        // Fresh accounting must still evict older traffic correctly.
+        for (let i = 1; i < 100; i++) upgraded.put(record(i, "x".repeat(100)));
+        const retained = await upgraded.read();
+        const bytes = retained.reduce((total: number, r: ReturnType<typeof record>) => total + JSON.stringify(r).length * 2, 0);
+        check(bytes <= 12000 && retained.length > 1, "upgraded retention budget");
+        const reopened = new IndexedDBNetworkLogStore(indexedDB, legacyName, 12000);
+        check(JSON.stringify(await reopened.read()) === JSON.stringify(retained), "upgraded log survives reopening");
+      }
       const name = crypto.randomUUID();
       const store = new IndexedDBNetworkLogStore(indexedDB, name, 12000);
       for (const i of [3, 1, 2, 0]) store.put(record(i));
@@ -82,9 +116,12 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
       failing.put(record(1));
       await failing.flush();
       check(!failing.enabled && (await failing.read()).length === 0, "storage failure disables logging");
+      check(new NetworkLog(failing).error?.includes("transaction aborted"), "storage failure exposes the cause");
+      await failing.flush();
       return { bytes, retained: saved.length, pendingRetained: bounded.length, name };
     });
     assert.ok(result.retained > 1);
+    assert.equal(warnings.filter(message => message.startsWith("Network log recording disabled.")).length, 1);
     // Two actual documents share a database; no page can overwrite the other's log.
     const second = await context.newPage();
     await second.goto(url);
@@ -102,6 +139,6 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
       return (await new IndexedDBNetworkLogStore(indexedDB, name, 12000).read()).map((r: { entry: { source: string } }) => r.entry.source);
     }, result.name);
     assert.ok(sources.includes("first") && sources.includes("second"));
-    console.log(`${engine.name()}: IndexedDB retention, concurrent tabs, reload, redaction, bounded pending writes, and aborted storage passed`);
+    console.log(`${engine.name()}: IndexedDB schema upgrades, retention, concurrent tabs, reload, redaction, bounded pending writes, and aborted storage passed`);
   } finally { await browser.close(); }
 }

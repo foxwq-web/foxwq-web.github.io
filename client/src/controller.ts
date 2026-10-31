@@ -357,13 +357,16 @@ export class Controller {
     const date = new Date(),
       pad = (value: number) => String(value).padStart(2, "0"),
       timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}`;
-    if (format === "network-log")
-      download(
-        await this.session.networkLog.serialize(),
-        "application/json",
-        `fox-network-log-${timestamp}.json`,
-      );
-    else if (reviewAvailable(this.state.session)) {
+    if (format === "network-log") {
+      try {
+        const contents = await this.session.networkLog.serialize();
+        if (this.session.networkLog.error)
+          throw Error(`Network log unavailable: ${this.session.networkLog.error}. Reload the page to try again.`);
+        download(contents, "application/json", `fox-network-log-${timestamp}.json`);
+      } catch (error) {
+        this.raise(error instanceof Error ? error.message : String(error));
+      }
+    } else if (reviewAvailable(this.state.session)) {
       const black = this.session.players[1]?.name || "Black",
         white = this.session.players[2]?.name || "White",
         local = this.session.color === 2 ? white : black,

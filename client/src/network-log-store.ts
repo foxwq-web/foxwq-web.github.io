@@ -6,6 +6,7 @@ export interface StoredNetworkEntry {
 }
 export interface NetworkLogStore {
   readonly enabled?: boolean;
+  readonly error?: string;
   put(record: StoredNetworkEntry): void;
   read(): StoredNetworkEntry[] | Promise<StoredNetworkEntry[]>;
   flush?(): void | Promise<void>;
@@ -24,6 +25,7 @@ const disabledStore: NetworkLogStore = {
 
 export class IndexedDBNetworkLogStore implements NetworkLogStore {
   enabled = true;
+  error?: string;
   private pending = new Map<string, Row>();
   private pendingBytes = 0;
   private timer?: ReturnType<typeof setTimeout>;
@@ -32,26 +34,32 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
 
   constructor(factory: IDBFactory, name = "fox-network-log", private maxBytes = NETWORK_LOG_MAX_BYTES) {
     this.database = new Promise((resolve, reject) => {
-      const request = factory.open(name, 1);
+      const request = factory.open(name, 2);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore("entries", { keyPath: "key" });
-        request.result.createObjectStore("metadata");
+        // Logs are disposable; rebuild the schema instead of migrating records.
+        const db = request.result;
+        for (const store of Array.from(db.objectStoreNames)) db.deleteObjectStore(store);
+        db.createObjectStore("entries", { keyPath: "key" });
+        db.createObjectStore("metadata");
       };
       request.onerror = () => reject(request.error);
       request.onblocked = () => reject(Error("Network log database is blocked"));
       request.onsuccess = () => {
         const db = request.result;
         if (!this.enabled) { db.close(); return; }
-        db.onversionchange = () => { this.disable(); db.close(); };
+        db.onversionchange = () => { this.disable(Error("Log database changed in another tab")); db.close(); };
         resolve(db);
       };
     });
     // Opening can fail before the first packet arrives.
-    void this.database.catch(() => this.disable());
+    void this.database.catch(error => this.disable(error));
   }
 
-  private disable() {
+  private disable(error: unknown) {
+    if (!this.enabled) return;
     this.enabled = false;
+    this.error = String(error);
+    console.warn("Network log recording disabled. Reload the page to try again.", error);
     clearTimeout(this.timer);
     this.timer = undefined;
     this.pending.clear();
@@ -82,7 +90,7 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
     this.timer = undefined;
     if (!this.enabled) return Promise.resolve();
     if (!this.writing) {
-      this.writing = this.drain().catch(() => this.disable()).finally(() => {
+      this.writing = this.drain().catch(error => this.disable(error)).finally(() => {
         this.writing = undefined;
         if (this.enabled && this.pending.size) {
           this.timer = setTimeout(() => { void this.flush(); }, WRITE_DELAY);
@@ -103,7 +111,7 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
         // Read/write transactions serialize accounting and eviction across tabs.
         const tx = db.transaction(["entries", "metadata"], "readwrite");
         tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error ?? Error("Network log storage transaction aborted"));
         const entries = tx.objectStore("entries"), metadata = tx.objectStore("metadata");
         const total = metadata.get("bytes");
         total.onsuccess = () => {
@@ -141,10 +149,10 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
       return await new Promise((resolve, reject) => {
         const tx = db.transaction("entries"), request = tx.objectStore("entries").getAll();
         tx.oncomplete = () => resolve((request.result as Row[]).map(({ key, entry }) => ({ key, entry })));
-        tx.onabort = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error ?? Error("Network log storage transaction aborted"));
       });
-    } catch {
-      this.disable();
+    } catch (error) {
+      this.disable(error);
       return [];
     }
   }

@@ -36,6 +36,9 @@ export class NetworkLog {
     return id;
   }
   private recording() { return this.store.enabled !== false; }
+  get error() {
+    return this.store.error ?? (this.recording() ? undefined : "Browser storage is unavailable");
+  }
   flush() { return this.store.flush?.(); }
 
   private finish(stream: Stream) {

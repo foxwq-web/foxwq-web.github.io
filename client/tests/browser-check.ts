@@ -243,7 +243,7 @@ try {
     return (await new IndexedDBNetworkLogStore(indexedDB).read()).length;
   })()`), 1);
   await js(`new Promise((resolve,reject)=>{
-    const request=indexedDB.open('fox-network-log',1);
+    const request=indexedDB.open('fox-network-log');
     request.onerror=()=>reject(request.error);
     request.onsuccess=()=>{
       const db=request.result,tx=db.transaction(['entries','metadata'],'readwrite');
