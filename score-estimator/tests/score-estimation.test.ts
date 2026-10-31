@@ -1,3 +1,4 @@
+import { GoGameMessageID } from "../../client/src/protocol.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Board } from '../../client/src/board.ts';
@@ -92,10 +93,10 @@ test('opponent moves and passes preserve completed and pending estimates of the 
       const done = s.estimateScore();
       if (!pending) { task.resolve(reply(map)); await done; }
       const estimate = s.estimation;
-      s.gameMessage(op, decode(encode(op === 203 ? {1:10,2:10,3:3 - s.color} : {})), decode(encode({})));
+      s.gameSvrProcess(op, decode(encode(op === GoGameMessageID.GC_SET_PIECE_NOTIFY ? {1:10,2:10,3:3 - s.color} : {})), decode(encode({})));
       assert.equal(s.board.turn, s.color);
       assert.equal(s.board.moves.length, board.moves.length + 1);
-      assert.equal(s.board.stones[200], op === 203 ? 3 - s.color : 0);
+      assert.equal(s.board.stones[200], op === GoGameMessageID.GC_SET_PIECE_NOTIFY ? 3 - s.color : 0);
       assert.equal(s.estimation, estimate);
       assert.equal(signal.aborted, false);
       if (pending) { task.resolve(reply(map)); await done; }
@@ -112,11 +113,11 @@ test('opponent moves and passes preserve completed and pending estimates of the 
 
 test('return, disconnect, own move or pass, counting, game end and synchronization invalidate late results', async () => {
   for (const action of [(s: Session) => s.returnToGame(), (s: Session) => s.close(),
-    (s: Session) => s.gameMessage(203, decode(encode({1:10,2:10,3:1})), decode(encode({}))),
-    (s: Session) => s.gameMessage(206, decode(encode({})), decode(encode({}))),
-    (s: Session) => s.gameMessage(303, decode(encode({1:0,2:1})), decode(encode({}))),
-    (s: Session) => s.gameMessage(402, decode(encode({1:0,2:2,4:3})), decode(encode({}))),
-    (s: Session) => s.gameMessage(501, decode(encode({1:0,6:5})), decode(encode({}))),
+    (s: Session) => s.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, decode(encode({1:10,2:10,3:1})), decode(encode({}))),
+    (s: Session) => s.gameSvrProcess(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, decode(encode({})), decode(encode({}))),
+    (s: Session) => s.gameSvrProcess(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, decode(encode({1:0,2:1})), decode(encode({}))),
+    (s: Session) => s.gameSvrProcess(GoGameMessageID.GC_SET_GAME_END_NOTIFY, decode(encode({1:0,2:2,4:3})), decode(encode({}))),
+    (s: Session) => s.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, decode(encode({1:0,6:5})), decode(encode({}))),
     (s: Session) => { s.phase = 'finished'; s.gameOver = true; s.quitRoom(); }]) {
     const task = deferred(); let signal!: AbortSignal;
     const s = await foxSession(options => { signal = options.signal; return task.promise; });
@@ -198,7 +199,7 @@ test('estimate uses the optimistic move and survives confirmation, but clears on
       assert.equal(s.pending, true);
       assert.equal(s.snapshot().pendingMove, true);
       const {x, y, color} = s.pendingMove!;
-      s.gameMessage(rejected ? 201 : 203, decode(encode(rejected ? {1: 7} : {1: x, 2: y, 3: color})), decode(encode({})));
+      s.gameSvrProcess(rejected ? 201 : 203, decode(encode(rejected ? {1: 7} : {1: x, 2: y, 3: color})), decode(encode({})));
       assert.equal(s.pending, false);
       assert.equal(s.estimation?.phase ?? null, rejected ? null : 'result');
     } finally { s.close(); }

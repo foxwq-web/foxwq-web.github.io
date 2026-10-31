@@ -1,7 +1,9 @@
+import { commonFields as Common } from "./protocol-fields.ts";
+import { ClientMessageID, LegacyMsgTypeID } from "./protocol.ts";
 import { Buffer } from "buffer";
-import { decodeOne, splitGateway } from "./framing.ts";
+import { extractNetMsgFromBytes, splitFgwPacket } from "./framing.ts";
 import { decode } from "./wire.ts";
-import { GATEWAY } from "./game.ts";
+import { SVR_TYPE_FGW } from "./game.ts";
 import { networkLogStore, type NetworkLogStore, type StoredNetworkEntry } from "./network-log-store";
 
 export interface NetworkEntry {
@@ -74,14 +76,14 @@ export class NetworkLog {
     if (stream.invalid) { this.finish(stream); return; }
     try {
       let decoded;
-      while ((decoded = decodeOne(stream.buffer))) {
+      while ((decoded = extractNetMsgFromBytes(stream.buffer))) {
         const [frame, size] = decoded;
-        let sensitive = frame.command === 2000 || frame.command === 2005;
-        if (frame.command === 26200) {
+        let sensitive = frame.msgTypeID === 2000 || frame.msgTypeID === 2005;
+        if (frame.msgTypeID === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) {
           try {
-            const [header] = splitGateway(frame.payload);
+            const [header] = splitFgwPacket(frame.rawProto);
             const message = decode(header);
-            sensitive = message.number(7) === GATEWAY && message.number(1) === 1;
+            sensitive = message.number(Common.FGWHead.server_type) === SVR_TYPE_FGW && message.number(Common.FGWHead.message_id) === ClientMessageID.MID_LOGIN_REQUEST;
           } catch { sensitive = true; }
         }
         stream.buffer = stream.buffer.subarray(size);

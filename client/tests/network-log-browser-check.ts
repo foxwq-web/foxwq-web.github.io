@@ -14,7 +14,7 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
       const path = "/src/network-log-store.ts", logPath = "/src/network-log.ts", framingPath = "/src/framing.ts";
       const { IndexedDBNetworkLogStore } = await import(path);
       const { NetworkLog } = await import(logPath);
-      const { encode } = await import(framingPath);
+      const { netMsgToBytes } = await import(framingPath);
       function check(value: unknown, message: string) { if (!value) throw Error(message); }
       const record = (i: number, payload = "bytes") => ({
         key: `2026-01-01T00:00:00.000Z:test:${String(i).padStart(16, "0")}`,
@@ -55,7 +55,7 @@ for (const engine of [chromium, firefox, webkit].filter(engine => selected.inclu
       const redactedStore = new IndexedDBNetworkLogStore(indexedDB, crypto.randomUUID());
       const log = new NetworkLog(redactedStore), connection = log.connection("fox", 10000);
       const secret = new TextEncoder().encode("private-login-and-token");
-      const auth = encode(2000, secret, true), normal = encode(3005, new Uint8Array([1, 2, 3]));
+      const auth = netMsgToBytes(2000, secret, true), normal = netMsgToBytes(3005, new Uint8Array([1, 2, 3]));
       log.traffic(connection, "outbound", auth.subarray(0, 3));
       check(JSON.parse(await log.serialize())[0].payload === "", "partial authentication export is redacted");
       log.traffic(connection, "outbound", auth.subarray(3));

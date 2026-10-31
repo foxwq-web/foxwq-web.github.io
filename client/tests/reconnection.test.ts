@@ -1,3 +1,5 @@
+import { ErrorCode } from "../src/protocol.ts";
+import { ClientMessageID, GoGameMessageID, RoomMessageID, LegacyMsgTypeID } from "../src/protocol.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "buffer";
@@ -5,12 +7,12 @@ import { Session } from "../src/session.ts";
 import { encode } from "../src/wire.ts";
 import * as game from "../src/game.ts";
 import { actionsBlocked, blocked, boardAvailable } from "../src/state";
-import type { Frame } from "../src/framing.ts";
+import type { NetMsg } from "../src/framing.ts";
 import type { Transport } from "../src/transport.ts";
 
 function setup() {
   const sockets: {
-    receive: (frame: Frame) => void;
+    receive: (frame: NetMsg) => void;
     fail: (reason: string) => void;
     sent: { command: number; payload: Buffer }[];
     closed: boolean;
@@ -24,31 +26,31 @@ function setup() {
     } satisfies Transport;
   } });
   s.login("test", "password");
-  const packet = (command: number, fields: Parameters<typeof encode>[0]) =>
-    ({ command, flags: 0, payload: encode(fields) });
+  const packet = (msgTypeID: number, fields: Parameters<typeof encode>[0]) =>
+    ({ msgTypeID, flag: 0, rawProto: encode(fields) });
   const reply = (service: number, op: number, fields = {}) => s.receive(s.generation, {
-    command: 26200, flags: 0, payload: game.envelope(42, service, op, fields, 63),
+    msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: game.encodeFgwMessage(42, service, op, fields, 63),
   });
   const authenticate = async () => {
     for (let i = 0; i < 5; i++) await Promise.resolve();
     s.receive(s.generation, packet(2005, { 1: 0, 2: 42, 8: "token" }));
     s.receive(s.generation, packet(3005, { 3: [{ 1: 1, 21: "gateway", 22: 3001 }] }));
     for (let i = 0; i < 5; i++) await Promise.resolve();
-    reply(game.GATEWAY, 1, { 1: 0 });
-    reply(game.ROOM, 100008, { 1: 0 });
+    reply(game.SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { 1: 0 });
+    reply(game.GAME_SVR_MGR, RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { 1: 0 });
   };
-  const fields = () => reply(game.ROOM, 100150, { 1: [{ 1: 101, 2: 19, 3: 1200, 4: 3, 5: 60, 12: 1 }] });
-  const restore = (finished = false) => reply(game.GAME, 501, {
+  const fields = () => reply(game.GAME_SVR_MGR, RoomMessageID.RM_FETCH_FIELD_CFG, { 1: [{ 1: 101, 2: 19, 3: 1200, 4: 3, 5: 60, 12: 1 }] });
+  const restore = (finished = false) => reply(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {
     1: 0, 3: [{ 1: 42, 3: "Test", 6: 1, 7: 300, 8: 3, 9: 60 }],
     4: [{ 1: 1, 2: 3, 3: 3, 4: 1 }, { 1: 1, 2: 15, 3: 15, 4: 2 }],
-    6: finished ? 5 : 3, 7: 23, 10: 202, 12: game.GAME, 13: 63,
+    6: finished ? 5 : 3, 7: 23, 10: 202, 12: game.GAME_SVR, 13: 63,
   });
   const start = async () => {
-    await authenticate(); fields(); reply(game.ROOM, 100115, { 1: 1 });
+    await authenticate(); fields(); reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 1 });
     assert.equal(s.phase, "ready", s.status);
     s.match();
-    reply(game.GAME, 107, { 6: 23, 7: 202, 9: [{ 1: 42, 6: 1 }] });
-    s.play(3, 3); reply(game.GAME, 203, { 1: 3, 2: 3, 3: 1 });
+    reply(game.GAME_SVR, GoGameMessageID.GC_START_SET_PIECE_NOTIFY, { 6: 23, 7: 202, 9: [{ 1: 42, 6: 1 }] });
+    s.play(3, 3); reply(game.GAME_SVR, GoGameMessageID.GC_SET_PIECE_NOTIFY, { 1: 3, 2: 3, 3: 1 });
   };
   return { s, sockets, reply, authenticate, fields, restore, start };
 }
@@ -69,15 +71,15 @@ test("gateway loss preserves the board and rejoins through authentication and di
       assert.ok(blocked(reconnecting)); assert.ok(actionsBlocked(reconnecting));
       assert.throws(() => s.play(4, 4));
       assert.ok(oldGateway.closed);
-      oldGateway.receive({ command: 26200, flags: 0, payload: game.envelope(42, game.GAME, 203, { 1: 4, 2: 4, 3: 2 }) });
+      oldGateway.receive({ msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: game.encodeFgwMessage(42, game.GAME_SVR, GoGameMessageID.GC_SET_PIECE_NOTIFY, { 1: 4, 2: 4, 3: 2 }) });
       assert.deepEqual(s.snapshot().stones, before.stones);
       await authenticate();
       if (fieldsFirst) fields();
-      reply(game.ROOM, 100115, { 1: 0, 2: game.GAME, 3: 63 });
+      reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: game.GAME_SVR, 3: 63 });
       if (!fieldsFirst) fields();
       assert.equal(s.snapshot().phase, "reconnecting");
       assert.deepEqual(s.snapshot().stones, before.stones);
-      const sync = sockets.at(-1)!.sent.filter(p => p.command === 26200).map(p => game.unpack(p.payload)).find(([h]) => h.number(1) === 501);
+      const sync = sockets.at(-1)!.sent.filter(p => p.command === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET).map(p => game.decodeFgwMessage(p.payload)).find(([h]) => h.number(1) === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST);
       assert.equal(sync?.[0].number(8), 63);
       restore();
       assert.equal(s.snapshot().phase, "playing");
@@ -121,7 +123,7 @@ test("silent network stalls reconnect, and a game ending during the outage can b
     assert.equal(s.snapshot().phase, "reconnecting");
     assert.ok(sockets[1].closed);
     await authenticate(); fields();
-    reply(game.ROOM, 100115, { 1: 107004 });
+    reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: ErrorCode.NEC_LOCK_NOT_EXIST_ERR });
     assert.equal(s.snapshot().phase, "reconnecting");
     restore(true);
     assert.equal(s.snapshot().phase, "finished");
@@ -150,10 +152,10 @@ test("rejected synchronization retries and partial game events cannot unlock rec
   try {
     await start(); sockets[1].fail("Proxy connection closed");
     await authenticate(); fields();
-    reply(game.ROOM, 100115, { 1: 0, 2: game.GAME, 3: 63 });
-    reply(game.GAME, 402, { 1: 0, 2: 2, 4: 3 });
+    reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: game.GAME_SVR, 3: 63 });
+    reply(game.GAME_SVR, GoGameMessageID.GC_SET_GAME_END_NOTIFY, { 1: 0, 2: 2, 4: 3 });
     assert.equal(s.snapshot().phase, "reconnecting");
-    reply(game.GAME, 501, { 1: 1 });
+    reply(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, { 1: 1 });
     assert.match(s.snapshot().status, /Reconnection failed: Invalid protocol response/);
     assert.ok(blocked(s.snapshot()));
   } finally { s.close(); }

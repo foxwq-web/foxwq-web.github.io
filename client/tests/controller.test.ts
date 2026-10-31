@@ -1,3 +1,5 @@
+import { ErrorCode } from "../src/protocol.ts";
+import { GAME_SVR, GAME_SVR_MGR, GoGameMessageID, RoomMessageID, LegacyMsgTypeID } from "../src/protocol.ts";
 import { setupFoxGame } from './fox-game.ts';
 import { encode, decode } from '../src/wire.ts';
 import test from "node:test";
@@ -12,8 +14,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { applyDevScreen } from "../src/dev-screens";
 import { rememberedCredentials, rememberCredentials } from "../src/credentials.ts";
 import { Buffer } from "buffer";
-import { decodeOne } from "../src/framing.ts";
-import { envelope } from "../src/game.ts";
+import { extractNetMsgFromBytes } from "../src/framing.ts";
+import { encodeFgwMessage } from "../src/game.ts";
 import postGameDisconnection from "./fixtures/post-game-disconnection.json" with { type: "json" };
 
 function initial(session = new Session()): UIState {
@@ -36,12 +38,12 @@ for (const failure of ["recorded server logout", "socket close", "heartbeat time
     const c = new Controller(), s = c.session;
     c.sounds.preload = () => {};
     const closed: string[] = [];
-    s.gateway = { send() {}, close() { closed.push("gateway"); } };
+    s.fgwConnection = { send() {}, close() { closed.push("gateway"); } };
     s.connection = { send() {}, close() { closed.push("login"); } };
     s.uid = postGameDisconnection.uid;
     s.phase = "joining";
     c.emit({ type: "initialize", state: initial(s) });
-    const frames = postGameDisconnection.entries.map(entry => decodeOne(Buffer.from(entry.payload, "base64"))![0]);
+    const frames = postGameDisconnection.entries.map(entry => extractNetMsgFromBytes(Buffer.from(entry.payload, "base64"))![0]);
     try {
       for (const frame of frames.slice(0, -1)) s.receive(s.generation, frame);
       s.flushChanges();
@@ -58,8 +60,8 @@ for (const failure of ["recorded server logout", "socket close", "heartbeat time
       // Late discovery/synchronization and duplicate result packets on a live
       // connection must not interrupt review either.
       s.receive(generation, frames[1]);
-      s.receive(generation, { command: 26200, flags: 0,
-        payload: envelope(s.uid, 30006, 100115, { 1: 0, 2: 31000, 3: 64 }) });
+      s.receive(generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0,
+        rawProto: encodeFgwMessage(s.uid, GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: GAME_SVR, 3: 64 }) });
       s.receive(generation, frames.at(-2)!);
       s.flushChanges();
       assert.equal(s.phase, "finished");
@@ -128,13 +130,13 @@ test("remembered credentials are replaced only after Fox accepts the submitted l
     controller.session.changed();
   };
   const reply = (fields: Parameters<typeof encode>[0]) => {
-    controller.session.receive(controller.session.generation, { command: 2005, flags: 0, payload: encode(fields) });
+    controller.session.receive(controller.session.generation, { msgTypeID: 2005, flag: 0, rawProto: encode(fields) });
     controller.session.flushChanges();
   };
   try {
     controller.command("login");
     assert.equal(writes.length, 1, "submitting must not persist credentials");
-    reply({ 1: 111231 });
+    reply({ 1: ErrorCode.NEC_USERNAME_PASSWORD_ERROR });
     assert.deepEqual(rememberedCredentials(), { username: "PreviousPlayer", password: "previous-password" });
     assert.equal(writes.length, 1, "rejection must preserve previously accepted credentials");
     controller.command("login");
@@ -216,8 +218,8 @@ test("counting overlay marks territory and dead stones, survives an answer, and 
     s.board.play(1, 0, 1);
     s.board.play(2, 0, 2);
     const notify = (op: number, fields: Parameters<typeof encode>[0]) =>
-      s.gameMessage(op, decode(encode(fields)), decode(encode({})));
-    notify(303, { 1: 0, 2: 2, 5: '1112' + '0'.repeat(357), 8: 1 });
+      s.gameSvrProcess(op, decode(encode(fields)), decode(encode({})));
+    notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { 1: 0, 2: 2, 5: '1112' + '0'.repeat(357), 8: 1 });
     const render = () => renderToStaticMarkup(createElement(BoardView, {
       state: initial(s), hover() {}, play() {},
     }));
@@ -233,10 +235,10 @@ test("counting overlay marks territory and dead stones, survives an answer, and 
     assert.equal(render(), before);
     s.confirm(false);
     assert.equal(render(), before);
-    notify(304, { 1: -1 }); // Failed answer restores the same confirmation and map.
+    notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { 1: -1 }); // Failed answer restores the same confirmation and map.
     assert.equal(render(), before);
     s.confirm(false);
-    notify(304, { 1: 0 });
+    notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { 1: 0 });
     assert.doesNotMatch(render(), /class="counted-territory"/);
     assert.equal(s.snapshot().countingResult, null);
   } finally { s.close(); }
@@ -254,7 +256,7 @@ test("opponent stone appears while the rendered estimate markers stay unchanged"
       state: initial(s), hover() {}, play() {},
     }));
     const before = render();
-    s.gameMessage(203, decode(encode({1: 10, 2: 10, 3: 3 - s.color})), decode(encode({})));
+    s.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, decode(encode({1: 10, 2: 10, 3: 3 - s.color})), decode(encode({})));
     const after = render();
     const markers = (svg: string) => svg.match(/<g class="estimated-territory"[^>]*>.*?<\/g>/)![0];
     assert.equal(markers(after), markers(before));
@@ -272,7 +274,7 @@ for (const screen of ["finished", "board-black"]) {
       if (screen === "finished") controller.review("previous");
       controller.session.komi = 6.5;
       controller.session.opponentDisconnectDeadline = 1234;
-      controller.session.pendingAction = 301;
+      controller.session.pendingMessageId = 301;
       controller.session.pendingSince = 100;
       controller.session.counting = true;
       controller.session.pendingConfirmation = ["counting-request", {}];
@@ -298,7 +300,7 @@ for (const screen of ["finished", "board-black"]) {
       assert.equal(state.prompt, null);
       assert.equal(state.preview, null);
       assert.equal(state.error, "");
-      assert.equal(controller.session.pendingAction, null);
+      assert.equal(controller.session.pendingMessageId, null);
       assert.equal(controller.session.pendingSince, 0);
       assert.equal(controller.session.boardRoomKey, "");
     } finally { controller.dispose(); }
@@ -315,7 +317,7 @@ test("quitting a finished room resets the game and review while preserving match
     await controller.session.estimateScore(controller.state.review!);
     controller.session.flushChanges();
     const account = controller.state.session.account;
-    const gateway = controller.session.gateway;
+    const gateway = controller.session.fgwConnection;
     controller.command("quit-room");
     assert.equal(controller.state.session.phase, "ready");
     assert.equal(boardAvailable(controller.state.session), false);
@@ -331,7 +333,7 @@ test("quitting a finished room resets the game and review while preserving match
     assert.equal(controller.state.session.estimation, null);
     assert.equal(controller.state.review, null);
     assert.deepEqual(controller.state.session.account, account);
-    assert.equal(controller.session.gateway, gateway);
+    assert.equal(controller.session.fgwConnection, gateway);
     controller.command("select-time", { id: 2 });
     assert.equal(controller.state.session.phase, "ready");
     controller.command("match");
@@ -492,7 +494,7 @@ test("commands publish one detached session snapshot immediately without a secon
     assert.equal(sessionUpdates, 1);
     controller.session.pending = false;
     controller.session.pendingMove = null;
-    controller.session.gameMessage(206, decode(encode({})), decode(encode({})));
+    controller.session.gameSvrProcess(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, decode(encode({})), decode(encode({})));
     await Promise.resolve();
     assert.equal(controller.state.session.moves, 2);
     assert.equal(snapshots, 2);

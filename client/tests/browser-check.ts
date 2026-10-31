@@ -697,16 +697,16 @@ try {
     const sessionPath=source.match(/from ["']([^"']*session[.]ts[^"']*)["']/)[1];
     const {Session}=await import(sessionPath);window.CheckSession=Session;window.originalLogin=Session.prototype.login;
     const {decode,encode}=await import('/src/wire.ts');
-    const {unpack}=await import('/src/game.ts');
+    const {decodeFgwMessage}=await import('/src/game.ts');
     window.setupCheckGame=s=>{
       s.close();s.board=new s.board.constructor();s.phase='playing';s.color=1;s.result='';s.gameOver=false;
       s.roomKey={1:31000,2:63};s.status='';
-      s.gateway={close(){},send(command,payload){
-        const [header,fields]=unpack(payload),op=header.number(1);
+      s.fgwConnection={close(){},send(command,payload){
+        const [header,fields]=decodeFgwMessage(payload),op=header.number(1);
         queueMicrotask(()=>{
-          if(op===201)s.gameMessage(203,fields);
-          if(op===204)s.gameMessage(206,decode(encode({})));
-          if(op===311)s.gameMessage(402,decode(encode({2:3-s.color,4:3})));
+          if(op===201)s.gameSvrProcess(203,fields);
+          if(op===204)s.gameSvrProcess(206,decode(encode({})));
+          if(op===311)s.gameSvrProcess(402,decode(encode({2:3-s.color,4:3})));
         });
       }};s.changed();
     };
@@ -821,7 +821,7 @@ try {
 
   await js("document.getElementById('pass').click()");
   await wait('checkSession.board.passes===1');
-  await js("(async()=>{const {encode,decode}=await import('/src/wire.ts');checkSession.gameMessage(206,decode(encode({})));})()");
+  await js("(async()=>{const {encode,decode}=await import('/src/wire.ts');checkSession.gameSvrProcess(206,decode(encode({})));})()");
   await wait('checkSession.board.passes===2');
   assert.equal(await js('checkSession.phase'), 'playing');
   await pointerAt(4, 3); assert.equal(await previewCount(), 1);
@@ -937,8 +937,8 @@ try {
     const snapshot = Session.prototype.snapshot;
     Session.prototype.snapshot = function () { window.countingSession = this; return snapshot.call(this); };
     window.countingSent = [];
-    window.countingNotify = (op, fields) => countingSession.gameMessage(op, decode(encode(fields)), new Map());
-    window.countingUnpack = payload => game.unpack(payload).map(game.plain);
+    window.countingNotify = (op, fields) => countingSession.gameSvrProcess(op, decode(encode(fields)), new Map());
+    window.countingUnpack = payload => game.decodeFgwMessage(payload).map(game.plain);
     const login = Session.prototype.login; Session.prototype.login = function () { this.close();this.phase='playing';this.color=1;this.roomKey={1:31000,2:63};this.changed(); };
     document.getElementById('username').value='test';document.getElementById('password').value='test';
     document.getElementById('login-form').requestSubmit(); Session.prototype.login = login;
@@ -947,7 +947,7 @@ try {
   await js(`(() => {
     const s = countingSession; s.close(); s.phase = 'playing'; s.color = s.board.turn;
     s.uid = 42; s.roomKey = { 1: 31000, 2: 63, 3: 23, 4: 202 };
-    s.gateway = { send: (command, payload) => countingSent.push([command, ...countingUnpack(payload)]), close() {} };
+    s.fgwConnection = { send: (command, payload) => countingSent.push([command, ...countingUnpack(payload)]), close() {} };
   })()`);
   await wait("!document.getElementById('request-score').hidden && !document.getElementById('request-score').disabled");
   assert.equal(await js("document.getElementById('request-score').textContent"), 'Request Counting');
@@ -1025,8 +1025,8 @@ try {
   })()`);
   await js(`window.originalLogin=window.CheckSession.prototype.login;window.CheckSession.prototype.login=function(){
     window.matchSession=this;this.phase='gateway';this.gameLockChecked=true;
-    this.gateway={send:(command,payload)=>window.matchPayload=payload,close(){}};
-    import('/src/wire.ts').then(({decode,encode})=>this.roomMessage(100150,decode(encode({1:[
+    this.fgwConnection={send:(command,payload)=>window.matchPayload=payload,close(){}};
+    import('/src/wire.ts').then(({decode,encode})=>this.gameSvrMgrProcess(100150,decode(encode({1:[
       {1:101,2:19,3:1200,4:3,5:60,7:0,12:1},
       {1:102,2:19,3:300,4:3,5:30,7:0,12:1},
       {1:103,2:19,3:0,4:5,5:30,7:0,12:1}
@@ -1043,7 +1043,7 @@ try {
   assert.deepEqual(await js("[...document.querySelectorAll('.field-population')].map(el=>el.textContent)"), ['(— players)','(— players)','(— players)']);
   await js(`(async()=>{const {decode,encode}=await import('/src/wire.ts');
     window.selectedTimeInput=document.querySelector('#time-controls input:checked');selectedTimeInput.focus();
-    matchSession.roomMessage(100145,decode(encode({1:0,2:[{1:101,2:250},{1:102,2:1},{1:103,2:0}]})));})();`);
+    matchSession.gameSvrMgrProcess(100145,decode(encode({1:0,2:[{1:101,2:250},{1:102,2:1},{1:103,2:0}]})));})();`);
   await wait("document.querySelector('.field-population[data-field-id=\"102\"]').textContent==='(1 player)'");
   assert.deepEqual(await js("[...document.querySelectorAll('.field-population')].map(el=>el.textContent)"), ['(0 players)','(1 player)','(250 players)']);
   assert.equal(await js("document.activeElement===selectedTimeInput && document.querySelector('#time-controls input:checked')===selectedTimeInput"), true);
@@ -1057,10 +1057,10 @@ try {
   assert.equal(await js("document.getElementById('cancel')"), null);
   await assertEscapeIgnored();
   await js(`(async()=>{const {decode,encode}=await import('/src/wire.ts');
-    window.gameNotice=(op,fields)=>matchSession.gameMessage(op,decode(encode(fields)),decode(encode({8:63})));
+    window.gameNotice=(op,fields)=>matchSession.gameSvrProcess(op,decode(encode(fields)),decode(encode({8:63})));
     matchSession.uid=42;
     gameNotice(107,{6:23,7:202,9:[{1:42,6:1,7:300,8:3,9:30}]});
-    matchSession.roomMessage(100130,decode(encode({1:0})));
+    matchSession.gameSvrMgrProcess(100130,decode(encode({1:0})));
   })()`);
   await wait("document.getElementById('connection-layer').hidden");
   assert.equal(await js("document.querySelector('main').inert"), false);
@@ -1073,7 +1073,7 @@ try {
   await wait("!document.getElementById('connection-layer').hidden && !document.getElementById('matchmaking').hidden");
   assert.equal(await js("document.getElementById('login-form')"), null);
   assert.equal(await js("document.getElementById('match').disabled"), false);
-  assert.equal(await js("matchSession.gateway != null && matchSession.fieldId===102"), true);
+  assert.equal(await js("matchSession.fgwConnection != null && matchSession.fieldId===102"), true);
   await js("document.getElementById('match').click();gameNotice(107,{6:24,7:203,9:[{1:42,6:1}]})");
   await wait("document.getElementById('connection-layer').hidden");
   await js("gameNotice(402,{1:0,2:1,4:3})");
@@ -1127,17 +1127,17 @@ try {
   await js("matchSession.close()");
   assert.equal(await js("document.getElementById('login-form').hidden"), false);
   assert.equal(await js("document.getElementById('matchmaking').hidden"), true);
-  assert.equal(await js("matchSession.gateway"), null);
+  assert.equal(await js("matchSession.fgwConnection"), null);
   assert.equal(await js("document.querySelector('main').inert"), true);
 
   for (const fieldsFirst of [true,false]) {
     await js(`window.CheckSession.prototype.login=function(){
       this.close();this.phase='gateway';this.uid=42;
-      this.gateway={send(){},close(){}};
+      this.fgwConnection={send(){},close(){}};
       import('/src/wire.ts').then(({encode,decode})=>{
         const fields=decode(encode({1:[{1:101,2:19,3:1200,4:3,5:60,7:0,12:1}]}));
         const lock=decode(encode({1:0,2:31000,3:63}));
-        for(const op of ${fieldsFirst ? '[100150,100115]' : '[100115,100150]'}) this.roomMessage(op,op===100150?fields:lock);
+        for(const op of ${fieldsFirst ? '[100150,100115]' : '[100115,100150]'}) this.gameSvrMgrProcess(op,op===100150?fields:lock);
         setTimeout(()=>gameNotice(501,{1:0,3:[{1:42,6:1}],4:[{1:1,2:3,3:3,4:1}],6:3,7:23,10:202,12:31000,13:63}),400);
       });
     };document.getElementById('password').value='test';document.getElementById('login-form').requestSubmit()`);
@@ -1162,7 +1162,7 @@ try {
       s.phase='playing';s.color=s.board.turn;s.pending=false;s.counting=false;s.pendingConfirmation=null;
       s.roomKey={1:31000,2:63,3:23,4:202};s.clocks={};s.status=${JSON.stringify(name + ' check')};
       window.illegalPackets=0;window.illegalSounds=0;
-      s.gateway={send(){illegalPackets++},close(){}};s.onSound=()=>illegalSounds++;
+      s.fgwConnection={send(){illegalPackets++},close(){}};s.onSound=()=>illegalSounds++;
       window.boardBeforeIllegal=JSON.stringify(s.board);s.changed();
     })()`);
     await wait(`document.getElementById('board-status').textContent===${JSON.stringify(name + ' check')} && document.getElementById('connection-layer').hidden`);
@@ -1223,7 +1223,7 @@ try {
   await wait("document.querySelector('#white-time .clock-text').textContent==='00:00'");
   assert.equal(await js("document.getElementById('white-periods').textContent"), '2/3');
   await js(`(async()=>{const {encode,decode}=await import('/src/wire.ts');
-    matchSession.gameMessage(108,decode(encode({2:0,3:1,4:29,5:matchSession.uid+1})))})()`);
+    matchSession.gameSvrProcess(108,decode(encode({2:0,3:1,4:29,5:matchSession.uid+1})))})()`);
   await wait("document.getElementById('white-periods').textContent==='1/3'");
   const liveStats = await playerStats();
   assert.equal(liveStats[0].time,'PT90S');

@@ -1,3 +1,4 @@
+import { GAME_SVR, GoGameMessageID } from "../src/protocol.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clockInputValue, clockReading, ByoyomiAnnouncements, recordedClocks } from '../src/clock.ts';
@@ -163,7 +164,7 @@ test('native half-second cushion permits last-moment play and only own clocks ro
       speaker.update(session.snapshot(), 300);
       assert.deepEqual(sounds, ['periods-2']);
       session.uid = 42;
-      session.gameMessage(108, decode(encode({ 2: 0, 3: 2, 4: 30, 5: 43 })), decode(encode({})));
+      session.gameSvrProcess(GoGameMessageID.GC_GAME_COUNTDOWN_NOTIFY, decode(encode({ 2: 0, 3: 2, 4: 30, 5: 43 })), decode(encode({})));
       assert.equal(session.clocks[opponent].periods, 2, 'opponent period changes only on server data');
       speaker.update(session.snapshot(), 0);
       speaker.update(session.snapshot(), 0);
@@ -181,7 +182,7 @@ test('server updates can trigger own period voices and do not duplicate local ro
     session.clocks[color] = { main: 0, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
     const notice = (periods: number) => {
       const timing = { 2: 0, 3: periods, 4: 30, 5: 42 };
-      session.gameMessage(op, decode(encode(op === 109 ? { 2: timing } : timing)), decode(encode({})));
+      session.gameSvrProcess(op, decode(encode(op === GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY ? { 2: timing } : timing)), decode(encode({})));
       speaker.update(session.snapshot());
     };
     try {
@@ -258,7 +259,7 @@ test('full initial-period notifications cannot rewind the countdown; moves and r
     try {
       context.mock.timers.tick(52000);
       const timing = { 2: 0, 3: 3, 4: 60, 5: 42 };
-      const notice = (fields: Fields) => session.gameMessage(op, decode(encode(op === 109 ? { 2: fields } : fields)), decode(encode({})));
+      const notice = (fields: Fields) => session.gameSvrProcess(op, decode(encode(op === GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY ? { 2: fields } : fields)), decode(encode({})));
       notice(timing);
       assert.equal(session.clocks[color].byoyomi, 8, 'full-period notification clamps to displayed seconds');
       assert.equal(session.clocks[color].at, 52);
@@ -285,7 +286,7 @@ test('Fox full-period sync guard preserves countdown voice cadence near the end'
   try {
     tick(50500); tick(51500);
     context.mock.timers.setTime(52100);
-    session.gameMessage(108, decode(encode({ 2: 0, 3: 3, 4: 60, 5: 42 })), decode(encode({})));
+    session.gameSvrProcess(GoGameMessageID.GC_GAME_COUNTDOWN_NOTIFY, decode(encode({ 2: 0, 3: 3, 4: 60, 5: 42 })), decode(encode({})));
     speaker.update(session.snapshot());
     assert.equal(clockReading(session.clocks[1]).seconds, 8);
     tick(52600);
@@ -305,30 +306,30 @@ test('counting freezes the current reading and resumes without charging the wait
       const session = new Session();
       session.phase = 'playing'; session.color = 1; session.uid = 42;
       session.board.turn = own ? 1 : 2;
-      session.roomKey = { 1: 31000, 2: 63, 3: 23, 4: 202 };
-      session.gateway = { send() {}, close() {} };
+      session.roomKey = { 1: GAME_SVR, 2: 63, 3: 23, 4: 202 };
+      session.fgwConnection = { send() {}, close() {} };
       const color = session.board.turn;
       session.clocks[color] = { main, periods: 3, byoyomi: 30, periodLength: 30, at: 0 };
       const notify = (op: number, fields: Fields) =>
-        session.gameMessage(op, decode(encode(fields)), decode(encode({})));
+        session.gameSvrProcess(op, decode(encode(fields)), decode(encode({})));
       try {
         context.mock.timers.tick(7000);
         const before = clockReading(session.clocks[color], 7, 60, own);
         if (own) session.requestCounting();
-        else notify(303, { 1: 0, 2: 1 });
+        else notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { 1: 0, 2: 1 });
         assert.deepEqual(clockReading(session.clocks[color], 0, 60, own), before);
-        if (exit !== 'request-failed' && own) notify(301, { 1: 0 });
+        if (exit !== 'request-failed' && own) notify(GoGameMessageID.GC_CALCULATE_REQUEST, { 1: 0 });
         context.mock.timers.tick(90000);
         assert.equal(session.tickClock(), false);
         assert.deepEqual(clockReading(session.clocks[color], 0, 60, own), before);
-        if (exit === 'request-failed') notify(301, { 1: -1 });
-        if (exit === 'rejected') notify(306, { 1: false, 2: 1 });
+        if (exit === 'request-failed') notify(GoGameMessageID.GC_CALCULATE_REQUEST, { 1: -1 });
+        if (exit === 'rejected') notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { 1: false, 2: 1 });
         if (exit === 'answer-rejected') {
-          notify(303, { 1: 0, 2: 1 });
+          notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { 1: 0, 2: 1 });
           session.confirm(false);
-          notify(304, { 1: 0 });
+          notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { 1: 0 });
         }
-        if (exit === 'resume') notify(109, { 2: {
+        if (exit === 'resume') notify(GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY, { 2: {
           2: before.main, 3: before.periods, 4: before.seconds, 5: own ? 42 : 43,
         } });
         assert.equal(session.counting, false);

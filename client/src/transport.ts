@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
-import { encode, decodeOne, MAX_SIZE } from "./framing.ts";
+import { netMsgToBytes, extractNetMsgFromBytes, MAX_SIZE } from "./framing.ts";
 
-import type { Frame } from "./framing.ts";
+import type { NetMsg } from "./framing.ts";
 import type { NetworkLog } from "./network-log.ts";
 export interface Transport {
   closed?: boolean;
@@ -22,13 +22,13 @@ export class Connection {
   closed: boolean;
   buffer: Buffer;
   started: boolean;
-  queued: Frame[];
-  receive: (frame: Frame) => void;
+  queued: NetMsg[];
+  receive: (frame: NetMsg) => void;
   fail: (reason: string) => void;
   static async open(
     host: string,
     port: number,
-    receive: (frame: Frame) => void,
+    receive: (frame: NetMsg) => void,
     failed: (reason: string) => void,
     { proxyUrl, proxyToken, networkLog }: TransportOptions,
   ) {
@@ -80,7 +80,7 @@ export class Connection {
   }
   constructor(
     ws: WebSocket,
-    receive: (frame: Frame) => void,
+    receive: (frame: NetMsg) => void,
     failed: (reason: string) => void,
     {
       networkLog,
@@ -113,7 +113,7 @@ export class Connection {
         if (this.buffer.length > MAX_SIZE + 65536)
           throw Error("receive buffer limit exceeded");
         let decoded;
-        while ((decoded = decodeOne(this.buffer))) {
+        while ((decoded = extractNetMsgFromBytes(this.buffer))) {
           const [frame, consumed] = decoded;
           this.buffer = this.buffer.subarray(consumed);
           if (this.started) receive(frame);
@@ -139,7 +139,7 @@ export class Connection {
   send(command: number, payload: Uint8Array) {
     if (this.closed || this.ws.readyState !== WebSocket.OPEN)
       throw Error("connection closed");
-    const packet = encode(command, payload, true);
+    const packet = netMsgToBytes(command, payload, true);
     if (this.ws.bufferedAmount + packet.length > MAX_SIZE)
       throw Error("send buffer limit exceeded");
     this.ws.send(packet);

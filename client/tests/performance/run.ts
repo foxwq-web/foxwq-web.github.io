@@ -11,7 +11,7 @@ const driver = `
 import { flushSync } from 'react-dom';
 import { applyDevScreen, DEV_SCREENS } from './dev-screens.ts';
 import { localEstimate } from '../../score-estimator/src/local-score-estimation.ts';
-import { encode as encodeFrame } from './framing.ts';
+import { netMsgToBytes as encodeNetMsg } from './framing.ts';
 window.__calls = { App: 0, BoardView: 0, Stone: 0 };
 window.__bench = {
   screens: DEV_SCREENS.map(({ id, phase, playerName }) => ({ id, phase, playerName })),
@@ -38,7 +38,7 @@ window.__bench = {
     const log = controller.session.networkLog;
     const initial = JSON.parse(await log.serialize()).length;
     const connection = log.connection('offline.invalid', 1);
-    const frame = encodeFrame(1000, new Uint8Array(128));
+    const frame = encodeNetMsg(1000, new Uint8Array(128));
     const start = performance.now();
     for (let i = 0; i < count; i++) {
       log.traffic(connection, 'inbound', frame);

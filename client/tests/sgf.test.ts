@@ -1,3 +1,4 @@
+import { GAME_SVR, GoGameMessageID } from "../src/protocol.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Board } from "../src/board.ts";
@@ -10,18 +11,18 @@ function game() {
   session.uid = 42;
   session.phase = "matching";
   session.matchSettings = { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 };
-  session.gateway = { send() {}, close() {} };
-  session.gameMessage(107, decode(encode({
+  session.fgwConnection = { send() {}, close() {} };
+  session.gameSvrProcess(GoGameMessageID.GC_START_SET_PIECE_NOTIFY, decode(encode({
     6: 23, 7: 202, 9: [{ 1: 42, 6: 1, 7: 1200, 8: 3, 9: 60 }],
   })), decode(encode({ 8: 63 })));
   return session;
 }
 function notify(session: Session, op: number, fields: Fields) {
-  session.gameMessage(op, decode(encode(fields)), decode(encode({})));
+  session.gameSvrProcess(op, decode(encode(fields)), decode(encode({})));
 }
 function environment(moves: Fields[], room = 202): Fields {
   return { 1: 0, 3: [{ 1: 42, 6: 1 }], 4: moves, 6: 3,
-    7: 23, 10: room, 12: 31000, 13: 63 };
+    7: 23, 10: room, 12: GAME_SVR, 13: 63 };
 }
 
 test("SGF records Fox main time, both colors, passes and remaining overtime periods", () => {

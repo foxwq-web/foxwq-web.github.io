@@ -1,4 +1,14 @@
-import { PlayerInfoStore, PLAYER_INFO_SERVICE } from "./player-info";
+import { StoneColor, StoneMoveFlag, GameStatus, ENGameEndReason, SpecialResult, CalculateProcessType, DuMiaoConst } from "./protocol.ts";
+import { gameFields as Game, roomFields as Room, fgwFields as Fgw, commonFields as Common } from "./protocol-fields.ts";
+import {
+  RoomMessageID,
+  LegacyMsgTypeID,
+  GoGameMessageID,
+  ClientMessageID,
+  CLINET_MSG_ID,
+  ErrorCode,
+} from "./protocol.ts";
+import { PlayerInfoStore, SVR_TYPE_USER_INFO_PANEL_SVR } from "./player-info";
 import { Buffer } from "buffer";
 import SparkMD5 from "spark-md5";
 import * as game from "./game.ts";
@@ -37,7 +47,7 @@ export function loginRequest(
 const now = () => Date.now() / 1000;
 import type { SessionState, TimeControl, Clock } from "./state";
 import type { Transport, TransportOptions } from "./transport.ts";
-import type { Frame } from "./framing.ts";
+import type { NetMsg } from "./framing.ts";
 export interface SessionOptions {
   host?: string;
   port?: number;
@@ -47,7 +57,7 @@ export interface SessionOptions {
   connectionFactory?: (
     host: string,
     port: number,
-    receive: (frame: Frame) => void,
+    receive: (frame: NetMsg) => void,
     failed: (reason: string) => void,
     options: TransportOptions,
   ) => Promise<Transport>;
@@ -59,7 +69,7 @@ export interface SessionOptions {
 type Confirmation = [
   string,
   Fields,
-  (ReturnType<typeof game.countingResult> | null)?,
+  (ReturnType<typeof game.decodeCalculateConfirmNotify> | null)?,
 ];
 export class Session {
   host!: string;
@@ -72,7 +82,7 @@ export class Session {
   onSound!: (name: string) => void;
   onChange!: (state: SessionState) => void;
   connection: Transport | null;
-  gateway: Transport | null;
+  fgwConnection: Transport | null;
   timer: ReturnType<typeof setTimeout> | null;
   bootstrapTimer?: ReturnType<typeof setTimeout>;
   generation: number;
@@ -100,7 +110,7 @@ export class Session {
   fieldPlayersRequestedAt: number;
   roomKey: Record<number, number>;
   color: number;
-  sync: number;
+  synSeqId: number;
   boardRoomKey = "";
   pendingMove: {
     board: Board;
@@ -110,7 +120,7 @@ export class Session {
     color: number;
   } | null;
   pending: boolean;
-  pendingAction: number | null = null;
+  pendingMessageId: number | null = null;
   quitRequested: boolean;
   startedRoom: string | null;
   clocks: Record<string, Clock>;
@@ -123,7 +133,7 @@ export class Session {
     const time = now(), color = this.board.turn, clock = this.clocks[color];
     if (clock && this.phase === "playing") {
       if (active && !(color !== this.color && this.opponentDisconnectDeadline != null)) {
-        const reading = clockReading(clock, time - clock.at, 60, color === this.color);
+        const reading = clockReading(clock, time - clock.at, DuMiaoConst.DU_MIAO_60_SEC, color === this.color);
         Object.assign(clock, {
           main: reading.main, periods: reading.periods, byoyomi: reading.seconds,
         });
@@ -143,7 +153,7 @@ export class Session {
   private reconnectAttempt = 0;
   private reconnectStatus = "";
   private reconnectTimer?: ReturnType<typeof setTimeout>;
-  private lastGatewayResponse = 0;
+  private lastFgwResponse = 0;
   constructor({
     host = "43.132.13.39",
     port = 10000,
@@ -167,10 +177,10 @@ export class Session {
       onSound,
       onChange,
     });
-    this.playerInfo = new PlayerInfoStore(fields => this.send(PLAYER_INFO_SERVICE, 1001, fields),
+    this.playerInfo = new PlayerInfoStore(fields => this.sendFgwChannelMsg(SVR_TYPE_USER_INFO_PANEL_SVR, CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO, fields),
       () => this.changed(), () => this, historyFetcher);
     this.connection = null;
-    this.gateway = null;
+    this.fgwConnection = null;
     this.timer = null;
     this.generation = 0;
     this.phase = "disconnected";
@@ -195,7 +205,7 @@ export class Session {
     this.fieldPlayersRequestedAt = 0;
     this.roomKey = {};
     this.color = 0;
-    this.sync = 0;
+    this.synSeqId = 0;
     this.pendingMove = null;
     this.pending = false;
     this.quitRequested = false;
@@ -264,7 +274,7 @@ export class Session {
       confirmationKind: this.pendingConfirmation?.[0] ?? null,
       countingResult: this.pendingConfirmation?.[2] ?? this.countingAnswer?.confirmation[2] ?? null,
       estimation: this.estimation,
-      gatewayAvailable: !!this.gateway,
+      gatewayAvailable: !!this.fgwConnection,
       koStones: this.board.history.at(-1) ?? null,
     });
   }
@@ -281,8 +291,8 @@ export class Session {
     this.gameOver = false;
     this.startedRoom = null;
     this.opponentDisconnectDeadline = null;
-    this.sync = 0;
-    this.pendingAction = null;
+    this.synSeqId = 0;
+    this.pendingMessageId = null;
     this.pendingSince = 0;
     this.roomKey = {};
     this.color = 0;
@@ -304,9 +314,9 @@ export class Session {
       clearTimeout(this.bootstrapTimer);
       clearTimeout(this.timer ?? undefined);
       this.timer = null;
-      this.gateway?.close();
+      this.fgwConnection?.close();
       this.connection?.close();
-      this.gateway = this.connection = null;
+      this.fgwConnection = this.connection = null;
       this.token = Buffer.alloc(0);
       this.uid = 0;
       this.fieldId = null;
@@ -380,7 +390,7 @@ export class Session {
   navFailed(generation: number, reason: string) {
     try {
       if (generation !== this.generation) return;
-      if (this.gateway && !this.gateway.closed) {
+      if (this.fgwConnection && !this.fgwConnection.closed) {
         this.connection = null;
       } else this.failed(generation, reason);
     } finally {
@@ -398,13 +408,13 @@ export class Session {
         clearTimeout(this.bootstrapTimer);
         clearTimeout(this.reconnectTimer);
         this.timer = null;
-        this.gateway?.close();
+        this.fgwConnection?.close();
         this.connection?.close();
-        this.gateway = this.connection = null;
+        this.fgwConnection = this.connection = null;
         return;
       }
       if (this.loginPacket &&
-          (this.reconnectBoard || (this.phase === "playing" && [1, 2].includes(this.color)))) {
+          (this.reconnectBoard || (this.phase === "playing" && [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)))) {
         const first = !this.reconnectBoard;
         this.reconnectBoard ??= this.snapshot();
         this.clearEstimate();
@@ -415,9 +425,9 @@ export class Session {
         clearTimeout(this.timer ?? undefined);
         clearTimeout(this.bootstrapTimer);
         clearTimeout(this.reconnectTimer);
-        this.gateway?.close();
+        this.fgwConnection?.close();
         this.connection?.close();
-        this.gateway = this.connection = null;
+        this.fgwConnection = this.connection = null;
         this.phase = "reconnecting";
         this.pending = false;
         this.pendingConfirmation = null;
@@ -452,16 +462,16 @@ export class Session {
     void this.connect(this.generation, this.loginPacket);
     this.changed();
   }
-  receive(generation: number, packet: Frame) {
+  receive(generation: number, packet: NetMsg) {
     try {
       if (generation !== this.generation) return;
       try {
-        if (packet.command === 26200) {
-          this.gatewayMessage(generation, packet);
+        if (packet.msgTypeID === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) {
+          this.onReceiveFgwMessage(generation, packet);
           return;
         }
-        const m = decode(packet.payload);
-        if (packet.command === 2005) {
+        const m = decode(packet.rawProto);
+        if (packet.msgTypeID === 2005) {
           clearTimeout(this.timer ?? undefined);
           const code = signed(m.one(1)),
             uid = m.number(2) || m.sub(3).number(1),
@@ -469,7 +479,7 @@ export class Session {
           if (code || !uid || !token.length) {
 
             const reason =
-              code === 111231
+              code === ErrorCode.NEC_USERNAME_PASSWORD_ERROR
                 ? "incorrect credentials"
                 : `${code}`;
             this.failed(generation, reason);
@@ -488,7 +498,7 @@ export class Session {
           this.connection!.send(3010, encode({ 1: uid }));
           this.timeout(generation, "Server discovery timed out");
         } else if (
-          packet.command === 3005 &&
+          packet.msgTypeID === 3005 &&
           m.has(3) &&
           this.phase === "bootstrap"
         ) {
@@ -502,7 +512,7 @@ export class Session {
           this.phase = "gateway";
           this.status = "Connecting to gateway...";
           this.timeout(generation, "Gateway discovery timed out");
-          void this.connectGateway(generation, host, port);
+          void this.startConnectFgwServer(generation, host, port);
         }
       } catch (error) {
         this.failed(generation, "Invalid protocol response");
@@ -511,7 +521,7 @@ export class Session {
       this.changed();
     }
   }
-  async connectGateway(generation: number, host: string, port: number) {
+  async startConnectFgwServer(generation: number, host: string, port: number) {
     try {
       let connection;
       try {
@@ -520,8 +530,8 @@ export class Session {
           connection.close();
           return;
         }
-        this.gateway = connection;
-        this.send(game.GATEWAY, 1, { 1: this.token });
+        this.fgwConnection = connection;
+        this.sendFgwChannelMsg(game.SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { [Fgw.LoginRequest.session]: this.token });
         connection.start?.();
       } catch (error) {
         connection?.close();
@@ -531,35 +541,35 @@ export class Session {
       this.changed();
     }
   }
-  send(service: number, op: number, fields: Fields = {}, node = 0) {
-    if (!this.gateway) throw Error("Gateway is disconnected");
-    this.gateway.send(
-      26200,
-      game.envelope(this.uid, service, op, fields, node),
+  sendFgwChannelMsg(serverType: number, messageId: number, fields: Fields = {}, serverId = 0) {
+    if (!this.fgwConnection) throw Error("Gateway is disconnected");
+    this.fgwConnection.send(
+      LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET,
+      game.encodeFgwMessage(this.uid, serverType, messageId, fields, serverId),
     );
   }
   heartbeat(generation: number) {
     try {
-      if (generation !== this.generation || !this.gateway) return;
+      if (generation !== this.generation || !this.fgwConnection) return;
       try {
-        if (now() - this.lastGatewayResponse > 20) {
+        if (now() - this.lastFgwResponse > 20) {
           this.failed(generation, "Network response timed out");
           return;
         }
         const ticks = Math.floor(performance.now());
-        this.send(game.GATEWAY, 5, { 1: ticks });
-        this.send(game.ROOM, 100010, { 1: ticks });
+        this.sendFgwChannelMsg(game.SVR_TYPE_FGW, ClientMessageID.MID_HEART_BEAT_REQUEST, { [Fgw.HeartBeatRequest.client_time]: ticks });
+        this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_HEART_BEAT_REQUEST, { [Room.HeartBeatRequest.client_time_us]: ticks });
         this.refreshFieldPlayers(ticks);
         if (Object.keys(this.roomKey).length) {
           if (this.pending && now() - this.pendingSince > 8) {
-            this.send(game.GAME, 501, {}, this.roomKey[2]);
+            this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, this.roomKey[Game.RoomKey.server_id]);
             this.pendingSince = now();
           }
-          this.send(
-            game.GAME,
-            200,
-            { 1: ticks, 3: this.roomKey },
-            this.roomKey[2],
+          this.sendFgwChannelMsg(
+            game.GAME_SVR,
+            GoGameMessageID.GC_HEART_BEAT_REQUEST,
+            { [Game.HeartBeatRequest.client_time_us]: ticks, [Game.HeartBeatRequest.room_key]: this.roomKey },
+            this.roomKey[Game.RoomKey.server_id],
           );
         }
         this.timer = setTimeout(() => this.heartbeat(generation), 5000);
@@ -570,23 +580,23 @@ export class Session {
       this.changed();
     }
   }
-  gatewayMessage(generation: number, packet: Frame) {
+  onReceiveFgwMessage(generation: number, packet: NetMsg) {
     try {
-      this.lastGatewayResponse = now();
-      const [header, m] = game.unpack(packet.payload),
-        service = header.number(7),
-        op = header.number(1);
-      if (service === PLAYER_INFO_SERVICE && op === 1001) {
+      this.lastFgwResponse = now();
+      const [fgwHead, m] = game.decodeFgwMessage(packet.rawProto),
+        serverType = fgwHead.number(Common.FGWHead.server_type),
+        messageId = fgwHead.number(Common.FGWHead.message_id);
+      if (serverType === SVR_TYPE_USER_INFO_PANEL_SVR && messageId === CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO) {
         this.playerInfo.receive(m);
-      } else if (service === game.GATEWAY) {
-        if (op === 1) {
-          if (signed(m.one(1))) {
-            this.failed(generation, `Gateway login status ${signed(m.one(1))}`);
+      } else if (serverType === game.SVR_TYPE_FGW) {
+        if (messageId === ClientMessageID.MID_LOGIN_REQUEST) {
+          if (signed(m.one(Fgw.LoginResponse.op_code))) {
+            this.failed(generation, `Gateway login status ${signed(m.one(Fgw.LoginResponse.op_code))}`);
             return;
           }
           clearTimeout(this.timer ?? undefined);
           this.status = "Discovering game settings...";
-          this.send(game.ROOM, 100008, { 1: true });
+          this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { 1: true });
           this.heartbeat(generation);
 
           this.bootstrapTimer = setTimeout(() => {
@@ -598,13 +608,13 @@ export class Session {
               this.failed(generation, "Room discovery timed out");
           }, 15000);
           this.bootstrapTimer.unref?.();
-        } else if (op === 100)
+        } else if (messageId === ClientMessageID.MID_KICKOUT_NOTIFY)
           this.failed(
             generation,
             "Another client logged in",
           );
-      } else if (service === game.ROOM) this.roomMessage(op, m);
-      else if (service === game.GAME) this.gameMessage(op, m, header);
+      } else if (serverType === game.GAME_SVR_MGR) this.gameSvrMgrProcess(messageId, m);
+      else if (serverType === game.GAME_SVR) this.gameSvrProcess(messageId, m, fgwHead);
     } finally {
       this.changed();
     }
@@ -615,37 +625,37 @@ export class Session {
       ticks - this.fieldPlayersRequestedAt < 25000
     )
       return;
-    this.send(game.ROOM, 100145);
+    this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST);
     this.fieldPlayersRequestedAt = ticks;
   }
-  roomMessage(op: number, m: Message) {
+  gameSvrMgrProcess(messageId: number, m: Message) {
     try {
-      if (op === 100008) {
-        if (signed(m.one(1))) throw Error("Room manager login failed");
+      if (messageId === RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST) {
+        if (signed(m.one(Room.LoginGameSvrMgrResponse.result))) throw Error("Room manager login failed");
         this.preloadPlayerInfo();
-        for (const operation of [100145, 100115, 100150])
-          this.send(game.ROOM, operation);
+        for (const operation of [RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, RoomMessageID.RM_FETCH_FIELD_CFG])
+          this.sendFgwChannelMsg(game.GAME_SVR_MGR, operation);
         this.fieldPlayersRequestedAt = Math.floor(performance.now());
-      } else if (op === 100115) {
+      } else if (messageId === RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST) {
         if (this.phase === "finished" && this.gameOver) return;
         this.gameLockChecked = true;
-        if (m.number(1) === 0 && m.number(2) === game.GAME) {
+        if (m.number(Room.QueryGameLockResponse.result) === 0 && m.number(Room.QueryGameLockResponse.server_type) === game.GAME_SVR) {
           this.phase = "resuming";
           this.status = "Reconnecting...";
-          this.send(game.GAME, 501, {}, m.number(3));
+          this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, m.number(Room.QueryGameLockResponse.server_id));
         } else if (this.reconnectBoard) {
           // The lock can disappear when the game ends during the outage.
           this.phase = "resuming";
-          this.send(game.GAME, 501, {}, Number(this.reconnectBoard.gameId.split(":")[1]));
+          this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, Number(this.reconnectBoard.gameId.split(":")[1]));
         } else this.discoveryReady();
-      } else if (op === 100145) {
-        if (signed(m.one(1))) {
+      } else if (messageId === RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST) {
+        if (signed(m.one(Room.FetchAllFieldInfoResponse.result))) {
           return;
         }
         const counts: Record<string, number> = {};
-        for (const record of (m.get(2) ?? []).map(decode)) {
-          const id = record.number(1),
-            count = record.number(2);
+        for (const record of (m.get(Room.FetchAllFieldInfoResponse.field_infos) ?? []).map(decode)) {
+          const id = record.number(Room.FieldInfo.field_id),
+            count = record.number(Room.FieldInfo.people_num);
           if (
             Number.isSafeInteger(id) &&
             id > 0 &&
@@ -655,9 +665,9 @@ export class Session {
             counts[id] = count;
         }
         this.fieldPlayers = counts;
-      } else if (op === 100150) {
+      } else if (messageId === RoomMessageID.RM_FETCH_FIELD_CFG) {
         this.fieldsLoaded = true;
-        this.matchFields = game.matchFields((m.get(1) ?? []).map(decode));
+        this.matchFields = game.fieldCfgsToTimeControls((m.get(Room.FetchFieldCfgResponse.field_cfgs) ?? []).map(decode));
         const selected =
           this.matchFields.find((f) => f.id === this.fieldId) ??
           this.matchFields.find(
@@ -676,31 +686,31 @@ export class Session {
         this.fieldId = selected?.id ?? null;
         this.matchSettings = selected ?? null;
         this.discoveryReady();
-      } else if (op === 100130) {
+      } else if (messageId === RoomMessageID.RM_AUTO_INVITE_REQUEST) {
         if (this.phase !== "matching") return;
-        this.phase = signed(m.one(1)) ? "ready" : "matching";
-        this.status = signed(m.one(1))
-          ? `matchmaking rejected: ${signed(m.one(1))}`
+        this.phase = signed(m.one(Room.AutoInviteResponse.result)) ? "ready" : "matching";
+        this.status = signed(m.one(Room.AutoInviteResponse.result))
+          ? `matchmaking rejected: ${signed(m.one(Room.AutoInviteResponse.result))}`
           : `Searching for a game...`;
-      } else if ([100132, 100139, 100141].includes(op)) {
+      } else if ([RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY].includes(messageId)) {
         if (this.phase !== "matching") return;
         this.pendingConfirmation = null;
         this.phase = "ready";
         this.status = "Matchmaking ended";
-      } else if (op === 100140) {
+      } else if (messageId === RoomMessageID.RM_ENTER_ROOM_NOTIFY) {
         if (!["matching", "joining", "playing"].includes(this.phase)) return;
-        if (signed(m.one(1))) throw Error("Room entry failed");
+        if (signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
         this.roomKey = {
-          1: m.number(2),
-          2: m.number(3),
-          3: m.number(4),
-          4: m.number(7),
+          [Game.RoomKey.server_type]: m.number(Room.EnterRoomNotify.server_type),
+          [Game.RoomKey.server_id]: m.number(Room.EnterRoomNotify.server_id),
+          [Game.RoomKey.room_id]: m.number(Room.EnterRoomNotify.room_id),
+          [Game.RoomKey.create_time]: m.number(Room.EnterRoomNotify.room_create_time),
         };
         if (this.phase !== "playing") {
           this.phase = "joining";
           this.status = "Joining the game...";
         }
-        this.send(game.GAME, 105, {}, m.number(3));
+        this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_READY_REQUEST, {}, m.number(Room.EnterRoomNotify.server_id));
       }
     } finally {
       this.changed();
@@ -709,7 +719,7 @@ export class Session {
   private preloadPlayerInfo() {
     const generation = this.generation;
     queueMicrotask(() => {
-      if (generation !== this.generation || !this.gateway || this.gateway.closed || !this.token.length) return;
+      if (generation !== this.generation || !this.fgwConnection || this.fgwConnection.closed || !this.token.length) return;
       if (this.account) this.playerInfo.prefetch(this.uid, this.account.name, this.account.rank);
       for (const player of Object.values(this.players)) {
         if (player.id) this.playerInfo.prefetch(player.id, player.name, player.rank);
@@ -726,41 +736,55 @@ export class Session {
         : "No time controls available";
     }
   }
-  gameMessage(op: number, m: Message, header: Message) {
+  gameSvrProcess(messageId: number, m: Message, header: Message) {
     try {
       // Results may arrive in multiple packets; other late room events must
       // never replace a completed game or disturb its offline review.
-      if (this.phase === "finished" && this.gameOver && ![402, 403, 405].includes(op)) return;
+      if (this.phase === "finished" && this.gameOver && ![
+        GoGameMessageID.GC_SET_GAME_END_NOTIFY,
+        GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY,
+        GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
+      ].includes(messageId)) return;
       // Only a full synchronization may replace the board during recovery.
-      if (this.reconnectBoard && ![107, 501].includes(op)) return;
+      if (this.reconnectBoard && ![GoGameMessageID.GC_START_SET_PIECE_NOTIFY, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST].includes(messageId)) return;
       if (["ready", "disconnected", "error"].includes(this.phase)) return;
       if (
         this.phase === "matching" &&
         !Object.keys(this.roomKey).length &&
-        op !== 107
+        messageId !== GoGameMessageID.GC_START_SET_PIECE_NOTIFY
       )
         return;
-      const confirmsMove = op === 203 && this.pendingMove &&
-        this.pendingMove.color === m.number(3) &&
-        this.pendingMove.x === m.number(1) && this.pendingMove.y === m.number(2);
-      const opponentMove = (op === 203 && m.number(3) === 3 - this.color) ||
-        (op === 206 && this.board.turn === 3 - this.color);
-      if (!this.gameOver && [107, 203, 206, 303, 306, 402, 403, 405, 501].includes(op) && !confirmsMove && !opponentMove)
+      const confirmsMove = messageId === GoGameMessageID.GC_SET_PIECE_NOTIFY && this.pendingMove &&
+        this.pendingMove.color === m.number(Game.SetPieceNotify.color) &&
+        this.pendingMove.x === m.number(Game.SetPieceNotify.x) && this.pendingMove.y === m.number(Game.SetPieceNotify.y);
+      const opponentMove = (messageId === GoGameMessageID.GC_SET_PIECE_NOTIFY && m.number(Game.SetPieceNotify.color) === 3 - this.color) ||
+        (messageId === GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY && this.board.turn === 3 - this.color);
+      if (!this.gameOver && [
+        GoGameMessageID.GC_START_SET_PIECE_NOTIFY,
+        GoGameMessageID.GC_SET_PIECE_NOTIFY,
+        GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY,
+        GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY,
+        GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY,
+        GoGameMessageID.GC_SET_GAME_END_NOTIFY,
+        GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY,
+        GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
+        GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST,
+      ].includes(messageId) && !confirmsMove && !opponentMove)
         this.clearEstimate();
-      if (op === 105) {
-        if (signed(m.one(1))) throw Error("Game room rejected entry");
-      } else if (op === 107) {
+      if (messageId === GoGameMessageID.GC_READY_REQUEST) {
+        if (signed(m.one(Game.GameSvrRoomMsgResponse.result))) throw Error("Game room rejected entry");
+      } else if (messageId === GoGameMessageID.GC_START_SET_PIECE_NOTIFY) {
         if (this.reconnectBoard) {
           this.phase = "resuming";
-          this.send(game.GAME, 501, {}, header.number(8));
+          this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, header.number(Common.FGWHead.server_id));
           return;
         }
         const resuming = this.phase === "resuming";
         this.roomKey = {
-          1: game.GAME,
-          2: header.number(8),
-          3: m.number(6),
-          4: m.number(7),
+          [Game.RoomKey.server_type]: game.GAME_SVR,
+          [Game.RoomKey.server_id]: header.number(Common.FGWHead.server_id),
+          [Game.RoomKey.room_id]: m.number(Game.StartSetPieceNotify.room_id),
+          [Game.RoomKey.create_time]: m.number(Game.StartSetPieceNotify.room_create_time),
         };
         this.players = {};
         this.opponentDisconnectDeadline = null;
@@ -775,16 +799,16 @@ export class Session {
         this.clocks = {};
         this.result = "";
         this.gameOver = false;
-        for (const data of m.get(9) ?? []) {
+        for (const data of m.get(Game.StartSetPieceNotify.game_users) ?? []) {
           const user = decode(data);
-          this.readPlayer(user);
-          if (user.number(1) === this.uid) this.color = user.number(6);
-          this.clocks[user.number(6)] = {
-            main: user.number(7),
-            periods: user.number(8),
-            byoyomi: user.number(9),
+          this.readGameUserInfo(user);
+          if (user.number(Game.GameUserInfo.uid) === this.uid) this.color = user.number(Game.GameUserInfo.stone_color);
+          this.clocks[user.number(Game.GameUserInfo.stone_color)] = {
+            main: user.number(Game.GameUserInfo.remaining_jushi_time),
+            periods: user.number(Game.GameUserInfo.remaining_dumiao_num),
+            byoyomi: user.number(Game.GameUserInfo.remaining_dumaio_time),
             periodLength:
-              m.sub(1).number(7) || this.matchSettings?.byoyomi || 60,
+              m.sub(Game.StartSetPieceNotify.rule).number(Game.GameRule.dumiao_time) || this.matchSettings?.byoyomi || DuMiaoConst.DU_MIAO_60_SEC,
             at: now(),
           };
         }
@@ -793,16 +817,16 @@ export class Session {
         this.status = "Game started";
         this.pendingMove = null;
         this.pending = false;
-        this.sync = 0;
+        this.synSeqId = 0;
         this.pendingConfirmation = null;
         this.counting = false;
         this.countingAnswer = null;
         this.quitRequested = false;
         this.announceStart(resuming);
-      } else if (op === 203) {
-        const color = m.number(3),
-          x = m.number(1),
-          y = m.number(2);
+      } else if (messageId === GoGameMessageID.GC_SET_PIECE_NOTIFY) {
+        const color = m.number(Game.SetPieceNotify.color),
+          x = m.number(Game.SetPieceNotify.x),
+          y = m.number(Game.SetPieceNotify.y);
         const submittedClock = confirmsMove ? this.pendingMove?.clocks[color] : undefined;
         if (color === 3 - this.color) this.opponentDisconnectDeadline = null;
         if (confirmsMove) this.pendingMove = null;
@@ -811,38 +835,44 @@ export class Session {
           const captures = this.board.play(x, y, color);
           this.onSound(placementSound(captures));
         }
-        this.sync = m.sub(5).number(1, this.sync);
-        this.clock(color, m.sub(4), submittedClock);
-        if (this.pendingAction !== 311) this.pending = false;
+        this.synSeqId = m.sub(Game.SetPieceNotify.check_syn).number(Game.CheckSyn.syn_seq_id, this.synSeqId);
+        this.clock(color, m.sub(Game.SetPieceNotify.countdown), submittedClock);
+        if (this.pendingMessageId !== GoGameMessageID.GC_GIVE_UP_REQUEST) this.pending = false;
         this.status = "";
-      } else if (op === 206) {
+      } else if (messageId === GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY) {
         const color = this.board.turn;
         if (color === 3 - this.color) this.opponentDisconnectDeadline = null;
         this.board.passTurn();
-        this.clock(color, m.sub(1));
-        this.sync = m.sub(2).number(1, this.sync);
+        this.clock(color, m.sub(Game.SkipSetPieceNotify.countdown));
+        this.synSeqId = m.sub(Game.SkipSetPieceNotify.check_syn).number(Game.CheckSyn.syn_seq_id, this.synSeqId);
         this.pending = false;
         this.status =
           this.board.turn === this.color ? "Opponent passed" : "You passed";
-      } else if ([201, 204, 301, 304, 311].includes(op)) {
-        if (signed(m.one(1))) {
-          if (op === 311 && this.pendingMove) {
-            this.pendingAction = 201;
+      } else if ([
+        GoGameMessageID.GC_SET_PIECE_REQUEST,
+        GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST,
+        GoGameMessageID.GC_CALCULATE_REQUEST,
+        GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST,
+        GoGameMessageID.GC_GIVE_UP_REQUEST,
+      ].includes(messageId)) {
+        if (signed(m.one(Game.SetPieceResponse.result))) {
+          if (messageId === GoGameMessageID.GC_GIVE_UP_REQUEST && this.pendingMove) {
+            this.pendingMessageId = GoGameMessageID.GC_SET_PIECE_REQUEST;
           } else {
             this.rollbackMove();
-            if (op === 201) this.clearEstimate();
-            if (op !== 201 || this.pendingAction !== 311) this.pending = false;
+            if (messageId === GoGameMessageID.GC_SET_PIECE_REQUEST) this.clearEstimate();
+            if (messageId !== GoGameMessageID.GC_SET_PIECE_REQUEST || this.pendingMessageId !== GoGameMessageID.GC_GIVE_UP_REQUEST) this.pending = false;
           }
-          this.status = `Action ${op} rejected: ${signed(m.one(1))}`;
-          if (op === 311) this.quitRequested = false;
-          if (op === 301) this.counting = false;
-          if (op === 304 && this.countingAnswer) {
+          this.status = `Action ${messageId} rejected: ${signed(m.one(Game.SetPieceResponse.result))}`;
+          if (messageId === GoGameMessageID.GC_GIVE_UP_REQUEST) this.quitRequested = false;
+          if (messageId === GoGameMessageID.GC_CALCULATE_REQUEST) this.counting = false;
+          if (messageId === GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST && this.countingAnswer) {
             this.pendingConfirmation = this.countingAnswer.confirmation;
             this.countingAnswer = null;
           }
-        } else if ([301, 304].includes(op)) {
+        } else if ([GoGameMessageID.GC_CALCULATE_REQUEST, GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST].includes(messageId)) {
           this.pending = false;
-          if (op === 304 && this.countingAnswer) {
+          if (messageId === GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST && this.countingAnswer) {
             if (!this.countingAnswer.accept) {
               this.counting = false;
               this.status = "Counting rejected. Continue.";
@@ -850,40 +880,40 @@ export class Session {
             this.countingAnswer = null;
           }
         }
-      } else if (op === 306 && [1, 2].includes(m.number(2, 1))) {
+      } else if (messageId === GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY && [CalculateProcessType.CPT_START, CalculateProcessType.CPT_RESULT].includes(m.number(Game.CalculateAnswerNotify.type, CalculateProcessType.CPT_START))) {
         this.pending = false;
         this.pendingConfirmation = null;
         this.countingAnswer = null;
-        this.counting = Boolean(m.number(1));
-        this.status = m.number(1)
+        this.counting = Boolean(m.number(Game.CalculateAnswerNotify.accept));
+        this.status = m.number(Game.CalculateAnswerNotify.accept)
           ? "Counting accepted"
           : "Counting rejected. Continue.";
-      } else if ([108, 109].includes(op) && [1, 2].includes(this.color)) {
+      } else if ([GoGameMessageID.GC_GAME_COUNTDOWN_NOTIFY, GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY].includes(messageId) && [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)) {
         // ResumeCountdownNotify (109) wraps the same clock data as 108.
         // Fox can answer a counting rejection with 304 status 1, then resume
         // the clock without sending 306. Resumption ends the counting flow,
         // including any confirmation restored by the nonzero 304 response.
-        if (op === 109 && this.phase === "playing" && this.counting) {
+        if (messageId === GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY && this.phase === "playing" && this.counting) {
           this.pending = false;
           this.pendingConfirmation = null;
           this.countingAnswer = null;
           this.counting = false;
           this.status = "Counting rejected. Continue.";
         }
-        const timing = op === 109 ? m.sub(2) : m;
-        if (timing.has(5)) {
-          const color = timing.number(5) === this.uid ? this.color : 3 - this.color;
+        const timing = messageId === GoGameMessageID.GC_RESUME_COUNTDOWN_NOTIFY ? m.sub(Game.ResumeCountdownNotify.countdown) : m;
+        if (timing.has(Game.GameCountdownNotify.uid)) {
+          const color = timing.number(Game.GameCountdownNotify.uid) === this.uid ? this.color : 3 - this.color;
           this.readClock(color, timing, true);
         }
       } else if (
-        op === 503 && this.phase === "playing" &&
-        [1, 2].includes(this.color) &&
-        m.number(1) === this.players[3 - this.color]?.id
+        messageId === GoGameMessageID.GC_OPPONENT_OFFLINE_NOTIFY && this.phase === "playing" &&
+        [StoneColor.BLACK, StoneColor.WHITE].includes(this.color) &&
+        m.number(Game.OpponentOfflineNotify.offline_uid) === this.players[3 - this.color]?.id
       ) {
         // OpponentOfflineNotify: player ID, remaining allowance in seconds.
         const color = 3 - this.color, clock = this.clocks[color];
         if (clock && this.opponentDisconnectDeadline == null && this.board.turn === color) {
-          const remaining = clockReading(clock, Math.max(0, now() - clock.at), 60, false);
+          const remaining = clockReading(clock, Math.max(0, now() - clock.at), DuMiaoConst.DU_MIAO_60_SEC, false);
           Object.assign(clock, {
             main: remaining.main,
             periods: remaining.periods,
@@ -891,40 +921,44 @@ export class Session {
             at: now(),
           });
         }
-        this.opponentDisconnectDeadline = now() + Math.max(0, m.number(2));
-      } else if (op === 504 && m.number(1) === this.players[3 - this.color]?.id) {
+        this.opponentDisconnectDeadline = now() + Math.max(0, m.number(Game.OpponentOfflineNotify.countdown_time));
+      } else if (messageId === GoGameMessageID.GC_OPPONENT_RECONNECT_NOTIFY && m.number(Game.OpponentReconnectNotify.reconnect_uid) === this.players[3 - this.color]?.id) {
         // OpponentReconnectNotify identifies the returning player in field 1.
         const clock = this.clocks[3 - this.color];
         if (clock && this.opponentDisconnectDeadline != null) clock.at = now();
         this.opponentDisconnectDeadline = null;
       } else if (
-        op === 303 &&
+        messageId === GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY &&
         this.phase === "playing" &&
-        [1, 2].includes(this.color)
+        [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
       ) {
-        const mode = m.number(2, 1),
-          status = signed(m.one(1));
+        const mode = m.number(Game.CalculateConfirmNotify.type, CalculateProcessType.CPT_START),
+          status = signed(m.one(Game.CalculateConfirmNotify.result));
         if (status) {
           this.pending = false;
           this.pendingConfirmation = null;
           this.counting = false;
           this.countingAnswer = null;
           this.status = `Counting failed: ${status}`;
-        } else if ([1, 2].includes(mode)) {
+        } else if ([StoneColor.BLACK, StoneColor.WHITE].includes(mode)) {
           this.pending = false;
           this.counting = true;
           this.countingAnswer = null;
           this.pendingConfirmation = [
-            mode === 1 ? "counting-request" : "counting-result",
+            mode === CalculateProcessType.CPT_START ? "counting-request" : "counting-result",
             game.plain(m),
-            mode === 2 ? game.countingResult(m) : null,
+            mode === CalculateProcessType.CPT_RESULT ? game.decodeCalculateConfirmNotify(m) : null,
           ];
           this.status =
-            mode === 1
+            mode === CalculateProcessType.CPT_START
               ? "Opponent requested counting"
               : "Counting result needs your confirmation";
         }
-      } else if ([402, 403, 405].includes(op)) {
+      } else if ([
+        GoGameMessageID.GC_SET_GAME_END_NOTIFY,
+        GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY,
+        GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
+      ].includes(messageId)) {
         if (!this.gameOver) {
           this.playerInfo.invalidate();
           this.preloadPlayerInfo();
@@ -934,24 +968,24 @@ export class Session {
         this.pending = false;
         this.phase = "finished";
         this.gameOver = true;
-        this.setResult(m);
+        this.updateGameResult(m);
         if (this.quitRequested) this.leaveFinishedRoom();
-      } else if ([218, 219].includes(op))
-        this.sync = m.sub(1).number(1, this.sync);
-      else if (op === 501) {
+      } else if ([GoGameMessageID.GC_GAME_PAUSE_NOTIFY, GoGameMessageID.GC_GAME_RESUME_NOTIFY].includes(messageId))
+        this.synSeqId = m.sub(Game.GamePauseNotify.check_syn).number(Game.CheckSyn.syn_seq_id, this.synSeqId);
+      else if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST) {
         const resuming = this.phase !== "joining";
-        if (signed(m.one(1))) throw Error("Game synchronization failed");
+        if (signed(m.one(Game.FetchGameEnvResponse.result))) throw Error("Game synchronization failed");
         const previousBoard = this.pendingMove?.board ?? this.board;
         this.roomKey = {
-          1: m.number(12),
-          2: m.number(13),
-          3: m.number(7),
-          4: m.number(10),
+          [Game.RoomKey.server_type]: m.number(Game.FetchGameEnvResponse.server_type),
+          [Game.RoomKey.server_id]: m.number(Game.FetchGameEnvResponse.server_id),
+          [Game.RoomKey.room_id]: m.number(Game.FetchGameEnvResponse.room_id),
+          [Game.RoomKey.create_time]: m.number(Game.FetchGameEnvResponse.room_create_time),
         };
         const roomKey = Object.values(this.roomKey).join(":");
         const sameGame = roomKey === this.boardRoomKey;
-        if (!sameGame || m.number(6) === 5) this.opponentDisconnectDeadline = null;
-        this.sync = m.sub(5).number(1);
+        if (!sameGame || m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END) this.opponentDisconnectDeadline = null;
+        this.synSeqId = m.sub(Game.FetchGameEnvResponse.check_syn).number(Game.CheckSyn.syn_seq_id);
         this.pendingMove = null;
         this.board = new Board();
         this.board.timeControl = sameGame ? previousBoard.timeControl :
@@ -963,11 +997,11 @@ export class Session {
         this.boardRoomKey = roomKey;
         this.clocks = {};
         this.color = 0;
-        for (const data of m.get(4) ?? []) {
+        for (const data of m.get(Game.FetchGameEnvResponse.stone_moves) ?? []) {
           const move = decode(data);
-          if (move.number(1) === 1)
-            this.board.play(move.number(2), move.number(3), move.number(4));
-          else if (move.number(1) === 2) this.board.passTurn(move.number(4));
+          if (move.number(Game.StoneMove.flag) === StoneMoveFlag.E_NOMAL_MOVE)
+            this.board.play(move.number(Game.StoneMove.x), move.number(Game.StoneMove.y), move.number(Game.StoneMove.color));
+          else if (move.number(Game.StoneMove.flag) === StoneMoveFlag.E_PASS) this.board.passTurn(move.number(Game.StoneMove.color));
         }
 
 
@@ -978,33 +1012,33 @@ export class Session {
             this.board.moveTimings[i] = previousBoard.moveTimings[i] ?? null;
           }
         }
-        for (const data of m.get(3) ?? []) {
+        for (const data of m.get(Game.FetchGameEnvResponse.game_users) ?? []) {
           const user = decode(data);
-          this.readPlayer(user);
-          if (user.number(1) === this.uid) this.color = user.number(6);
-          this.clocks[user.number(6)] = {
-            main: user.number(7),
-            periods: user.number(8),
-            byoyomi: user.number(9),
+          this.readGameUserInfo(user);
+          if (user.number(Game.GameUserInfo.uid) === this.uid) this.color = user.number(Game.GameUserInfo.stone_color);
+          this.clocks[user.number(Game.GameUserInfo.stone_color)] = {
+            main: user.number(Game.GameUserInfo.remaining_jushi_time),
+            periods: user.number(Game.GameUserInfo.remaining_dumiao_num),
+            byoyomi: user.number(Game.GameUserInfo.remaining_dumaio_time),
             periodLength:
-              m.sub(2).number(7) || this.matchSettings?.byoyomi || 60,
+              m.sub(Game.FetchGameEnvResponse.game_rule).number(Game.GameRule.dumiao_time) || this.matchSettings?.byoyomi || DuMiaoConst.DU_MIAO_60_SEC,
             at: now(),
           };
         }
-        if (m.number(6) === 5) {
+        if (m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END) {
           this.pendingConfirmation = null;
           this.counting = false;
           this.countingAnswer = null;
         }
-        this.gameOver = m.number(6) === 5;
-        if (this.reconnectBoard && ![1, 2].includes(this.color))
+        this.gameOver = m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END;
+        if (this.reconnectBoard && ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color))
           throw Error("Game synchronization did not restore the player");
         this.reconnectBoard = null;
         this.reconnectAttempt = 0;
         clearTimeout(this.bootstrapTimer);
         this.phase = this.gameOver ? "finished" : "playing";
         this.status =
-          m.number(6) === 5 ? "Game ended" : "Game synchronized";
+          m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END ? "Game ended" : "Game synchronized";
         this.pending = false;
         if (!this.gameOver) this.announceStart(resuming);
         if (this.quitRequested) {
@@ -1019,19 +1053,19 @@ export class Session {
       this.changed();
     }
   }
-  readPlayer(user: Message) {
-    const color = user.number(6);
-    if (![1, 2].includes(color)) return;
+  readGameUserInfo(user: Message) {
+    const color = user.number(Game.GameUserInfo.stone_color);
+    if (![StoneColor.BLACK, StoneColor.WHITE].includes(color)) return;
     const previous =
-      this.players[color]?.id === user.number(1) ? this.players[color] : null;
+      this.players[color]?.id === user.number(Game.GameUserInfo.uid) ? this.players[color] : null;
     this.players[color] = {
-      id: user.number(1),
-      name: user.text(3) || user.text(2) || previous?.name || "",
-      rank: user.has(4)
-        ? game.rankLabel(signed(user.one(4)))
+      id: user.number(Game.GameUserInfo.uid),
+      name: user.text(Game.GameUserInfo.nickname) || user.text(Game.GameUserInfo.platform_picture) || previous?.name || "",
+      rank: user.has(Game.GameUserInfo.grade)
+        ? game.rankLabel(signed(user.one(Game.GameUserInfo.grade)))
         : (previous?.rank ?? ""),
     };
-    if (user.number(1) === this.uid) {
+    if (user.number(Game.GameUserInfo.uid) === this.uid) {
       this.account = {
         name: this.players[color].name || this.account?.name || "",
         rank: this.players[color].rank || this.account?.rank || "",
@@ -1052,27 +1086,27 @@ export class Session {
     this.pendingMove = null;
   }
   clock(color: number, m: Message, previous = this.clocks[color]) {
-    if (m.has(2) && (m.number(2) > 0 || m.has(4))) {
-      let remaining = Math.max(0, m.number(2) > 0 ? m.number(2) : m.number(4));
+    if (m.has(Game.GameCountdownNotify.remaining_jushi_time) && (m.number(Game.GameCountdownNotify.remaining_jushi_time) > 0 || m.has(Game.GameCountdownNotify.remaining_dumiao_time))) {
+      let remaining = Math.max(0, m.number(Game.GameCountdownNotify.remaining_jushi_time) > 0 ? m.number(Game.GameCountdownNotify.remaining_jushi_time) : m.number(Game.GameCountdownNotify.remaining_dumiao_time));
       const length = previous?.periodLength || this.board.timeControl?.byoyomi ||
         this.matchSettings?.byoyomi;
       // Move notifications report the next period's full allowance, not the
       // seconds left when the stone was played. Save the pre-reset countdown
       // for SGF/review, while readClock still resets the live clock normally.
-      if (m.number(2) <= 0 && previous && length && remaining === length && m.has(3)) {
+      if (m.number(Game.GameCountdownNotify.remaining_jushi_time) <= 0 && previous && length && remaining === length && m.has(Game.GameCountdownNotify.remaining_dumiao_num)) {
         // Use the clock captured before optimistic placement, and stop our
         // stones/passes at submission rather than confirmation receipt.
         const time = color === this.color && this.pending ? this.pendingSince : now();
         const paused = this.counting || !!this.pendingConfirmation ||
           (color !== this.color && this.opponentDisconnectDeadline != null);
         const elapsed = paused ? 0 : Math.floor(Math.max(0, time - previous.at) + 0.5);
-        const spentPeriods = Math.max(0, previous.periods - m.number(3));
+        const spentPeriods = Math.max(0, previous.periods - m.number(Game.GameCountdownNotify.remaining_dumiao_num));
         remaining = Math.max(0, Math.min(length,
           previous.byoyomi + spentPeriods * length - Math.max(0, elapsed - previous.main)));
       }
       this.board.moveTimings[this.board.moves.length - 1] = {
         remaining,
-        ...(m.number(2) <= 0 && m.has(3) ? { periods: m.number(3) } : {}),
+        ...(m.number(Game.GameCountdownNotify.remaining_jushi_time) <= 0 && m.has(Game.GameCountdownNotify.remaining_dumiao_num) ? { periods: m.number(Game.GameCountdownNotify.remaining_dumiao_num) } : {}),
       };
     }
     this.readClock(color, m);
@@ -1094,48 +1128,48 @@ export class Session {
     return false;
   }
   readClock(color: number, m: Message, countdown = false) {
-    if (m.has(2)) {
+    if (m.has(Game.GameCountdownNotify.remaining_jushi_time)) {
       const time = now();
       const previous = this.clocks[color];
       const control = this.board.timeControl ?? this.matchSettings;
-      let byoyomi = m.number(4);
+      let byoyomi = m.number(Game.GameCountdownNotify.remaining_dumiao_time);
       // 0080c930 clamps a full initial-period countdown notification to the
       // already displayed seconds. Move confirmations still reset the period.
-      if (countdown && previous && control && m.number(2) === 0 &&
-          m.number(3) > 0 && m.number(3) === control.periods &&
+      if (countdown && previous && control && m.number(Game.GameCountdownNotify.remaining_jushi_time) === 0 &&
+          m.number(Game.GameCountdownNotify.remaining_dumiao_num) > 0 && m.number(Game.GameCountdownNotify.remaining_dumiao_num) === control.periods &&
           byoyomi > 0 && byoyomi === control.byoyomi) {
         const elapsed = this.board.turn === color && !this.pending && !this.counting &&
           !this.pendingConfirmation && !(color !== this.color && this.opponentDisconnectDeadline != null)
           ? time - previous.at : 0;
-        byoyomi = Math.min(byoyomi, clockReading(previous, elapsed, 60, color === this.color).seconds);
+        byoyomi = Math.min(byoyomi, clockReading(previous, elapsed, DuMiaoConst.DU_MIAO_60_SEC, color === this.color).seconds);
       }
       this.clocks[color] = {
-        main: m.number(2),
-        periods: m.number(3),
+        main: m.number(Game.GameCountdownNotify.remaining_jushi_time),
+        periods: m.number(Game.GameCountdownNotify.remaining_dumiao_num),
         byoyomi,
         periodLength:
-          this.clocks[color]?.periodLength || this.matchSettings?.byoyomi || 60,
+          this.clocks[color]?.periodLength || this.matchSettings?.byoyomi || DuMiaoConst.DU_MIAO_60_SEC,
         at: time,
       };
     }
   }
-  setResult(m: Message) {
-    const winner = m.number(2),
-      margin = signed(m.one(3)),
-      reason = m.number(4);
+  updateGameResult(m: Message) {
+    const winner = m.number(Game.SetGameEndNotify.winner),
+      margin = signed(m.one(Game.SetGameEndNotify.points)),
+      reason = m.number(Game.SetGameEndNotify.reason);
     this.pendingConfirmation = null;
     this.counting = false;
     this.countingAnswer = null;
     this.result = "";
-    if ([1, 2].includes(winner) && reason === 3) {
-      this.result = `${winner === 1 ? "B" : "W"}+R`;
-    } else if (reason === 8) {
+    if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner) && reason === ENGameEndReason.EER_OPP_RESIGN) {
+      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+R`;
+    } else if (reason === ENGameEndReason.EER_INVALIDGAME_ROUNDNUM_TOO_SMALL) {
       this.result = "Void";
-    } else if ([1, 2].includes(winner) && margin === -2) {
-      this.result = `${winner === 1 ? "B" : "W"}+T`;
-    } else if ([1, 2].includes(winner)) {
-      const points = m.has(3) && margin >= 0 ? margin / 50 : null;
-      this.result = `${winner === 1 ? "B" : "W"}+${points ?? ""}`;
+    } else if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner) && margin === SpecialResult.SR_TIMEOUT) {
+      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+T`;
+    } else if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner)) {
+      const points = m.has(Game.SetGameEndNotify.points) && margin >= 0 ? margin / 50 : null;
+      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+${points ?? ""}`;
     }
     this.status = `Result: ${this.result || "Unknown"}`;
   }
@@ -1145,13 +1179,13 @@ export class Session {
     this.estimation = null;
   }
   get awaitingMove() {
-    return this.pending && this.pendingAction === 201 && !!this.pendingMove;
+    return this.pending && this.pendingMessageId === GoGameMessageID.GC_SET_PIECE_REQUEST && !!this.pendingMove;
   }
   estimateScore(position?: Pick<Board, "stones" | "captures">) {
     if (
       (this.phase !== "playing" && !(this.phase === "finished" && this.gameOver)) ||
       !Object.keys(this.roomKey).length ||
-      ![1, 2].includes(this.color)
+      ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
     )
       throw Error("Score estimation requires an active game");
     if ((this.pending && !this.awaitingMove) ||
@@ -1217,7 +1251,7 @@ export class Session {
         throw Error("A confirmation or counting request is already active");
       if (this.phase === "playing" && this.board.turn !== this.color)
         throw Error("Wait for your turn");
-      this.onlineAction(301, { 1: 0 });
+      this.onlineAction(GoGameMessageID.GC_CALCULATE_REQUEST, { [Game.CalculateRequest.extend]: 0 });
       this.counting = true;
       this.status = "Counting requested; waiting for opponent";
     } finally {
@@ -1236,9 +1270,9 @@ export class Session {
 
       this.clearEstimate();
 
-      this.onlineAction(304, {
-        1: accept,
-        2: kind === "counting-result" ? 2 : 1,
+      this.onlineAction(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, {
+        [Game.CalculateAnswerRequest.accept]: accept,
+        [Game.CalculateAnswerRequest.type]: kind === "counting-result" ? CalculateProcessType.CPT_RESULT : CalculateProcessType.CPT_START,
       });
       this.countingAnswer = { confirmation: this.pendingConfirmation, accept };
       this.status = accept
@@ -1270,7 +1304,7 @@ export class Session {
       )
         throw Error("Log in and wait for server discovery first");
       this.clearEstimate();
-      this.send(game.ROOM, 100130, { 1: this.fieldId, 2: false });
+      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_REQUEST, { [Room.AutoInviteRequest.field_id]: this.fieldId, [Room.AutoInviteRequest.only_adjoin_grade]: false });
       this.resetGame();
       this.phase = "matching";
       this.status = "Requesting a match...";
@@ -1311,25 +1345,25 @@ export class Session {
     try {
       if (this.phase !== "matching")
         throw Error("No active matchmaking request");
-      this.send(game.ROOM, 100139);
+      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
     } finally {
       this.changed();
     }
   }
-  onlineAction(op: number, fields: Fields) {
+  onlineAction(messageId: number, fields: Fields) {
     try {
       if (
         this.phase !== "playing" ||
         !Object.keys(this.roomKey).length ||
-        ![1, 2].includes(this.color)
+        ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
       )
         throw Error("No active game");
       if (this.estimation) throw Error("Return to the game before playing");
-      if (this.pending && !(op === 311 && this.awaitingMove))
+      if (this.pending && !(messageId === GoGameMessageID.GC_GIVE_UP_REQUEST && this.awaitingMove))
         throw Error("Waiting to confirm the previous action");
-      this.send(game.GAME, op, fields, this.roomKey[2]);
+      this.sendFgwChannelMsg(game.GAME_SVR, messageId, fields, this.roomKey[Game.RoomKey.server_id]);
       this.pending = true;
-      this.pendingAction = op;
+      this.pendingMessageId = messageId;
       this.pendingSince = now();
     } finally {
       this.changed();
@@ -1342,11 +1376,11 @@ export class Session {
       if (this.board.turn !== this.color) throw Error("Wait for your turn");
       const board = this.board.clone(),
         captures = board.play(x, y, this.color);
-      this.onlineAction(201, {
-        1: x,
-        2: y,
-        3: this.color,
-        4: { 1: this.sync },
+      this.onlineAction(GoGameMessageID.GC_SET_PIECE_REQUEST, {
+        [Game.SetPieceRequest.x]: x,
+        [Game.SetPieceRequest.y]: y,
+        [Game.SetPieceRequest.color]: this.color,
+        [Game.SetPieceRequest.check_syn]: { [Game.CheckSyn.syn_seq_id]: this.synSeqId },
       });
       this.pendingMove = {
         board: this.board,
@@ -1378,14 +1412,14 @@ export class Session {
         (this.counting || this.pendingConfirmation))
         throw Error("Finish the counting confirmation first");
       if (this.board.turn !== this.color) throw Error("Wait for your turn");
-      this.onlineAction(204, { 1: { 1: this.sync } });
+      this.onlineAction(GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST, { [Game.SkipSetPieceRequest.check_syn]: { [Game.CheckSyn.syn_seq_id]: this.synSeqId } });
     } finally {
       this.changed();
     }
   }
   resign() {
     try {
-      this.onlineAction(311, { 1: this.color, 2: this.roomKey });
+      this.onlineAction(GoGameMessageID.GC_GIVE_UP_REQUEST, { [Game.GiveUpRequest.give_up_type]: this.color, [Game.GiveUpRequest.room_key]: this.roomKey });
     } finally {
       this.changed();
     }

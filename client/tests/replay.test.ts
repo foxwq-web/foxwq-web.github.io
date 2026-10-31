@@ -1,18 +1,19 @@
+import { GAME_SVR, GAME_SVR_MGR, RoomMessageID, SVR_TYPE_FGW, LegacyMsgTypeID } from "../src/protocol.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { Buffer } from 'buffer';
-import { encode as frame, gatewayPayload } from '../src/framing.ts';
+import { netMsgToBytes as frame, encodeFgwPacket } from '../src/framing.ts';
 import { encode, decode, type Fields } from '../src/wire.ts';
-import { envelope, unpack } from '../src/game.ts';
+import { encodeFgwMessage, decodeFgwMessage } from '../src/game.ts';
 import type { NetworkEntry } from '../src/network-log.ts';
 import { normalizeLog, packets, inferAction, identify, MAC, PASSWORD } from './integration/log.ts';
 import { comparePacket } from './integration/replay.ts';
 import { loginRequest } from '../src/session.ts';
 
 const fixture: NetworkEntry[] = JSON.parse(await readFile(new URL('./integration/fixtures/fox-network-log-20261020T0851.network.json', import.meta.url), 'utf8'));
-const gateway = (service: number, op: number, fields = {}) => packets([{ ...fixture[5], payload: frame(26200, envelope(42, service, op, fields), true).toString('base64') }])[0].frame;
+const gateway = (service: number, op: number, fields = {}) => packets([{ ...fixture[5], payload: frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwMessage(42, service, op, fields), true).toString('base64') }])[0].frame;
 
 test('replay starts at the last login and ignores older traffic, clocks and connections', () => {
   const old = fixture.map(entry => ({ ...entry, source: entry.source.replace('client:', 'client:old-'), destination: entry.destination.replace('client:', 'client:old-') }));
@@ -29,9 +30,9 @@ test('replay reconstructs redacted login and gateway authentication with determi
   for (const index of [0, 1, 5, 9]) redacted[index].payload = '';
   const result = normalizeLog(redacted), decoded = packets(result.entries);
   assert.equal(result.synthetic, true);
-  assert.equal(decode(decoded[1].frame.payload).number(2), decode(packets(fixture)[1].frame.payload).number(2));
-  assert.deepEqual(decoded[0].frame.payload, loginRequest('Replay player', PASSWORD, MAC));
-  assert.equal(unpack(decoded[5].frame.payload)[1].text(1), 'offline-replay-token');
+  assert.equal(decode(decoded[1].frame.rawProto).number(2), decode(packets(fixture)[1].frame.rawProto).number(2));
+  assert.deepEqual(decoded[0].frame.rawProto, loginRequest('Replay player', PASSWORD, MAC));
+  assert.equal(decodeFgwMessage(decoded[5].frame.rawProto)[1].text(1), 'offline-replay-token');
   assert.deepEqual(normalizeLog(result.entries).entries, result.entries, 'normalization is idempotent');
   assert.throws(() => normalizeLog([...redacted, { ...redacted.at(-1)!, payload: '' }]), /non-bootstrap/);
 });
@@ -56,19 +57,19 @@ test('normalization renumbers tab-lifetime player request IDs and preserves unre
   const changed = fixture.map(entry => ({ ...entry }));
   for (const packet of packets(changed)) {
     if (identify(packet.frame) !== '20043/1001') continue;
-    const [header, body] = unpack(packet.frame.payload), key = packet.outbound ? 3 : 2;
+    const [header, body] = decodeFgwMessage(packet.frame.rawProto), key = packet.outbound ? 3 : 2;
     const fields: Fields = Object.fromEntries([...body].map(([key, values]) => [key, values]));
     fields[key] = `player-${Number(body.text(key).split('-')[1]) + 17}`;
-    changed[packet.index].payload = frame(26200, gatewayPayload(encode(Object.fromEntries([...header].map(([key, values]) => [key, values]))), encode(fields)), true).toString('base64');
+    changed[packet.index].payload = frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwPacket(encode(Object.fromEntries([...header].map(([key, values]) => [key, values]))), encode(fields)), true).toString('base64');
   }
   // Re-encoding a real server response can choose compression differently.
-  const decodedBodies = (entries: NetworkEntry[]) => packets(entries).map(packet => packet.frame.payload.toString('base64'));
+  const decodedBodies = (entries: NetworkEntry[]) => packets(entries).map(packet => packet.frame.rawProto.toString('base64'));
   assert.deepEqual(decodedBodies(normalizeLog(changed).entries), decodedBodies(fixture));
-  const login = decode(packets(changed)[0].frame.payload);
+  const login = decode(packets(changed)[0].frame.rawProto);
   const fields = Object.fromEntries([...login].map(([key, values]) => [key, values]));
   fields[5] = [999];
   changed[0].payload = frame(2000, encode(fields), true).toString('base64');
-  assert.equal(decode(packets(normalizeLog(changed).entries)[0].frame.payload).number(5), 999,
+  assert.equal(decode(packets(normalizeLog(changed).entries)[0].frame.rawProto).number(5), 999,
     'normalizing credentials must not bless changes to the client protocol version');
 });
 
@@ -84,17 +85,17 @@ test('replay rejects invalid, incomplete, absent-login and unreconstructible log
 
 test('replay infers UI actions from protocol requests and leaves automatic packets alone', () => {
   for (const [packet, action] of [
-    [gateway(30006, 100130, { 1: 101 }), { type: 'match', id: 101 }],
-    [gateway(30006, 100139), { type: 'cancel' }],
-    [gateway(31000, 201, { 1: 3, 2: 15 }), { type: 'play', x: 3, y: 15 }],
-    [gateway(31000, 204), { type: 'pass' }],
-    [gateway(31000, 301), { type: 'count' }],
-    [gateway(31000, 304, { 1: true }), { type: 'confirm', accept: true }],
-    [gateway(31000, 304, { 1: false }), { type: 'confirm', accept: false }],
-    [gateway(31000, 311), { type: 'resign' }],
+    [gateway(GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_REQUEST, { 1: 101 }), { type: 'match', id: 101 }],
+    [gateway(GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST), { type: 'cancel' }],
+    [gateway(GAME_SVR, 201, { 1: 3, 2: 15 }), { type: 'play', x: 3, y: 15 }],
+    [gateway(GAME_SVR, 204), { type: 'pass' }],
+    [gateway(GAME_SVR, 301), { type: 'count' }],
+    [gateway(GAME_SVR, 304, { 1: true }), { type: 'confirm', accept: true }],
+    [gateway(GAME_SVR, 304, { 1: false }), { type: 'confirm', accept: false }],
+    [gateway(GAME_SVR, 311), { type: 'resign' }],
   ] as const) assert.deepEqual(inferAction(packet), action);
-  assert.equal(inferAction(gateway(20001, 5)), null);
-  assert.equal(inferAction(gateway(31000, 501)), null);
+  assert.equal(inferAction(gateway(SVR_TYPE_FGW, 5)), null);
+  assert.equal(inferAction(gateway(GAME_SVR, 501)), null);
   assert.deepEqual(inferAction(packets(fixture)[0].frame), { type: 'login' });
 });
 

@@ -1,3 +1,4 @@
+import { CLINET_MSG_ID, ClientMessageID, GoGameMessageID, RoomMessageID, SVR_TYPE_USER_INFO_PANEL_SVR, LegacyMsgTypeID } from "../src/protocol.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -199,7 +200,7 @@ test('game-end invalidation replaces in-flight reads and ignores their late resp
 
 test('session preloads on room login and player discovery, refreshes after game end, and cancels queued work on close', async () => {
   const { Session } = await import('../src/session');
-  const { envelope, unpack, GATEWAY, ROOM } = await import('../src/game');
+  const { encodeFgwMessage, decodeFgwMessage, SVR_TYPE_FGW, GAME_SVR_MGR } = await import('../src/game');
   let calls = 0;
   const native: number[] = [];
   const session = new Session({ proxyUrl: 'wss://proxy.example/proxy', historyFetcher: async () => {
@@ -209,20 +210,20 @@ test('session preloads on room login and player discovery, refreshes after game 
   session.token = encode({ 1: 'test' });
   session.account = { name: 'River', rank: '3d' };
   session.phase = 'gateway';
-  session.gateway = { close() {}, send(command, payload) {
-    const [header, body] = unpack(Buffer.from(payload));
-    if (command === 26200 && header.number(7) === 20043) {
+  session.fgwConnection = { close() {}, send(command, payload) {
+    const [header, body] = decodeFgwMessage(Buffer.from(payload));
+    if (command === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET && header.number(7) === SVR_TYPE_USER_INFO_PANEL_SVR) {
       native.push(body.number(1));
-      queueMicrotask(() => session.receive(session.generation, { command: 26200, flags: 0,
-        payload: envelope(42, 20043, 1001, { 1: 0, 2: body.text(3), 3: body.number(1), 9: { 2: '+-' } }),
+      queueMicrotask(() => session.receive(session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0,
+        rawProto: encodeFgwMessage(42, SVR_TYPE_USER_INFO_PANEL_SVR, CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO, { 1: 0, 2: body.text(3), 3: body.number(1), 9: { 2: '+-' } }),
       }));
     }
   } };
   try {
-    session.receive(session.generation, { command: 26200, flags: 0, payload: envelope(42, GATEWAY, 1, { 1: 0 }) });
+    session.receive(session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: encodeFgwMessage(42, SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { 1: 0 }) });
     await settle();
     assert.equal(calls, 0); // Wait for room login before preloading.
-    session.receive(session.generation, { command: 26200, flags: 0, payload: envelope(42, ROOM, 100008, { 1: 0 }) });
+    session.receive(session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: encodeFgwMessage(42, GAME_SVR_MGR, RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { 1: 0 }) });
     await settle();
     assert.deepEqual(native, [42]);
     assert.equal(calls, 1);
@@ -234,7 +235,7 @@ test('session preloads on room login and player discovery, refreshes after game 
     session.playerInfo.open(42, 'River');
     assert.deepEqual(native, [42]);
     assert.equal(calls, 1); // Matchmaking keeps the prefetched account card.
-    session.readPlayer(decode(encode({ 1: 43, 3: 'Moon', 4: 20, 6: 2 })));
+    session.readGameUserInfo(decode(encode({ 1: 43, 3: 'Moon', 4: 20, 6: 2 })));
     await settle();
     assert.deepEqual(native, [42, 43]);
     assert.equal(calls, 2);
@@ -242,7 +243,7 @@ test('session preloads on room login and player discovery, refreshes after game 
     assert.equal(session.snapshot().playerInfo?.recent, '+-');
     assert.equal(calls, 2);
     session.phase = 'playing';
-    session.gameMessage(402, decode(encode({ 2: 1, 3: -1, 4: 3 })), decode(encode()));
+    session.gameSvrProcess(GoGameMessageID.GC_SET_GAME_END_NOTIFY, decode(encode({ 2: 1, 3: -1, 4: 3 })), decode(encode()));
     await settle();
     assert.deepEqual(native, [42, 43, 42, 43]);
     assert.equal(calls, 4);
@@ -252,7 +253,7 @@ test('session preloads on room login and player discovery, refreshes after game 
     session.match();
     session.playerInfo.open(42, 'River');
     assert.equal(calls, 4);
-    session.readPlayer(decode(encode({ 1: 44, 3: 'Cloud', 6: 2 })));
+    session.readGameUserInfo(decode(encode({ 1: 44, 3: 'Cloud', 6: 2 })));
     session.close(); await settle();
     assert.equal(calls, 4);
   } finally { session.close(); }

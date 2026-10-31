@@ -1,4 +1,7 @@
-import { PlayerInfoStore, PLAYER_INFO_SERVICE } from "./player-info";
+import { ErrorCode } from "./protocol.ts";
+import { gameFields as Game, roomFields as Room, fgwFields as Fgw, panelFields as Panel } from "./protocol-fields.ts";
+import { GoGameMessageID, RoomMessageID, LegacyMsgTypeID, ClientMessageID, CLINET_MSG_ID, StoneColor, SpecialResult, ENGameEndReason, CalculateProcessType, BoardSize, GameTypeTag, ENAdditionalRuleType } from "./protocol.ts";
+import { PlayerInfoStore, SVR_TYPE_USER_INFO_PANEL_SVR } from "./player-info";
 import { PREVIEW_PLAYERS } from "./dev-players";
 import { COUNTING_PREVIEW } from "./dev-counting";
 
@@ -35,42 +38,42 @@ const screen = (id: string, label: string, group: string, stage: Stage,
   ({ id, label, group, stage, phase, reach, run });
 
 const blackMove = ({ session, notify }: Scenario) => {
-  if (session.color === 1) {
+  if (session.color === StoneColor.BLACK) {
     session.play(10, 10);
-    notify(201, { 1: 0 });
+    notify(GoGameMessageID.GC_SET_PIECE_REQUEST, { [Game.SetPieceResponse.result]: 0 });
   }
-  notify(203, { 1: 10, 2: 10, 3: 1,
-    ...(session.board.moveTimings.some(Boolean) ? { 4: { 2: 540 } } : {}) });
+  notify(GoGameMessageID.GC_SET_PIECE_NOTIFY, { [Game.SetPieceNotify.x]: 10, [Game.SetPieceNotify.y]: 10, [Game.SetPieceNotify.color]: StoneColor.BLACK,
+    ...(session.board.moveTimings.some(Boolean) ? { [Game.SetPieceNotify.countdown]: { [Game.GameCountdownNotify.remaining_jushi_time]: 540 } } : {}) });
 };
 const requestCounting = ({ session }: Scenario) => session.requestCounting();
 const countingAcknowledged = (s: Scenario) => {
   requestCounting(s);
-  s.notify(301, { 1: 0 });
+  s.notify(GoGameMessageID.GC_CALCULATE_REQUEST, { [Game.CalculateResponse.result]: 0 });
 };
 const opponentCounting = (s: Scenario) => {
   blackMove(s);
-  s.notify(303, { 1: 0, 2: 1 });
+  s.notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { [Game.CalculateConfirmNotify.result]: 0, [Game.CalculateConfirmNotify.type]: CalculateProcessType.CPT_START });
 };
 const countingResult = (s: Scenario) => {
   opponentCounting(s);
   s.session.confirm(true);
-  s.notify(304, { 1: 0 });
-  s.notify(306, { 1: 1, 2: 1 });
+  s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { [Game.CalculateAnswerResponse.result]: 0 });
+  s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { [Game.CalculateAnswerNotify.accept]: 1, [Game.CalculateAnswerNotify.type]: CalculateProcessType.CPT_START });
   const area = new DataView(new ArrayBuffer(4));
   area.setFloat32(0, COUNTING_PREVIEW.black, true);
-  s.notify(303, { 1: 0, 2: 2, 5: COUNTING_PREVIEW.ownership + "00",
-    8: COUNTING_PREVIEW.winner, 6: area.getUint32(0, true) });
+  s.notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { [Game.CalculateConfirmNotify.result]: 0, [Game.CalculateConfirmNotify.type]: CalculateProcessType.CPT_RESULT, [Game.CalculateConfirmNotify.china_position_judge]: COUNTING_PREVIEW.ownership + "00",
+    [Game.CalculateConfirmNotify.win_color]: COUNTING_PREVIEW.winner, [Game.CalculateConfirmNotify.black_shuzi]: area.getUint32(0, true) });
 };
 const finishedCounting = (s: Scenario) => {
   countingResult(s);
   s.session.confirm(true);
-  s.notify(304, { 1: 0 });
-  s.notify(402, { 1: 0, 2: COUNTING_PREVIEW.winner, 3: COUNTING_PREVIEW.margin * 50, 4: 2 });
+  s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { [Game.CalculateAnswerResponse.result]: 0 });
+  s.notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { [Game.SetGameEndNotify.result]: 0, [Game.SetGameEndNotify.winner]: COUNTING_PREVIEW.winner, [Game.SetGameEndNotify.points]: COUNTING_PREVIEW.margin * 50, [Game.SetGameEndNotify.reason]: ENGameEndReason.EER_OPP_OVERTIME });
 };
 const finishedResignation = (s: Scenario) => {
   s.session.resign();
-  s.notify(311, { 1: 0 });
-  s.notify(402, { 1: 0, 2: 2, 3: -1, 4: 3 });
+  s.notify(GoGameMessageID.GC_GIVE_UP_REQUEST, { [Game.GiveUpResponse.result]: 0 });
+  s.notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { [Game.SetGameEndNotify.result]: 0, [Game.SetGameEndNotify.winner]: StoneColor.WHITE, [Game.SetGameEndNotify.points]: SpecialResult.SR_MID_GAME, [Game.SetGameEndNotify.reason]: ENGameEndReason.EER_OPP_RESIGN });
 };
 
 
@@ -87,7 +90,7 @@ export const DEV_SCREENS: Screen[] = [
   screen("matchmaking", "Choose time control", "Matchmaking", "discovery", "ready", "Login completes; show the advertised 1m20s, 5m30s and 20m60s controls and player counts"),
   { ...screen("matchmaking-player-info", "Your player info", "Matchmaking", "discovery", "ready", "Hover your player name in matchmaking"), playerName: "#matchmaking-player .player-name" },
   screen("matching", "Searching", "Matchmaking", "matching", "matching", "Play; Fox accepts the search"),
-  screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(100130, { 1: -1 })),
+  screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(RoomMessageID.RM_AUTO_INVITE_REQUEST, { [Room.AutoInviteResponse.result]: -1 })),
   screen("joining", "Joining a room", "Matchmaking", "joining", "joining", "A match is found; game environment is pending"),
   screen("room-left", "Ready for the next game", "Matchmaking", "playing", "ready", "Finished game → Quit room; return to matchmaking", s => { finishedResignation(s); s.session.quitRoom(); }),
 
@@ -97,17 +100,17 @@ export const DEV_SCREENS: Screen[] = [
   { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "AlphaGo vs Lee Sedol, game 2, after move 37"),
   screen("opponent-turn", "Opponent’s turn", "Playing", "playing", "playing", "Black plays; White is next", blackMove),
-  screen("opponent-passed", "Opponent passed", "Playing", "playing", "playing", "Opponent’s turn → opponent passes", s => { blackMove(s); s.notify(206); }),
-  screen("both-passed", "Both players passed", "Playing", "playing", "playing", "Pass → Fox confirms → opponent passes; counting is available", s => { s.session.passTurn(); s.notify(204, { 1: 0 }); s.notify(206); s.notify(206); }),
-  screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(108, { 5: s.session.uid, 2: 0, 3: 1, 4: 9 })),
-  screen("action-rejected", "Move rejected", "Playing", "playing", "playing", "Play a stone; Fox rejects it and rolls it back", s => { s.session.play(10, 10); s.notify(201, { 1: -1 }); }),
+  screen("opponent-passed", "Opponent passed", "Playing", "playing", "playing", "Opponent’s turn → opponent passes", s => { blackMove(s); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); }),
+  screen("both-passed", "Both players passed", "Playing", "playing", "playing", "Pass → Fox confirms → opponent passes; counting is available", s => { s.session.passTurn(); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST, { [Game.SkipSetPieceResponse.result]: 0 }); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); }),
+  screen("byoyomi", "Final byoyomi period", "Playing", "playing", "playing", "Fox clock notification exhausts main time and leaves one period", s => s.notify(GoGameMessageID.GC_GAME_COUNTDOWN_NOTIFY, { [Game.GameCountdownNotify.uid]: s.session.uid, [Game.GameCountdownNotify.remaining_jushi_time]: 0, [Game.GameCountdownNotify.remaining_dumiao_num]: 1, [Game.GameCountdownNotify.remaining_dumiao_time]: 9 })),
+  screen("action-rejected", "Move rejected", "Playing", "playing", "playing", "Play a stone; Fox rejects it and rolls it back", s => { s.session.play(10, 10); s.notify(GoGameMessageID.GC_SET_PIECE_REQUEST, { [Game.SetPieceResponse.result]: -1 }); }),
 
   screen("counting-waiting", "Waiting for opponent", "Counting", "playing", "playing", "Fox acknowledges your counting request", countingAcknowledged),
   screen("counting-request", "Opponent requests counting", "Counting", "playing", "playing", "Fox forwards the opponent’s request", opponentCounting),
-  screen("counting-accepted", "Waiting for counting result", "Counting", "playing", "playing", "Request counting → opponent accepts", s => { countingAcknowledged(s); s.notify(306, { 1: 1, 2: 1 }); }),
+  screen("counting-accepted", "Waiting for counting result", "Counting", "playing", "playing", "Request counting → opponent accepts", s => { countingAcknowledged(s); s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { [Game.CalculateAnswerNotify.accept]: 1, [Game.CalculateAnswerNotify.type]: CalculateProcessType.CPT_START }); }),
   screen("counting-result", "Confirm counting result", "Counting", "playing", "playing", "Accept counting → Fox returns areas and winner", countingResult),
-  screen("counting-rejected", "Counting rejected", "Counting", "playing", "playing", "Request counting → opponent rejects", s => { countingAcknowledged(s); s.notify(306, { 1: 0, 2: 1 }); }),
-  screen("counting-error", "Counting failed", "Counting", "playing", "playing", "Request counting → Fox reports a failure", s => { countingAcknowledged(s); s.notify(303, { 1: -1, 2: 1 }); }),
+  screen("counting-rejected", "Counting rejected", "Counting", "playing", "playing", "Request counting → opponent rejects", s => { countingAcknowledged(s); s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { [Game.CalculateAnswerNotify.accept]: 0, [Game.CalculateAnswerNotify.type]: CalculateProcessType.CPT_START }); }),
+  screen("counting-error", "Counting failed", "Counting", "playing", "playing", "Request counting → Fox reports a failure", s => { countingAcknowledged(s); s.notify(GoGameMessageID.GC_CALCULATE_CONFIRM_NOTIFY, { [Game.CalculateConfirmNotify.result]: -1, [Game.CalculateConfirmNotify.type]: CalculateProcessType.CPT_START }); }),
 
   screen("score-estimation", "Score estimate", "Estimation", "playing", "playing", "Estimate score → complete local engine calculation", s => {
     s.session.estimationFetcher = localEstimate;
@@ -122,7 +125,7 @@ export const DEV_SCREENS: Screen[] = [
     ] },
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
   screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → Fox ends the game (W+R)", finishedResignation),
-  screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(403, { 2: 0, 4: 8 })),
+  screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY, { [Game.SetGameResultNotify.winner]: StoneColor.EMPTY, [Game.SetGameResultNotify.reason]: ENGameEndReason.EER_INVALIDGAME_ROUNDNUM_TOO_SMALL })),
 ];
 
 
@@ -139,19 +142,19 @@ function position({ session, notify }: Scenario, timed = false) {
     [14, 9],
   ];
   // Black-to-play previews include Lee Sedol’s reply, move 38 (P11).
-  if (session.color === 1) moves.push([14, 8]);
+  if (session.color === StoneColor.BLACK) moves.push([14, 8]);
   moves.forEach(([x, y], i) => {
     const color = i % 2 + 1;
     if (session.color === color) {
       session.play(x, y);
-      notify(201, { 1: 0 });
+      notify(GoGameMessageID.GC_SET_PIECE_REQUEST, { [Game.SetPieceResponse.result]: 0 });
     }
     // Synthetic clocks make finished-game review exercise the real timing path.
     // Each player's last two turns show 11:11, then 09:09 for sizing checks.
     const remaining = i >= moves.length - 2 ? 549 :
       671 + Math.floor((moves.length - 3 - i) / 2) * 10;
-    notify(203, { 1: x, 2: y, 3: color,
-      ...(timed ? { 4: { 2: remaining } } : {}) });
+    notify(GoGameMessageID.GC_SET_PIECE_NOTIFY, { [Game.SetPieceNotify.x]: x, [Game.SetPieceNotify.y]: y, [Game.SetPieceNotify.color]: color,
+      ...(timed ? { [Game.SetPieceNotify.countdown]: { [Game.GameCountdownNotify.remaining_jushi_time]: remaining } } : {}) });
   });
 }
 
@@ -174,16 +177,16 @@ export async function applyDevScreen(session: Session, id: string) {
   const sound = session.onSound;
   session.onSound = () => {};
   let prompt: Prompt | null = null, menuError = "", boardError = "";
-  const packet = (command: number, fields: Fields) => session.receive(
-    session.generation, { command, flags: 0, payload: encode(fields) });
+  const packet = (msgTypeID: number, fields: Fields) => session.receive(
+    session.generation, { msgTypeID, flag: 0, rawProto: encode(fields) });
   const message = (service: number, op: number, fields: Fields = {}) => session.receive(
-    session.generation, { command: 26200, flags: 0,
-      payload: game.envelope(self.uid, service, op, fields, 63) });
+    session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0,
+      rawProto: game.encodeFgwMessage(self.uid, service, op, fields, 63) });
   // Hover cards use the same store and wire response path in offline previews.
   session.playerInfo = new PlayerInfoStore(fields => {
-    const profile = player(Number(fields[1]));
-    queueMicrotask(() => message(PLAYER_INFO_SERVICE, 1001, {
-      ...profile.summary, 2: fields[3],
+    const profile = player(Number(fields[Panel.FetchPanelUserInfoRequest.dst_uid]));
+    queueMicrotask(() => message(SVR_TYPE_USER_INFO_PANEL_SVR, CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO, {
+      ...profile.summary, [Panel.FetchPanelUserInfoResponse.transparent]: fields[Panel.FetchPanelUserInfoRequest.transparent],
     }));
   }, () => session.changed(), () => session, async input => {
     const profile = player(Number(new URL(String(input)).searchParams.get("uid")));
@@ -191,8 +194,8 @@ export async function applyDevScreen(session: Session, id: string) {
   });
   const scenario: Scenario = {
     session,
-    room: (op, fields) => message(game.ROOM, op, fields),
-    notify: (op, fields) => message(game.GAME, op, fields),
+    room: (op, fields) => message(game.GAME_SVR_MGR, op, fields),
+    notify: (op, fields) => message(game.GAME_SVR, op, fields),
     ask: command => { prompt = promptForAction(command) ?? null; },
     error: action => {
       try { action(); } catch (error) {
@@ -221,37 +224,37 @@ export async function applyDevScreen(session: Session, id: string) {
     if (stage === "bootstrap") return;
     packet(3005, { 3: [{ 1: 1, 21: "offline.invalid", 22: 10000 }] });
     if (stage === "gateway") return;
-    await settled(() => !!session.gateway);
-    message(game.GATEWAY, 1, { 1: 0 });
-    scenario.room(100008, { 1: 0 });
-    scenario.room(100115, id === "resuming"
-      ? { 1: 0, 2: game.GAME, 3: 63 } : { 1: 107004 });
-    scenario.room(100150, { 1: [
+    await settled(() => !!session.fgwConnection);
+    message(game.SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { [Fgw.LoginResponse.op_code]: 0 });
+    scenario.room(RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { [Room.LoginGameSvrMgrResponse.result]: 0 });
+    scenario.room(RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, id === "resuming"
+      ? { [Room.QueryGameLockResponse.result]: 0, [Room.QueryGameLockResponse.server_type]: game.GAME_SVR, [Room.QueryGameLockResponse.server_id]: 63 } : { [Room.QueryGameLockResponse.result]: ErrorCode.NEC_LOCK_NOT_EXIST_ERR });
+    scenario.room(RoomMessageID.RM_FETCH_FIELD_CFG, { [Room.FetchFieldCfgResponse.field_cfgs]: [
       [1, 60, 20], [2, 300, 30], [3, 1200, 60],
     ].map(([field, main, byoyomi]) => ({
-      1: field, 2: 19, 3: main, 4: 3, 5: byoyomi, 7: 0, 12: 1,
+      [Game.FieldCfg.field_id]: field, [Game.FieldCfg.board_size]: BoardSize.E_Board_Size_19, [Game.FieldCfg.jushi_sec]: main, [Game.FieldCfg.dumiao_num]: 3, [Game.FieldCfg.dumiao_sec]: byoyomi, [Game.FieldCfg.additional_rule]: ENAdditionalRuleType.EN_ADDI_BASIC, [Game.FieldCfg.game_type_tag]: GameTypeTag.GAME_TYPE_TAG_NORMAL,
     })) });
 
-    scenario.room(100145, { 1: 0, 2: [[1, 727], [2, 612], [3, 493]]
-      .map(([field, count]) => ({ 1: field, 2: count })) });
+    scenario.room(RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST, { [Room.FetchAllFieldInfoResponse.result]: 0, [Room.FetchAllFieldInfoResponse.field_infos]: [[1, 727], [2, 612], [3, 493]]
+      .map(([field, count]) => ({ [Room.FieldInfo.field_id]: field, [Room.FieldInfo.people_num]: count })) });
     if (stage === "discovery") return;
     session.match();
-    if (id !== "matchmaking-rejected") scenario.room(100130, { 1: 0 });
+    if (id !== "matchmaking-rejected") scenario.room(RoomMessageID.RM_AUTO_INVITE_REQUEST, { [Room.AutoInviteResponse.result]: 0 });
     if (stage === "matching") return;
-    scenario.room(100140, { 1: 0, 2: game.GAME, 3: 63, 4: 100, 7: 200 });
+    scenario.room(RoomMessageID.RM_ENTER_ROOM_NOTIFY, { [Room.EnterRoomNotify.result]: 0, [Room.EnterRoomNotify.server_type]: game.GAME_SVR, [Room.EnterRoomNotify.server_id]: 63, [Room.EnterRoomNotify.room_id]: 100, [Room.EnterRoomNotify.room_create_time]: 200 });
     if (stage === "joining") return;
-    scenario.notify(107, { 1: { 7: 60 }, 6: 100, 7: 200, 9: [
-      { 1: black.uid, 3: black.name, 4: black.rank,
-        6: 1, 7: 425, 8: 3, 9: 60 },
-      { 1: white.uid, 3: white.name, 4: white.rank,
-        6: 2, 7: 192, 8: 2, 9: 60 },
+    scenario.notify(GoGameMessageID.GC_START_SET_PIECE_NOTIFY, { [Game.StartSetPieceNotify.rule]: { [Game.GameRule.dumiao_time]: 60 }, [Game.StartSetPieceNotify.room_id]: 100, [Game.StartSetPieceNotify.room_create_time]: 200, [Game.StartSetPieceNotify.game_users]: [
+      { [Game.GameUserInfo.uid]: black.uid, [Game.GameUserInfo.nickname]: black.name, [Game.GameUserInfo.grade]: black.rank,
+        [Game.GameUserInfo.stone_color]: StoneColor.BLACK, [Game.GameUserInfo.remaining_jushi_time]: 425, [Game.GameUserInfo.remaining_dumiao_num]: 3, [Game.GameUserInfo.remaining_dumaio_time]: 60 },
+      { [Game.GameUserInfo.uid]: white.uid, [Game.GameUserInfo.nickname]: white.name, [Game.GameUserInfo.grade]: white.rank,
+        [Game.GameUserInfo.stone_color]: StoneColor.WHITE, [Game.GameUserInfo.remaining_jushi_time]: 192, [Game.GameUserInfo.remaining_dumiao_num]: 2, [Game.GameUserInfo.remaining_dumaio_time]: 60 },
     ] });
     if (stage === "started") return;
     position(scenario, fixture.phase === "finished");
   };
   try {
     await setup();
-    if (id === "login-error") packet(2005, { 1: 111231 });
+    if (id === "login-error") packet(2005, { 1: ErrorCode.NEC_USERNAME_PASSWORD_ERROR });
     else await fixture.run?.(scenario);
     if (session.phase !== fixture.phase)
       throw Error(`Preview ${id}: reached ${session.phase}, expected ${fixture.phase}`);

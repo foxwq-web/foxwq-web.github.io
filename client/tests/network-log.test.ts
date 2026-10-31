@@ -1,3 +1,4 @@
+import { ClientMessageID, GoGameMessageID, LegacyMsgTypeID } from "../src/protocol.ts";
 import { setupFoxGame } from './fox-game.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,8 +9,8 @@ import { NetworkLog } from '../src/network-log.ts';
 import { Connection } from '../src/transport.ts';
 import { Session, loginRequest } from '../src/session.ts';
 import { encode, decode } from '../src/wire.ts';
-import { decodeOne, encode as frame } from '../src/framing.ts';
-import { GATEWAY, GAME, envelope } from '../src/game.ts';
+import { extractNetMsgFromBytes, netMsgToBytes as frame } from '../src/framing.ts';
+import { SVR_TYPE_FGW, GAME_SVR, encodeFgwMessage } from '../src/game.ts';
 import SparkMD5 from 'spark-md5';
 
 function memoryStore(): NetworkLogStore {
@@ -62,9 +63,9 @@ test('exports redact login credentials and tokens across compressed, split and c
   const packets: ["inbound" | "outbound", Buffer][] = [
     ['outbound', frame(2000, loginRequest(username, password), true)],
     ['inbound', frame(2005, encode({1:0,2:42,8:token}), true)],
-    ['outbound', frame(26200, envelope(42, GATEWAY, 1, {1:token}), true)],
+    ['outbound', frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwMessage(42, SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, {1:token}), true)],
   ];
-  const ordinary = frame(26200, envelope(42, GAME, 200, {1:100}));
+  const ordinary = frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwMessage(42, GAME_SVR, GoGameMessageID.GC_HEART_BEAT_REQUEST, {1:100}));
   for (const [direction, packet] of packets) {
     for (const split of [1, 3, packet.length - 1, packet.length]) {
       const originalPacket = Buffer.from(packet);
@@ -117,8 +118,8 @@ test('accepted outgoing frames are recorded once and decode offline; failed send
     const entries: NetworkEntry[] = JSON.parse(await log.serialize());
     assert.equal(entries.length,1);
     const bytes = Buffer.from(entries[0].payload,'base64'); assert.deepEqual(bytes,sent[0]);
-    const [packet,size] = decodeOne(bytes)!;
-    assert.equal(size,bytes.length); assert.equal(packet.command,3000); assert.deepEqual(packet.payload,payload);
+    const [packet,size] = extractNetMsgFromBytes(bytes)!;
+    assert.equal(size,bytes.length); assert.equal(packet.msgTypeID,3000); assert.deepEqual(packet.rawProto,payload);
     ws.send=()=>{throw Error('rejected');}; assert.throws(()=>connection.send(2000,Buffer.alloc(0)),/rejected/);
     assert.equal(JSON.parse(await log.serialize()).length,1);
   } finally {globalThis.WebSocket=original;connection.close();}
@@ -128,22 +129,22 @@ test('SGF eligibility requires a completed game and resets on disconnect', async
   const session = new Session();
   assert.equal(session.snapshot().game_over, false);
   setupFoxGame(session);
-  session.gameMessage(206, decode(encode({})), decode(encode({})));
-  session.gameMessage(206, decode(encode({})), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, decode(encode({})), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, decode(encode({})), decode(encode({})));
   assert.equal(session.snapshot().game_over, false, 'two passes await the server result');
-  session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_SET_GAME_END_NOTIFY, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true);
   session.close(); assert.equal(session.snapshot().game_over, false);
   setupFoxGame(session);
-  session.gameMessage(402, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_SET_GAME_END_NOTIFY, decode(encode({ 2: 1, 4: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true);
-  session.gameMessage(501, decode(encode({ 6: 3 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, decode(encode({ 6: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true, 'late synchronization cannot replace the finished review');
   session.close();
   setupFoxGame(session);
-  session.gameMessage(501, decode(encode({ 6: 3 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, decode(encode({ 6: 3 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, false, 'restoring an active game hides SGF');
-  session.gameMessage(501, decode(encode({ 6: 5 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, decode(encode({ 6: 5 })), decode(encode({})));
   assert.equal(session.snapshot().game_over, true, 'restoring a finished game enables SGF');
 });
 

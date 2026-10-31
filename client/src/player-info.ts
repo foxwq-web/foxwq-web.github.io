@@ -1,10 +1,12 @@
+import { PerfromanceType } from "./protocol.ts";
+import { panelFields as Panel } from "./protocol-fields.ts";
 import { Buffer } from 'buffer';
 import SparkMD5 from 'spark-md5';
 import { rankLabel } from './game';
 import { historyGames, type PlayerHistory } from './player-history';
 import { decode, type Fields, type Message } from './wire';
 
-export const PLAYER_INFO_SERVICE = 20043;
+export { SVR_TYPE_USER_INFO_PANEL_SVR } from "./protocol.ts";
 export interface PlayerInfo extends PlayerHistory {
   anchor?: string;
   summaryLoading: boolean;
@@ -24,24 +26,24 @@ export interface PlayerInfo extends PlayerHistory {
 // Response mapping verified live against Fox. Rank progress
 // contains the *remaining* wins/losses from Fox, rather than inferred thresholds.
 export function applyPlayerSummary(info: PlayerInfo, m: Message) {
-  if (m.number(1) !== 0) throw Error(`Fox could not load this player (${m.number(1)}).`);
-  if (m.number(3) !== info.uid) throw Error('Fox returned a different player.');
-  const account = m.sub(8), progress = m.sub(9), remaining = progress.sub(1);
-  info.name = account.text(5) || account.text(4) || info.name;
-  info.rank = m.has(7) ? rankLabel(m.number(7)) : info.rank;
+  if (m.number(Panel.FetchPanelUserInfoResponse.result) !== 0) throw Error(`Fox could not load this player (${m.number(Panel.FetchPanelUserInfoResponse.result)}).`);
+  if (m.number(Panel.FetchPanelUserInfoResponse.dst_uid) !== info.uid) throw Error('Fox returned a different player.');
+  const account = m.sub(Panel.FetchPanelUserInfoResponse.account_info), progress = m.sub(Panel.FetchPanelUserInfoResponse.updown_info), remaining = progress.sub(Panel.UpDownInfo.up_down_condition);
+  info.name = account.text(Panel.AccountInfo.englishname) || account.text(Panel.AccountInfo.username) || info.name;
+  info.rank = m.has(Panel.FetchPanelUserInfoResponse.grade) ? rankLabel(m.number(Panel.FetchPanelUserInfoResponse.grade)) : info.rank;
   // Keep the current run intact: removing separators would join results across
   // a rank change. Fox's rank-progress record is ordered oldest first.
-  info.recent = (progress.text(2).match(/[+\-=]*$/)?.[0] ?? '').slice(-20);
-  for (const [field, key] of [[1, 'promotion'], [2, 'doublePromotion'], [3, 'demotion'], [4, 'doubleDemotion']] as const)
+  info.recent = (progress.text(Panel.UpDownInfo.last_perf).match(/[+\-=]*$/)?.[0] ?? '').slice(-20);
+  for (const [field, key] of [[Panel.UpDownCondition.upgrade1, 'promotion'], [Panel.UpDownCondition.upgrade2, 'doublePromotion'], [Panel.UpDownCondition.downgrade1, 'demotion'], [Panel.UpDownCondition.downgrade2, 'doubleDemotion']] as const)
     info[key] = remaining.number(field) || undefined;
-  const total = (m.get(16) ?? []).map(value => {
+  const total = (m.get(Panel.FetchPanelUserInfoResponse.perf_records) ?? []).map(value => {
     // Repeated PerfromanceRecord: type 0 is the overall Go record.
     return decode(value);
-  }).find(record => record.number(1) === 0);
+  }).find(record => record.number(Panel.PerfromanceRecord.type) === PerfromanceType.Total);
   if (total) {
-    info.wins = total.number(2);
-    info.losses = total.number(3);
-    info.draws = total.number(4);
+    info.wins = total.number(Panel.PerfromanceRecord.won);
+    info.losses = total.number(Panel.PerfromanceRecord.lost);
+    info.draws = total.number(Panel.PerfromanceRecord.drawn);
   }
 }
 
@@ -89,7 +91,7 @@ export class PlayerInfoStore {
       if (this.current === info) this.changed();
     }, 8000);
     entry.timer.unref?.();
-    try { this.send({ 1: uid, 3: entry.request }); }
+    try { this.send({ [Panel.FetchPanelUserInfoRequest.dst_uid]: uid, [Panel.FetchPanelUserInfoRequest.transparent]: entry.request }); }
     catch {
       clearTimeout(entry.timer);
       info.summaryLoading = false;
@@ -99,7 +101,7 @@ export class PlayerInfoStore {
     return info;
   }
   receive(m: Message) {
-    const entry = [...this.entries.values()].find(e => e.request === m.text(2));
+    const entry = [...this.entries.values()].find(e => e.request === m.text(Panel.FetchPanelUserInfoResponse.transparent));
     if (!entry || !entry.info.summaryLoading) return;
     clearTimeout(entry.timer);
     try { applyPlayerSummary(entry.info, m); }

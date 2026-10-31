@@ -1,8 +1,10 @@
+import { ClientMessageID } from '../../src/protocol.ts';
+import { fgwFields as Fgw } from '../../src/protocol-fields.ts';
 import assert from 'node:assert/strict';
 import { Buffer } from 'buffer';
 import type { Browser } from 'playwright';
-import { unpack, GATEWAY } from '../../src/game.ts';
-import { decodeOne } from '../../src/framing.ts';
+import { decodeFgwMessage, SVR_TYPE_FGW } from '../../src/game.ts';
+import { extractNetMsgFromBytes } from '../../src/framing.ts';
 import type { NetworkEntry } from '../../src/network-log.ts';
 import { act, installReplay, uiSnapshot, type SentPacket } from './browser.ts';
 import { address, identify, inferAction, normalizeLog, packets, PASSWORD, type Packet } from './log.ts';
@@ -14,7 +16,7 @@ export function comparePacket(expected: Packet, actual: SentPacket) {
   if (actual.connection === expected.connection && expectedBytes.equals(actualBytes)) return;
   let offset = 0;
   while (offset < Math.min(expectedBytes.length, actualBytes.length) && expectedBytes[offset] === actualBytes[offset]) offset++;
-  const decoded = decodeOne(actualBytes);
+  const decoded = extractNetMsgFromBytes(actualBytes);
   throw Error(`Entry ${expected.index + 1} (${expected.timestamp}), ${expected.connection}: outbound ${identify(expected.frame)} differs at byte ${offset}.\n` +
     `Expected ${expectedBytes.length} bytes; actual ${actualBytes.length} bytes (${decoded ? identify(decoded[0]) : 'invalid frame'}) on ${actual.connection}.\n` +
     `Expected base64: ${expected.payload}\nActual base64:   ${actual.payload}`);
@@ -40,8 +42,8 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
   const heartbeatClocks: ({ ticks: number; time: number } | undefined)[] = [];
   let upcomingClock: { ticks: number; time: number } | undefined;
   for (let i = sequence.length - 1; i >= 0; i--) {
-    if (sequence[i].outbound && identify(sequence[i].frame) === `${GATEWAY}/5`)
-      upcomingClock = { ticks: unpack(sequence[i].frame.payload)[1].number(1), time: Date.parse(sequence[i].timestamp) };
+    if (sequence[i].outbound && identify(sequence[i].frame) === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}`)
+      upcomingClock = { ticks: decodeFgwMessage(sequence[i].frame.rawProto)[1].number(Fgw.HeartBeatRequest.client_time), time: Date.parse(sequence[i].timestamp) };
     heartbeatClocks[i] = upcomingClock;
   }
   const settle = () => page.evaluate(async () => {
@@ -75,9 +77,9 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
       await page.clock.runFor(nextTime - time);
       time = nextTime;
       await settle();
-      if (clock && (packet.outbound || identify(packet.frame) !== `${GATEWAY}/1`))
+      if (clock && (packet.outbound || identify(packet.frame) !== `${SVR_TYPE_FGW}/1`))
         await page.evaluate(ticks => { window.__networkReplay.ticks = ticks; }, clock.ticks + time - clock.time);
-      if (packet.outbound && identify(packet.frame) === `${GATEWAY}/5`) lastHeartbeat = clock;
+      if (packet.outbound && identify(packet.frame) === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}`) lastHeartbeat = clock;
       if (!packet.outbound) {
         // Socket open latency and independent inbound streams can place server
         // frames before an already queued send. Strict mode compares that send
@@ -85,7 +87,7 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
         if (updateMessages) while ((await pending()).length) append(await shift(), packet.timestamp);
         await page.evaluate(({ connection, payload }) => window.__networkReplay.deliver(connection, payload), packet);
         await settle();
-        if (identify(packet.frame) === `${GATEWAY}/1`)
+        if (identify(packet.frame) === `${SVR_TYPE_FGW}/1`)
           await page.evaluate(() => window.__networkReplay.captureHeartbeat());
         result.push(normalized.entries[packet.index]);
         continue;
@@ -96,23 +98,23 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
       if (updateMessages) {
         while ((await pending()).length) {
           const first = (await pending())[0];
-          if (identify(decodeOne(Buffer.from(first.payload, 'base64'))![0]) === expectedId) break;
+          if (identify(extractNetMsgFromBytes(Buffer.from(first.payload, 'base64'))![0]) === expectedId) break;
           // Keep packets matching a later expected output for that later step.
-          const later = sequence.slice(packet.index + 1).find(candidate => !candidate.outbound || identify(candidate.frame) === identify(decodeOne(Buffer.from(first.payload, 'base64'))![0]));
+          const later = sequence.slice(packet.index + 1).find(candidate => !candidate.outbound || identify(candidate.frame) === identify(extractNetMsgFromBytes(Buffer.from(first.payload, 'base64'))![0]));
           if (later?.outbound) break;
           append(await shift(), packet.timestamp);
         }
       }
       let queued = await pending();
       const action = inferAction(packet.frame);
-      if ((!queued.length || (updateMessages && identify(decodeOne(Buffer.from(queued[0].payload, 'base64'))![0]) !== expectedId)) && action) {
+      if ((!queued.length || (updateMessages && identify(extractNetMsgFromBytes(Buffer.from(queued[0].payload, 'base64'))![0]) !== expectedId)) && action) {
         const before = queued.length;
         await act(page, action, normalized.username, PASSWORD);
         await settle();
         queued = await pending();
         if (queued.length <= before) throw Error(`Entry ${packet.index + 1}: inferred ${action.type} produced no client packet.`);
       }
-      if (!queued.length && expectedId === `${GATEWAY}/5`) {
+      if (!queued.length && expectedId === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}`) {
         // Run the actual production timer callback at the recorded dispatch.
         if (clock) await page.evaluate(ticks => { window.__networkReplay.ticks = ticks; }, clock.ticks);
         await page.evaluate(() => window.__networkReplay.fireHeartbeat());
@@ -123,7 +125,7 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
         if (updateMessages && !action) continue;
         throw Error(`Entry ${packet.index + 1}: no outbound ${expectedId}. No supported UI action or timer produced this packet.`);
       }
-      if (updateMessages && !action && identify(decodeOne(Buffer.from(queued[0].payload, 'base64'))![0]) !== expectedId) continue;
+      if (updateMessages && !action && identify(extractNetMsgFromBytes(Buffer.from(queued[0].payload, 'base64'))![0]) !== expectedId) continue;
       const actual = await shift();
       if (!updateMessages) comparePacket(packet, actual);
       append(actual, packet.timestamp);

@@ -1,50 +1,50 @@
+import { StoneColor, BoardSize, JuShiConst, DuMiaoNumConst, DuMiaoConst, GameTypeTag, ENAdditionalRuleType, ENClientType } from "./protocol.ts";
+import { gameFields as Game, commonFields as Common } from "./protocol-fields.ts";
 import {
   encode,
   decode,
   type Fields,
   type Message,
 } from "./wire.ts";
-import { gatewayPayload, splitGateway } from "./framing.ts";
-export const GATEWAY = 20001,
-  ROOM = 30006,
-  GAME = 31000;
-export const NORMAL = [19, 1200, 3, 60];
-export function envelope(
+import { encodeFgwPacket, splitFgwPacket } from "./framing.ts";
+export { SVR_TYPE_FGW, GAME_SVR_MGR, GAME_SVR } from "./protocol.ts";
+export const NORMAL = [BoardSize.E_Board_Size_19, JuShiConst.JU_SHI_20_MIN * 60, DuMiaoNumConst.DU_MIAO_NUM_3, DuMiaoConst.DU_MIAO_60_SEC];
+export function encodeFgwMessage(
   uid: number,
-  service: number,
-  operation: number,
+  serverType: number,
+  messageId: number,
   fields: Fields = {},
-  node = 0,
+  serverId = 0,
 ) {
-  return gatewayPayload(
+  return encodeFgwPacket(
     encode({
-      1: operation,
-      3: uid,
-      5: 32,
-      6: 6,
-      7: service,
-      8: node,
-      19: "11509231",
-      20: 4,
+      [Common.FGWHead.message_id]: messageId,
+      [Common.FGWHead.uid]: uid,
+      [Common.FGWHead.client_type]: ENClientType.E_CLIENT_TYPE_PC,
+      [Common.FGWHead.account_type]: 6,
+      [Common.FGWHead.server_type]: serverType,
+      [Common.FGWHead.server_id]: serverId,
+      [Common.FGWHead.pc_client_version]: "11509231",
+      [Common.FGWHead.language]: 4,
     }),
     encode(fields),
   );
 }
-export function unpack(payload: import("buffer").Buffer) {
-  return splitGateway(payload).map(decode);
+export function decodeFgwMessage(payload: import("buffer").Buffer) {
+  return splitFgwPacket(payload).map(decode);
 }
-export function matchFields(records: Message[]) {
+export function fieldCfgsToTimeControls(records: Message[]) {
   const seen = new Set();
   return records
     .filter(
-      (r) => r.number(2) === 19 && r.number(12) === 1 && r.number(7) === 0,
+      (r) => r.number(Game.FieldCfg.board_size) === BoardSize.E_Board_Size_19 && r.number(Game.FieldCfg.game_type_tag) === GameTypeTag.GAME_TYPE_TAG_NORMAL && r.number(Game.FieldCfg.additional_rule) === ENAdditionalRuleType.EN_ADDI_BASIC,
     )
     .map((r) => ({
-      id: r.number(1),
-      size: r.number(2),
-      main: r.number(3),
-      periods: r.number(4),
-      byoyomi: r.number(5),
+      id: r.number(Game.FieldCfg.field_id),
+      size: r.number(Game.FieldCfg.board_size),
+      main: r.number(Game.FieldCfg.jushi_sec),
+      periods: r.number(Game.FieldCfg.dumiao_num),
+      byoyomi: r.number(Game.FieldCfg.dumiao_sec),
     }))
     .filter(
       (f) =>
@@ -88,8 +88,8 @@ export function rankLabel(rank: number) {
 export function resultLabel(winner: unknown, points: number | null, ending: "R" | "T" | "F" | "Void" | "" = "") {
   if (ending === "Void") return "Void";
   if (winner === 3) return "0";
-  if (winner !== 1 && winner !== 2) return "";
-  return `${winner === 1 ? "B" : "W"}+${ending || (points ?? "")}`;
+  if (winner !== StoneColor.BLACK && winner !== StoneColor.WHITE) return "";
+  return `${winner === StoneColor.BLACK ? "B" : "W"}+${ending || (points ?? "")}`;
 }
 export function plain(message: Message): Fields {
   return Object.fromEntries(
@@ -101,8 +101,8 @@ export function plain(message: Message): Fields {
 }
 
 
-export function countingResult(message: Message) {
-  const winner = message.number(8);
+export function decodeCalculateConfirmNotify(message: Message) {
+  const winner = message.number(Game.CalculateConfirmNotify.win_color);
   const result: {
     winner: string | null;
     black?: number;
@@ -112,7 +112,7 @@ export function countingResult(message: Message) {
   } = {
     winner:
       (
-        { 1: "Black wins", 2: "White wins", 3: "Draw" } as Record<
+        { [StoneColor.BLACK]: "Black wins", [StoneColor.WHITE]: "White wins", 3: "Draw" } as Record<
           number,
           string
         >
@@ -120,11 +120,11 @@ export function countingResult(message: Message) {
   };
   // Native 00813e70 -> 006ec320 -> 00594880 reads the first 19×19
   // ASCII points from field 5. Captures include two trailing zeroes.
-  const map = message.bytes(5).subarray(0, 361).toString("utf8");
+  const map = message.bytes(Game.CalculateConfirmNotify.china_position_judge).subarray(0, 361).toString("utf8");
   if (/^[012]{361}$/.test(map)) result.ownership = Array.from(map, Number);
-  if (message.has(6)) {
+  if (message.has(Game.CalculateConfirmNotify.black_shuzi)) {
     const bytes = new DataView(new ArrayBuffer(4));
-    bytes.setUint32(0, message.number(6), true);
+    bytes.setUint32(0, message.number(Game.CalculateConfirmNotify.black_shuzi), true);
     const black = bytes.getFloat32(0, true);
     if (Number.isFinite(black) && black >= 0 && black <= 361) {
       result.black = black;

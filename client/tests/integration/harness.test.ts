@@ -1,3 +1,4 @@
+import { LegacyMsgTypeID } from '../../src/protocol.ts';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -6,8 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, preview } from 'vite';
 import { chromium, type Browser } from 'playwright';
-import { encode as frame, gatewayPayload } from '../../src/framing.ts';
-import { unpack } from '../../src/game.ts';
+import { netMsgToBytes as frame, encodeFgwPacket } from '../../src/framing.ts';
+import { decodeFgwMessage } from '../../src/game.ts';
 import { encode } from '../../src/wire.ts';
 import { replay } from './replay.ts';
 import { packets, identify } from './log.ts';
@@ -57,9 +58,9 @@ test('a changed client packet fails even when the final UI would be unchanged; u
   const changed = structuredClone(fixture);
   const index = packets(changed).findIndex(packet => packet.outbound && identify(packet.frame) === '31000/201');
   // Color is part of the expected wire bytes, but UI inference uses coordinates.
-  const [header, body] = unpack(packets(changed)[index].frame.payload);
+  const [header, body] = decodeFgwMessage(packets(changed)[index].frame.rawProto);
   const fields = (message: typeof body) => Object.fromEntries([...message].map(([key, values]) => [key, values]));
-  changed[index].payload = frame(26200, gatewayPayload(encode(fields(header)), encode({ ...fields(body), 3: body.number(3) === 1 ? 2 : 1 })), true).toString('base64');
+  changed[index].payload = frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwPacket(encode(fields(header)), encode({ ...fields(body), 3: body.number(3) === 1 ? 2 : 1 })), true).toString('base64');
   await assert.rejects(replay(browser, url, changed), /outbound 31000\/201 differs at byte/);
   const updated = await replay(browser, url, changed, true);
   assert.deepEqual(updated.entries, fixture);

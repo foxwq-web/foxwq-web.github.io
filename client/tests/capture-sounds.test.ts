@@ -1,3 +1,4 @@
+import { GAME_SVR, GoGameMessageID } from "../src/protocol.ts";
 import { setupFoxGame } from './fox-game.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,14 +29,14 @@ test('Fox sound thresholds use captures in this move for own and opponent moves 
     session.phase = 'playing';
     session.board = captureBoard(count, color);
     session.color = mode === 'opponent' ? 3 - color : color;
-    session.roomKey = { 1: 31000, 2: 63 }; session.gateway = { send() {}, close() {} };
+    session.roomKey = { 1: GAME_SVR, 2: 63 }; session.fgwConnection = { send() {}, close() {} };
     const move = decode(encode({ 1: 1, 2: 2, 3: color }));
-    if (mode === 'opponent') session.gameMessage(203, move, decode(encode({})));
+    if (mode === 'opponent') session.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, move, decode(encode({})));
     else session.play(1, 2);
     assert.equal(session.board.captures[color], 100 + count, `${count}/${color}/${mode}`);
     assert.deepEqual(sounds, [expected]);
     if (mode === 'own') {
-      session.gameMessage(203, move, decode(encode({})));
+      session.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, move, decode(encode({})));
       assert.equal(session.pending, false); assert.deepEqual(sounds, [expected]);
     }
     session.close();
@@ -55,15 +56,15 @@ test('one move capturing several separate groups selects by their combined size'
 test('an authoritative replacement selects after rollback; synchronized replay is silent', () => {
   const sounds: string[] = [], session = new Session({ onSound: name => sounds.push(name) });
   session.board = captureBoard(3); session.phase = 'playing'; session.color = 1; session.uid = 42;
-  session.roomKey = { 1: 31000, 2: 63 }; session.gateway = { send() {}, close() {} };
+  session.roomKey = { 1: GAME_SVR, 2: 63 }; session.fgwConnection = { send() {}, close() {} };
   session.play(10, 10); assert.deepEqual(sounds, ['stone']);
-  session.gameMessage(203, decode(encode({ 1: 1, 2: 2, 3: 1 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, decode(encode({ 1: 1, 2: 2, 3: 1 })), decode(encode({})));
   assert.equal(session.board.stones[200], 0); assert.equal(session.board.captures[1], 103);
   assert.deepEqual(sounds, ['stone', 'stone-capture-medium']);
 
   const moves = [[1,1,0],[1,0,1],[1,2,1],[2,1,1],[1,1,2]];
-  session.gameMessage(501, decode(encode({ 1: 0, 3: [{ 1: 42, 6: 1 }],
-    4: moves.map(([color,x,y]) => ({ 1:1, 2:x, 3:y, 4:color })), 5:{1:5}, 12:31000, 13:63 })), decode(encode({})));
+  session.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, decode(encode({ 1: 0, 3: [{ 1: 42, 6: 1 }],
+    4: moves.map(([color,x,y]) => ({ 1:1, 2:x, 3:y, 4:color })), 5:{1:5}, 12:GAME_SVR, 13:63 })), decode(encode({})));
   assert.equal(session.board.captures[1], 1); assert.deepEqual(sounds, ['stone', 'stone-capture-medium']); session.close();
 });
 
@@ -71,11 +72,11 @@ test('rejected or unsent capturing moves do not add playback or leave captures b
   for (const count of [3, 16]) {
     const sounds: string[] = [], session = new Session({ onSound: name => sounds.push(name) });
     session.board = captureBoard(count); session.phase = 'playing'; session.color = 1;
-    session.roomKey = { 1: 31000, 2: 63 }; session.gateway = { send() { throw Error('closed'); }, close() {} };
+    session.roomKey = { 1: GAME_SVR, 2: 63 }; session.fgwConnection = { send() { throw Error('closed'); }, close() {} };
     const before = session.board.clone();
     assert.throws(() => session.play(1,2), /closed/); assert.deepEqual(session.board,before); assert.deepEqual(sounds,[]);
-    session.gateway.send = () => {}; session.play(1,2);
-    session.gameMessage(201, decode(encode({1:7})), decode(encode({})));
+    session.fgwConnection.send = () => {}; session.play(1,2);
+    session.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_REQUEST, decode(encode({1:7})), decode(encode({})));
     assert.deepEqual(session.board,before); assert.deepEqual(sounds,[placementSound(count)]);
     session.close();
   }
