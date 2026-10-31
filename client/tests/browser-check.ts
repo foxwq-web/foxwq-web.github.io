@@ -855,6 +855,48 @@ try {
 
   console.log('Browser checks passed: SVG, responsive sizing, preview/placement, triangle, komi, passing, resignation, SGF');
 
+  await js(`(async()=>{window.kickCheckSession=async fields=>{
+    const {encodeFgwMessage}=await import('/src/game.ts');
+    const {LegacyMsgTypeID,ClientMessageID,SVR_TYPE_FGW}=await import('/src/protocol.ts');
+    checkSession.receive(checkSession.generation,{
+      msgTypeID:LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET,flag:0,
+      rawProto:encodeFgwMessage(checkSession.uid||42,SVR_TYPE_FGW,ClientMessageID.MID_KICKOUT_NOTIFY,fields)
+    });checkSession.flushChanges();
+  };await kickCheckSession({1:51001});})()`);
+  await wait("checkSession.phase==='kicked' && !document.getElementById('session-ended-status').hidden");
+  assert.equal(await js("document.getElementById('session-ended-status').textContent"), 'Another client logged in');
+  assert.equal(await js("document.getElementById('game-result').textContent"), 'B+R');
+  assert.equal(await js("document.getElementById('connection-layer').hidden"), true);
+  await js("document.getElementById('review-previous').click()");
+  await pointerAt(5, 5, 'click');
+  assert.equal(await js("checkSession.board.moves.length"), 3, 'offline variations cannot change the actual game');
+  assert.equal(await js("document.querySelectorAll('#board .board-stones .stone').length"), 2);
+  const kickedSgf = await js(`(async()=>{
+    let saved;const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
+    try {document.getElementById('save-sgf').click();return await saved.text();} finally {URL.createObjectURL=create;}
+  })()`);
+  assert.equal(kickedSgf, sgf);
+
+  await js(`(async()=>{setupCheckGame(checkSession);checkSession.board.play(3,3,1);checkSession.board.play(15,15,2);
+    checkSession.changed();await kickCheckSession({8:'Fox ended this test session'});})()`);
+  await wait("checkSession.phase==='kicked' && !document.getElementById('game-review').hidden");
+  assert.equal(await js("checkSession.gameOver"), false);
+  assert.equal(await js("document.getElementById('game-state-title').hidden"), true, 'a kick must not invent a game result');
+  for (const id of ['pass','request-score','resign','estimate-score']) assert.equal(await js(`document.getElementById('${id}').disabled`), true);
+  await call('Input.dispatchKeyEvent', {type:'keyDown',key:'Home',code:'Home'});
+  await call('Input.dispatchKeyEvent', {type:'keyUp',key:'Home',code:'Home'});
+  await wait("document.querySelectorAll('#board .board-stones .stone').length===0");
+  const partialSgf = await js(`(async()=>{
+    let saved;const create=URL.createObjectURL;URL.createObjectURL=blob=>{saved=blob;return create(blob);};
+    try {document.getElementById('save-sgf').click();return await saved.text();} finally {URL.createObjectURL=create;}
+  })()`);
+  assert.match(partialSgf, /;B\[dd\];W\[pp\]/);
+  assert.doesNotMatch(partialSgf, /RE\[/);
+  assert.equal(await js("document.getElementById('quit-room').textContent"), 'Return to Login');
+  await js("document.getElementById('quit-room').click()");
+  await wait("checkSession.phase==='disconnected' && document.getElementById('login-form')!=null");
+  console.log('Browser server kicks passed: reason, disabled online actions, local review, partial SGF, explicit return to login');
+
   await js(`const Session=window.CheckSession;Session.prototype.login=function(){this.close();this.phase='connecting';this.status='Connecting to Fox...';window.checkSession=this;};checkSession.close()`);
   await assertEscapeIgnored();
   await js("document.getElementById('username').value='test';document.getElementById('password').value='';document.getElementById('password').focus()");

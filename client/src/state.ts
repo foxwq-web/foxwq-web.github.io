@@ -114,9 +114,12 @@ export type UIEvent =
 
 export function boardAvailable(s: SessionState): boolean {
   return (
-    ["playing", "finished", "reconnecting"].includes(s.phase) &&
+    ["playing", "finished", "reconnecting", "kicked"].includes(s.phase) &&
     [1, 2].includes(s.color)
   );
+}
+export function reviewAvailable(s: SessionState): boolean {
+  return boardAvailable(s) && (s.phase === "kicked" || (s.phase === "finished" && s.game_over));
 }
 export function blocked(s: SessionState): boolean {
   return (
@@ -142,7 +145,7 @@ export function reducer(state: UIState, event: UIEvent): UIState {
         ...state,
         session: event.session,
         error: boardAvailable(event.session) ? state.error : "",
-        review: event.session.phase === "finished" && event.session.game_over &&
+        review: reviewAvailable(event.session) &&
           event.session.gameId === state.session.gameId && event.session.moves === state.session.moves
           ? state.review : null,
         prompt:

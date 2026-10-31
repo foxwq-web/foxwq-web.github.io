@@ -7,11 +7,14 @@ export const GAME_SVR_MGR = 30006;
 export const GAME_SVR = 31000;
 export const SVR_TYPE_USER_INFO_PANEL_SVR = 20043;
 
-// proto.error.ErrorCode (selected members used by login, discovery and sequence recovery).
+// Native error codes; sources are noted beside the members.
 export enum ErrorCode {
+  // proto.error.ErrorCode
   NEC_LOCK_NOT_EXIST_ERR = 107004,
   NEC_CHECK_SYC_ERROR = 109036,
   NEC_USERNAME_PASSWORD_ERROR = 111231,
+  // ConstCfg.ErrorCode
+  EC_ACCOUNT_KICKOUT_BY_ANOTHER_LOGIN = 51001,
 }
 
 // FGW.ClientMessageID

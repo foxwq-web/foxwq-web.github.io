@@ -1,7 +1,7 @@
 import React, { memo, useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "react";
 import { Board } from "./board.ts";
 import { clockReading } from "./clock.ts";
-import { blocked, boardAvailable, type UIState } from "./state";
+import { blocked, boardAvailable, reviewAvailable, type UIState } from "./state";
 const extent = 840,
   margin = 48,
   size = 19;
@@ -45,7 +45,7 @@ export function playablePoint(
   point: number | null,
 ): number | null {
   const s = state.review ? { ...state.session, ...state.review } : state.session;
-  const reviewing = s.phase === "finished" && s.game_over;
+  const reviewing = reviewAvailable(s);
   if (
     point === null ||
     !boardAvailable(s) ||

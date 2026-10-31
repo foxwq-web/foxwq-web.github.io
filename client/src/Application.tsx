@@ -16,6 +16,7 @@ import { BoardView, coordinateGutterPixels } from "./BoardView";
 import { Controller } from "./controller";
 import {
   boardAvailable,
+  reviewAvailable,
   actionsBlocked,
   promptForAction,
   type UIState,
@@ -152,6 +153,7 @@ export function App({ controller: c }: { controller: Controller }) {
   const s = state.session,
     playing = s.phase === "playing";
   const available = boardAvailable(s),
+    reviewing = reviewAvailable(s),
     showMenu = !available;
   const loginStep =
     [
@@ -200,6 +202,7 @@ export function App({ controller: c }: { controller: Controller }) {
     playing && s.counting && !s.pending && !s.confirmation && !countingRequested;
   const gameHidden =
     s.phase !== "reconnecting" &&
+    s.phase !== "kicked" &&
     !s.game_over &&
     !promptCounting &&
     ((s.counting && !countingRequested && !countingResultPending) || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
@@ -328,8 +331,7 @@ export function App({ controller: c }: { controller: Controller }) {
         return;
       }
       if (
-        event.type === "keydown" && !menuShown && current.session.game_over &&
-        current.session.phase === "finished" &&
+        event.type === "keydown" && !menuShown && reviewAvailable(current.session) &&
         ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) &&
         !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
         !(event.target instanceof HTMLElement &&
@@ -600,14 +602,17 @@ export function App({ controller: c }: { controller: Controller }) {
                   <p
                     id="board-status"
                     role="status"
-                    hidden={s.game_over || promptCounting || !boardStatus}
+                    hidden={s.phase === "kicked" || s.game_over || promptCounting || !boardStatus}
                     className={
                       /failed|rejected|error/i.test(s.status) ? "is-error" : ""
                     }
                   >
                     {boardStatus}
                   </p>
-                  <div id="game-downloads" hidden={!s.game_over}>
+                  <p id="session-ended-status" role="status" hidden={s.phase !== "kicked"}>
+                    {s.phase === "kicked" ? s.status : ""}
+                  </p>
+                  <div id="game-downloads" hidden={!reviewing}>
                     <button
                       id="save-sgf"
                       type="button"
@@ -621,16 +626,16 @@ export function App({ controller: c }: { controller: Controller }) {
                   <button
                     id="quit-room"
                     className="secondary"
-                    hidden={s.phase !== "finished"}
+                    hidden={s.phase !== "finished" && s.phase !== "kicked"}
                     disabled={s.pending || s.quitRequested || !!estimate}
                     onClick={() =>
-                      playing ? ask("quit-room") : command("quit-room")
+                      s.phase === "kicked" ? command("disconnect") : playing ? ask("quit-room") : command("quit-room")
                     }
                   >
-                    Quit Room
+                    {s.phase === "kicked" ? "Return to Login" : "Quit Room"}
                   </button>
                 </section>
-                <div id="game-review" hidden={!s.game_over}>
+                <div id="game-review" hidden={!reviewing}>
                   <div className="actions" role="group" aria-label="Review game">
                     {([
                       ["first", "First move", faBackwardStep, !!variation || reviewMove === 0],

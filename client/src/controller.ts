@@ -12,6 +12,7 @@ import { ByoyomiAnnouncements, recordedClocks } from "./clock.ts";
 import {
   reducer,
   boardAvailable,
+  reviewAvailable,
   outOfTurn,
   type UIState,
   type UIEvent,
@@ -132,7 +133,7 @@ export class Controller {
       const { username, password, remember } = this.pendingCredentials;
       this.pendingCredentials = undefined;
       if (!this.preview) rememberCredentials(username, password, remember);
-    } else if (["error", "disconnected"].includes(session.phase)) {
+    } else if (["error", "disconnected", "kicked"].includes(session.phase)) {
       this.pendingCredentials = undefined;
     }
     const wasAvailable = boardAvailable(this.state.session);
@@ -191,7 +192,7 @@ export class Controller {
     command: Command,
     body: { x?: number; y?: number; id?: number; accept?: boolean } = {},
   ) {
-    if (command === "play" && this.state.session.phase === "finished" && this.state.session.game_over) {
+    if (command === "play" && reviewAvailable(this.state.session)) {
       if (body.x !== undefined && body.y !== undefined) this.playVariation(body.x, body.y);
       return;
     }
@@ -299,7 +300,7 @@ export class Controller {
   }
   playVariation(x: number, y: number) {
     const s = this.state.session;
-    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s) || s.estimation || this.state.prompt) return;
+    if (!reviewAvailable(s) || s.estimation || this.state.prompt) return;
     const current = this.state.review;
     const origin = current?.variation?.origin ?? current?.moves ?? s.moves;
     const previous = current?.variation;
@@ -316,7 +317,7 @@ export class Controller {
   }
   review(direction: "first" | "previous" | "next" | "last" | "main") {
     const s = this.state.session;
-    if (s.phase !== "finished" || !s.game_over || !boardAvailable(s) || s.estimation) return;
+    if (!reviewAvailable(s) || s.estimation) return;
     const total = this.session.board.moves.length;
     const current = this.state.review?.moves ?? total;
     const variation = this.state.review?.variation;
@@ -361,7 +362,7 @@ export class Controller {
         "application/json",
         `fox-network-log-${timestamp}.json`,
       );
-    else if (this.session.gameOver) {
+    else if (reviewAvailable(this.state.session)) {
       const black = this.session.players[1]?.name || "Black",
         white = this.session.players[2]?.name || "White",
         local = this.session.color === 2 ? white : black,

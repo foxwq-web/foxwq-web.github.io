@@ -150,6 +150,7 @@ export class Session {
   pendingSince = 0;
   private loginPacket: Buffer | null = null;
   private reconnectBoard: SessionState | null = null;
+  private reconnectBoardModel: Board | null = null;
   private reconnectAttempt = 0;
   private reconnectStatus = "";
   private reconnectTimer?: ReturnType<typeof setTimeout>;
@@ -157,6 +158,7 @@ export class Session {
   private gameEnvRecovery: {
     roomKey: Record<number, number>;
     state: SessionState;
+    board: Board;
     requestedAt: number;
     attempts: number;
   } | null = null;
@@ -286,6 +288,7 @@ export class Session {
   }
   private resetGame() {
     this.gameEnvRecovery = null;
+    this.reconnectBoardModel = null;
     this.rollbackMove();
     this.clearEstimate();
     this.playerInfo.close();
@@ -425,6 +428,7 @@ export class Session {
       if (this.loginPacket &&
           (this.reconnectBoard || recovery || (this.phase === "playing" && [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)))) {
         const first = !this.reconnectBoard;
+        this.reconnectBoardModel ??= recovery?.board ?? this.pendingMove?.board ?? this.board;
         this.reconnectBoard ??= recovery?.state ?? this.snapshot();
         this.clearEstimate();
         this.rollbackMove();
@@ -471,9 +475,74 @@ export class Session {
     void this.connect(this.generation, this.loginPacket);
     this.changed();
   }
+  private onKickOutNotify(generation: number, message: Message) {
+    if (generation !== this.generation) return;
+    // KickOutNotify has optional fields. An unusable reason must not turn a
+    // terminal server decision into a retryable protocol/connection failure.
+    const codeValue = message.one(1);
+    const code = typeof codeValue === "number" || typeof codeValue === "bigint" ? signed(codeValue) : 0;
+    const reasonValue = message.one(8);
+    let reason = Buffer.isBuffer(reasonValue) ? reasonValue.toString("utf8").trim() : "";
+    reason ||= code === ErrorCode.EC_ACCOUNT_KICKOUT_BY_ANOTHER_LOGIN
+      ? "Another client logged in"
+      : `Fox ended this session${code ? ` (code ${code})` : ""}`;
+    const restriction = message.one(11);
+    if ((typeof restriction === "number" || typeof restriction === "bigint") && restriction > 0)
+      reason += ". Fox has restricted login";
+
+    const saved = this.reconnectBoard ?? this.gameEnvRecovery?.state;
+    const board = this.reconnectBoardModel ?? this.pendingMove?.board ?? this.board;
+    // Invalidate callbacks before closing sockets, including an open that is
+    // still awaiting its promise. No cached password packet survives a kick.
+    this.generation++;
+    clearTimeout(this.timer ?? undefined);
+    clearTimeout(this.bootstrapTimer);
+    clearTimeout(this.reconnectTimer);
+    this.timer = null;
+    this.loginPacket = null;
+    this.token = Buffer.alloc(0);
+    this.uid = 0;
+    this.rollbackMove();
+    this.board = board;
+    if (saved) {
+      this.color = saved.color;
+      this.roomKey = Object.fromEntries(saved.gameId.split(":").map((value, index) => [index + 1, Number(value)]));
+      this.players = saved.players;
+      this.clocks = saved.clocks;
+      this.komi = saved.komi;
+      this.result = saved.result;
+      this.gameOver = saved.game_over;
+      this.account = saved.account;
+    }
+    if (!this.gameOver) this.clearEstimate();
+    const clock = this.clocks[this.board.turn];
+    if (clock && this.phase === "playing" && !this.counting &&
+        !(this.board.turn !== this.color && this.opponentDisconnectDeadline != null)) {
+      const reading = clockReading(clock, now() - clock.at, 60, this.board.turn === this.color);
+      Object.assign(clock, { main: reading.main, periods: reading.periods, byoyomi: reading.seconds, at: now() });
+    }
+    this.phase = [1, 2].includes(this.color) && Object.keys(this.roomKey).length ? "kicked" : "error";
+    this.status = reason;
+    this.gameEnvRecovery = null;
+    this.reconnectBoard = null;
+    this.reconnectBoardModel = null;
+    this.reconnectAttempt = 0;
+    this.pending = false;
+    this.pendingMessageId = null;
+    this.pendingSince = 0;
+    this.pendingConfirmation = null;
+    this.countingAnswer = null;
+    this.counting = false;
+    this.quitRequested = false;
+    this.opponentDisconnectDeadline = null;
+    this.playerInfo.reset();
+    this.fgwConnection?.close();
+    this.connection?.close();
+    this.fgwConnection = this.connection = null;
+  }
   receive(generation: number, packet: NetMsg) {
     try {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.phase === "kicked") return;
       try {
         if (packet.msgTypeID === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) {
           this.onReceiveFgwMessage(generation, packet);
@@ -566,7 +635,8 @@ export class Session {
     if (this.gameEnvRecovery || this.phase !== "playing" || this.gameOver ||
         ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color) || !Object.keys(this.roomKey).length) return;
     this.gameEnvRecovery = {
-      roomKey: { ...this.roomKey }, state: this.snapshot(), requestedAt: now(), attempts: 0,
+      roomKey: { ...this.roomKey }, state: this.snapshot(), board: this.pendingMove?.board ?? this.board,
+      requestedAt: now(), attempts: 0,
     };
     this.clearEstimate();
     this.pending = true;
@@ -652,10 +722,7 @@ export class Session {
           }, 15000);
           this.bootstrapTimer.unref?.();
         } else if (messageId === ClientMessageID.MID_KICKOUT_NOTIFY)
-          this.failed(
-            generation,
-            "Another client logged in",
-          );
+          this.onKickOutNotify(generation, m);
       } else if (serverType === game.GAME_SVR_MGR) this.gameSvrMgrProcess(messageId, m);
       else if (serverType === game.GAME_SVR) this.gameSvrProcess(messageId, m, fgwHead);
     } finally {
@@ -790,7 +857,7 @@ export class Session {
       ].includes(messageId)) return;
       // Only a full synchronization may replace the board during recovery.
       if (this.reconnectBoard && ![GoGameMessageID.GC_START_SET_PIECE_NOTIFY, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST].includes(messageId)) return;
-      if (["ready", "disconnected", "error"].includes(this.phase)) return;
+      if (["ready", "disconnected", "error", "kicked"].includes(this.phase)) return;
       if (
         this.phase === "matching" &&
         !Object.keys(this.roomKey).length &&
@@ -1121,6 +1188,7 @@ export class Session {
         if (this.gameEnvRecovery) this.pendingMessageId = null;
         this.gameEnvRecovery = null;
         this.reconnectBoard = null;
+        this.reconnectBoardModel = null;
         this.reconnectAttempt = 0;
         clearTimeout(this.bootstrapTimer);
         this.phase = this.gameOver ? "finished" : "playing";

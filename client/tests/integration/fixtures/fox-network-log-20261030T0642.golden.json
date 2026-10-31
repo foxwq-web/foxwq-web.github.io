@@ -48,7 +48,7 @@
     {
       "tag": "button",
       "id": "quit-room",
-      "text": "Quit Room",
+      "text": "Return to Login",
       "disabled": false
     },
     {
@@ -899,5 +899,5 @@
       "<polygon points=\"709.3333333333334,378.6666666666667 709.3333333333334,399.33333333333337 730,378.6666666666667\" fill=\"#000\"></polygon>"
     ]
   },
-  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"黑白双杀29 (2d)\":\n      - paragraph:\n        - button \"黑白双杀29 (2d)\"\n      - paragraph: \"Captures: 1\"\n      - term: Main time\n      - definition:\n        - time: 00:00\n    - region \"products (3d)\":\n      - paragraph:\n        - button \"products (3d)\"\n      - paragraph: \"Captures: 2 + 7.5\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 01:00\n    - button \"Pass\" [disabled]\n    - button \"Request Counting\" [disabled]\n    - button \"Resign\" [disabled]\n    - button \"Estimate Score\" [disabled]\n    - status: \"Game over: W+T\"\n    - button \"Download SGF\"\n    - button \"Quit Room\"\n    - group \"Review game\":\n      - button \"First move\"\n      - button \"Previous move\"\n      - button \"Next move\" [disabled]\n      - button \"Last move\" [disabled]"
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"黑白双杀29 (2d)\":\n      - paragraph:\n        - button \"黑白双杀29 (2d)\"\n      - paragraph: \"Captures: 1\"\n      - term: Main time\n      - definition:\n        - time: 00:00\n    - region \"products (3d)\":\n      - paragraph:\n        - button \"products (3d)\"\n      - paragraph: \"Captures: 2 + 7.5\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 01:00\n    - button \"Pass\" [disabled]\n    - button \"Request Counting\" [disabled]\n    - button \"Resign\" [disabled]\n    - button \"Estimate Score\" [disabled]\n    - status: \"Game over: W+T\"\n    - status: Another client logged in\n    - button \"Download SGF\"\n    - button \"Return to Login\"\n    - group \"Review game\":\n      - button \"First move\"\n      - button \"Previous move\"\n      - button \"Next move\" [disabled]\n      - button \"Last move\" [disabled]"
 }

@@ -72,7 +72,9 @@ for (const failure of ["recorded server logout", "socket close", "heartbeat time
       else { context.mock.timers.tick(25000); s.heartbeat(generation); }
       s.flushChanges();
       assert.deepEqual(closed.sort(), ["gateway", "login"]);
-      assert.deepEqual(s.snapshot(), { ...before, estimation: { phase: "loading" }, gatewayAvailable: false });
+      assert.deepEqual(s.snapshot(), { ...before,
+        ...(failure === "recorded server logout" ? { phase: "kicked", status: "Another client logged in" } : {}),
+        estimation: { phase: "loading" }, gatewayAvailable: false });
       assert.equal(c.state.review, position, "disconnect must preserve the review cursor");
       assert.ok(boardAvailable(c.state.session));
       assert.equal(s.board.sgf(s.result), sgf, "the downloadable game stays intact");
@@ -92,7 +94,7 @@ for (const failure of ["recorded server logout", "socket close", "heartbeat time
       c.review("main");
       c.review("last");
       assert.equal(c.state.review?.moves, 166);
-      assert.equal(c.state.session.phase, "finished");
+      assert.equal(c.state.session.phase, failure === "recorded server logout" ? "kicked" : "finished");
     } finally { s.close(); }
   });
 }
