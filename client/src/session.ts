@@ -1133,6 +1133,13 @@ export class Session {
       else if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST) {
         const resuming = this.phase !== "joining";
         if (signed(m.one(Game.FetchGameEnvResponse.result))) throw Error("Game synchronization failed");
+        // Decode before replacing the board or clearing reconnect/recovery state.
+        const result = m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END && m.has(Game.FetchGameEnvResponse.game_result) ? m.sub(Game.FetchGameEnvResponse.game_result) : null;
+        const restoredResult = result ? {
+          winner: result.number(Game.GameResult.winner),
+          margin: result.has(Game.GameResult.points) ? signed(result.one(Game.GameResult.points)) : null,
+          reason: result.number(Game.GameResult.reason),
+        } : null;
         const previousBoard = this.pendingMove?.board ?? this.board;
         this.roomKey = room.roomKey;
         this.expectedRoomKey = null;
@@ -1194,8 +1201,12 @@ export class Session {
         this.reconnectAttempt = 0;
         clearTimeout(this.bootstrapTimer);
         this.phase = this.gameOver ? "finished" : "playing";
-        this.status =
-          m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END ? "Game ended" : "Game synchronized";
+        this.result = "";
+        this.status = this.gameOver ? "Game ended" : "Game synchronized";
+        if (restoredResult) {
+          // GameResult uses 1/2/3, unlike the top-level 402/403 result fields.
+          this.setGameResult(restoredResult.winner, restoredResult.margin, restoredResult.reason);
+        }
         this.pending = false;
         if (!this.gameOver) this.announceStart(resuming);
         if (this.quitRequested) {
@@ -1311,23 +1322,14 @@ export class Session {
     }
   }
   updateGameResult(m: Message) {
-    const winner = m.number(Game.SetGameEndNotify.winner),
-      margin = signed(m.one(Game.SetGameEndNotify.points)),
-      reason = m.number(Game.SetGameEndNotify.reason);
+    this.setGameResult(m.number(Game.SetGameEndNotify.winner), m.has(Game.SetGameEndNotify.points) ? signed(m.one(Game.SetGameEndNotify.points)) : null, m.number(Game.SetGameEndNotify.reason));
+  }
+  private setGameResult(winner: number, margin: number | null, reason: number) {
     this.pendingConfirmation = null;
     this.counting = false;
     this.countingAnswer = null;
-    this.result = "";
-    if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner) && reason === ENGameEndReason.EER_OPP_RESIGN) {
-      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+R`;
-    } else if (reason === ENGameEndReason.EER_INVALIDGAME_ROUNDNUM_TOO_SMALL) {
-      this.result = "Void";
-    } else if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner) && margin === SpecialResult.SR_TIMEOUT) {
-      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+T`;
-    } else if ([StoneColor.BLACK, StoneColor.WHITE].includes(winner)) {
-      const points = m.has(Game.SetGameEndNotify.points) && margin >= 0 ? margin / 50 : null;
-      this.result = `${winner === StoneColor.BLACK ? "B" : "W"}+${points ?? ""}`;
-    }
+    const ending = reason === ENGameEndReason.EER_OPP_RESIGN ? "R" : reason === ENGameEndReason.EER_INVALIDGAME_ROUNDNUM_TOO_SMALL ? "Void" : margin === SpecialResult.SR_TIMEOUT ? "T" : "";
+    this.result = game.resultLabel(winner, margin !== null && margin >= 0 ? margin / 50 : null, ending);
     this.status = `Result: ${this.result || "Unknown"}`;
   }
   clearEstimate() {

@@ -1188,9 +1188,15 @@ try {
     assert.equal(await js("document.getElementById('matchmaking').hidden"), true);
     await wait("document.getElementById('connection-layer').hidden");
     assert.equal(await js("matchSession.board.moves.length"), 1);
+    await js("gameNotice(501,{1:0,3:[{1:42,6:1}],4:[{1:1,2:3,3:3,4:1}],6:5,7:23,10:202,12:31000,13:63,15:{1:2,3:3}})");
+    await wait("matchSession.phase==='finished' && document.getElementById('board-status').textContent==='Result: W+R'");
+    assert.equal(await js("document.getElementById('game-downloads').hidden"), false);
+    assert.equal(await page.locator('#game-review').isVisible(), true);
+    assert.match(await js("matchSession.board.sgf(matchSession.result)"), /RE\[W\+R\]/);
+    assert.equal(await js("document.getElementById('resign').disabled"), true);
     await js("matchSession.close()");
   }
-  console.log('Browser transitions passed: login, search to game, quit/cancel, finished quit, disconnect, active-game restoration in either order');
+  console.log('Browser transitions passed: login, search to game, quit/cancel, finished quit, disconnect, active and ended game restoration in either order');
   await js("window.CheckSession.prototype.login=window.originalLogin;window.matchSession.close()");
   console.log('Browser matchmaking checks passed: advertised controls, selection, search lock, responsive modal');
   await call('Emulation.setDeviceMetricsOverride', {width:1280,height:900,deviceScaleFactor:1,mobile:false});

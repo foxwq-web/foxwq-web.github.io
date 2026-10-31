@@ -44,6 +44,7 @@ function setup() {
     1: 0, 3: [{ 1: 42, 3: "Test", 6: 1, 7: 300, 8: 3, 9: 60 }],
     4: [{ 1: 1, 2: 3, 3: 3, 4: 1 }, { 1: 1, 2: 15, 3: 15, 4: 2 }],
     6: finished ? 5 : 3, 7: 23, 10: 202, 12: game.GAME_SVR, 13: 63,
+    ...(finished ? { 15: { 1: 2, 3: 3 } } : {}),
   });
   const start = async () => {
     await authenticate(); fields(); reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 1 });
@@ -128,6 +129,9 @@ test("silent network stalls reconnect, and a game ending during the outage can b
     restore(true);
     assert.equal(s.snapshot().phase, "finished");
     assert.equal(s.snapshot().game_over, true);
+    assert.equal(s.snapshot().result, "W+R");
+    assert.equal(s.snapshot().status, "Result: W+R");
+    assert.match(s.board.sgf(s.result), /RE\[W\+R\]/);
   } finally { s.close(); }
 });
 
