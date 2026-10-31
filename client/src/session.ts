@@ -12,6 +12,7 @@ import { PlayerInfoStore, SVR_TYPE_USER_INFO_PANEL_SVR } from "./player-info";
 import { Buffer } from "buffer";
 import SparkMD5 from "spark-md5";
 import * as game from "./game.ts";
+import { validateGameRoom } from "./room-validation.ts";
 import { clockReading } from "./clock.ts";
 import { Board } from "./board.ts";
 import { placementSound } from "./sound.ts";
@@ -109,6 +110,8 @@ export class Session {
   fieldPlayers: Record<string, number>;
   fieldPlayersRequestedAt: number;
   roomKey: Record<number, number>;
+  private expectedRoomKey: Record<number, number> | null = null;
+  private previousRoomKey: Record<number, number> | null = null;
   color: number;
   synSeqId: number;
   boardRoomKey = "";
@@ -287,6 +290,9 @@ export class Session {
     });
   }
   private resetGame() {
+    if (this.roomKey[Game.RoomKey.server_type] === game.GAME_SVR && [Game.RoomKey.server_type, Game.RoomKey.server_id, Game.RoomKey.room_id, Game.RoomKey.create_time].every(field => this.roomKey[field] !== undefined))
+      this.previousRoomKey = { ...this.roomKey };
+    this.expectedRoomKey = null;
     this.gameEnvRecovery = null;
     this.reconnectBoardModel = null;
     this.rollbackMove();
@@ -319,6 +325,7 @@ export class Session {
       this.reconnectAttempt = 0;
       this.loginPacket = null;
       this.resetGame();
+      this.previousRoomKey = null;
       this.playerInfo.reset();
       this.generation++;
       clearTimeout(this.bootstrapTimer);
@@ -470,6 +477,7 @@ export class Session {
     this.fieldsLoaded = false;
     this.gameLockChecked = false;
     this.roomKey = {};
+    this.expectedRoomKey = null;
     this.startedRoom = null;
     this.timeout(this.generation, "Reconnection timed out");
     void this.connect(this.generation, this.loginPacket);
@@ -479,14 +487,14 @@ export class Session {
     if (generation !== this.generation) return;
     // KickOutNotify has optional fields. An unusable reason must not turn a
     // terminal server decision into a retryable protocol/connection failure.
-    const codeValue = message.one(1);
+    const codeValue = message.one(Fgw.KickOutNotify.op_code);
     const code = typeof codeValue === "number" || typeof codeValue === "bigint" ? signed(codeValue) : 0;
-    const reasonValue = message.one(8);
+    const reasonValue = message.one(Fgw.KickOutNotify.reason_phrase);
     let reason = Buffer.isBuffer(reasonValue) ? reasonValue.toString("utf8").trim() : "";
     reason ||= code === ErrorCode.EC_ACCOUNT_KICKOUT_BY_ANOTHER_LOGIN
       ? "Another client logged in"
       : `Fox ended this session${code ? ` (code ${code})` : ""}`;
-    const restriction = message.one(11);
+    const restriction = message.one(Fgw.KickOutNotify.forbid_login_time);
     if ((typeof restriction === "number" || typeof restriction === "bigint") && restriction > 0)
       reason += ". Fox has restricted login";
 
@@ -518,12 +526,13 @@ export class Session {
     const clock = this.clocks[this.board.turn];
     if (clock && this.phase === "playing" && !this.counting &&
         !(this.board.turn !== this.color && this.opponentDisconnectDeadline != null)) {
-      const reading = clockReading(clock, now() - clock.at, 60, this.board.turn === this.color);
+      const reading = clockReading(clock, now() - clock.at, DuMiaoConst.DU_MIAO_60_SEC, this.board.turn === this.color);
       Object.assign(clock, { main: reading.main, periods: reading.periods, byoyomi: reading.seconds, at: now() });
     }
-    this.phase = [1, 2].includes(this.color) && Object.keys(this.roomKey).length ? "kicked" : "error";
+    this.phase = [StoneColor.BLACK, StoneColor.WHITE].includes(this.color) && Object.keys(this.roomKey).length ? "kicked" : "error";
     this.status = reason;
     this.gameEnvRecovery = null;
+    this.expectedRoomKey = null;
     this.reconnectBoard = null;
     this.reconnectBoardModel = null;
     this.reconnectAttempt = 0;
@@ -626,10 +635,15 @@ export class Session {
       game.encodeFgwMessage(this.uid, serverType, messageId, fields, serverId),
     );
   }
-  private matchesGameRoom(header: Message, roomKey?: Message) {
-    if (header.has(8) && header.number(8) !== this.roomKey[2]) return false;
-    return !roomKey || [1, 2, 3, 4].every(field =>
-      !roomKey.has(field) || roomKey.number(field) === this.roomKey[field]);
+  private expectedGameRoom() {
+    if (this.gameEnvRecovery) return this.gameEnvRecovery.roomKey;
+    if (this.reconnectBoard)
+      return Object.fromEntries(this.reconnectBoard.gameId.split(":").map((value, index) => [index + 1, Number(value)]));
+    return this.expectedRoomKey ?? this.roomKey;
+  }
+  private isPreviousRoom(roomKey: Record<number, number>) {
+    return this.previousRoomKey !== null && [Game.RoomKey.server_type, Game.RoomKey.server_id, Game.RoomKey.room_id, Game.RoomKey.create_time].every(field =>
+      roomKey[field] === this.previousRoomKey![field]);
   }
   private requestGameEnvRecovery() {
     if (this.gameEnvRecovery || this.phase !== "playing" || this.gameOver ||
@@ -652,7 +666,7 @@ export class Session {
     recovery.attempts++;
     recovery.requestedAt = this.pendingSince = now();
     this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST,
-      { 1: recovery.roomKey }, recovery.roomKey[2]);
+      { [Game.FetchGameEnvRequest.room_key]: recovery.roomKey }, recovery.roomKey[Game.RoomKey.server_id]);
   }
   heartbeat(generation: number) {
     try {
@@ -748,16 +762,23 @@ export class Session {
         this.fieldPlayersRequestedAt = Math.floor(performance.now());
       } else if (messageId === RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST) {
         if (this.phase === "finished" && this.gameOver) return;
-        this.gameLockChecked = true;
         if (m.number(Room.QueryGameLockResponse.result) === 0 && m.number(Room.QueryGameLockResponse.server_type) === game.GAME_SVR) {
+          const room = validateGameRoom(messageId, m, undefined, this.expectedGameRoom());
+          if (!room) return;
+          this.expectedRoomKey = room.roomKey;
+          this.gameLockChecked = true;
           this.phase = "resuming";
           this.status = "Reconnecting...";
           this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, m.number(Room.QueryGameLockResponse.server_id));
         } else if (this.reconnectBoard) {
+          this.gameLockChecked = true;
           // The lock can disappear when the game ends during the outage.
           this.phase = "resuming";
           this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, Number(this.reconnectBoard.gameId.split(":")[1]));
-        } else this.discoveryReady();
+        } else {
+          this.gameLockChecked = true;
+          this.discoveryReady();
+        }
       } else if (messageId === RoomMessageID.RM_FETCH_ALL_FIELD_INFO_REQUEST) {
         if (signed(m.one(Room.FetchAllFieldInfoResponse.result))) {
           return;
@@ -809,18 +830,16 @@ export class Session {
         this.status = "Matchmaking ended";
       } else if (messageId === RoomMessageID.RM_ENTER_ROOM_NOTIFY) {
         if (!["matching", "joining", "playing"].includes(this.phase)) return;
+        if (this.phase === "matching" && signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
+        const room = validateGameRoom(messageId, m, undefined, this.expectedGameRoom());
+        if (!room || (this.phase === "matching" && this.isPreviousRoom(room.roomKey))) return;
         if (signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
-        this.roomKey = {
-          [Game.RoomKey.server_type]: m.number(Room.EnterRoomNotify.server_type),
-          [Game.RoomKey.server_id]: m.number(Room.EnterRoomNotify.server_id),
-          [Game.RoomKey.room_id]: m.number(Room.EnterRoomNotify.room_id),
-          [Game.RoomKey.create_time]: m.number(Room.EnterRoomNotify.room_create_time),
-        };
+        this.roomKey = room.roomKey;
         if (this.phase !== "playing") {
           this.phase = "joining";
           this.status = "Joining the game...";
         }
-        this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_READY_REQUEST, {}, m.number(Room.EnterRoomNotify.server_id));
+        this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_READY_REQUEST, {}, this.roomKey[Game.RoomKey.server_id]);
       }
     } finally {
       this.changed();
@@ -864,6 +883,8 @@ export class Session {
         messageId !== GoGameMessageID.GC_START_SET_PIECE_NOTIFY
       )
         return;
+      const room = validateGameRoom(messageId, m, header, this.expectedGameRoom());
+      if (!room || (this.phase === "matching" && this.isPreviousRoom(room.roomKey))) return;
       // Partial events cannot repair a divergent board or confirm an uncertain
       // move. Only the requested snapshot (or a terminal result) may unlock it.
       if (this.gameEnvRecovery && ![
@@ -873,8 +894,7 @@ export class Session {
         GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
       ].includes(messageId)) return;
       if (messageId === GoGameMessageID.GC_HEART_BEAT_REQUEST) {
-        if (this.matchesGameRoom(header, m.has(4) ? m.sub(4) : undefined) &&
-            m.has(3) && m.sub(3).has(1) && m.sub(3).number(1) !== this.synSeqId)
+        if (m.has(Game.HeartBeatResponse.check_syn) && m.sub(Game.HeartBeatResponse.check_syn).has(Game.CheckSyn.syn_seq_id) && m.sub(Game.HeartBeatResponse.check_syn).number(Game.CheckSyn.syn_seq_id) !== this.synSeqId)
           this.requestGameEnvRecovery();
         return;
       }
@@ -885,24 +905,14 @@ export class Session {
         GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST,
         GoGameMessageID.GC_GIVE_UP_REQUEST,
         GoGameMessageID.GS_OP_ERROR,
-      ].includes(messageId) && signed(m.one(1)) === ErrorCode.NEC_CHECK_SYC_ERROR) {
-        const generic = messageId === GoGameMessageID.GS_OP_ERROR;
-        const roomField = messageId === GoGameMessageID.GC_SET_PIECE_REQUEST ? 3 : 2;
-        if (!this.matchesGameRoom(header, !generic && m.has(roomField) ? m.sub(roomField) : undefined)) return;
-        if (generic && ((m.has(3) && m.number(3) !== this.roomKey[1]) ||
-                        (m.has(4) && m.number(4) !== this.roomKey[2]))) return;
+      ].includes(messageId) && signed(m.one(Game.GameRoomOpErrorCode.error_code)) === ErrorCode.NEC_CHECK_SYC_ERROR) {
         this.requestGameEnvRecovery();
         return;
       }
       if (this.gameEnvRecovery) {
-        if (!this.matchesGameRoom(header)) return;
-        if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST && !signed(m.one(1))) {
-          // The existing PC snapshot decoder consumes these identity fields.
-          // A snapshot for an old/reused room must not release input.
-          const fields = [12, 13, 7, 10];
-          if (!fields.every((field, index) => m.has(field) &&
-              m.number(field) === this.gameEnvRecovery!.roomKey[index + 1])) return;
-          if (!m.has(5)) throw Error("Game snapshot has no synchronization state");
+        if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST && !signed(m.one(Game.FetchGameEnvResponse.result))) {
+          if (!room.completeBodyIdentity) return;
+          if (!m.has(Game.FetchGameEnvResponse.check_syn)) throw Error("Game snapshot has no synchronization state");
         }
       }
       const confirmsMove = messageId === GoGameMessageID.GC_SET_PIECE_NOTIFY && this.pendingMove &&
@@ -927,16 +937,12 @@ export class Session {
       } else if (messageId === GoGameMessageID.GC_START_SET_PIECE_NOTIFY) {
         if (this.reconnectBoard) {
           this.phase = "resuming";
-          this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, header.number(Common.FGWHead.server_id));
+          this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, room.roomKey[Game.RoomKey.server_id]);
           return;
         }
         const resuming = this.phase === "resuming";
-        this.roomKey = {
-          [Game.RoomKey.server_type]: game.GAME_SVR,
-          [Game.RoomKey.server_id]: header.number(Common.FGWHead.server_id),
-          [Game.RoomKey.room_id]: m.number(Game.StartSetPieceNotify.room_id),
-          [Game.RoomKey.create_time]: m.number(Game.StartSetPieceNotify.room_create_time),
-        };
+        this.roomKey = room.roomKey;
+        this.expectedRoomKey = null;
         this.players = {};
         this.opponentDisconnectDeadline = null;
         this.board = new Board();
@@ -1128,12 +1134,8 @@ export class Session {
         const resuming = this.phase !== "joining";
         if (signed(m.one(Game.FetchGameEnvResponse.result))) throw Error("Game synchronization failed");
         const previousBoard = this.pendingMove?.board ?? this.board;
-        this.roomKey = {
-          [Game.RoomKey.server_type]: m.number(Game.FetchGameEnvResponse.server_type),
-          [Game.RoomKey.server_id]: m.number(Game.FetchGameEnvResponse.server_id),
-          [Game.RoomKey.room_id]: m.number(Game.FetchGameEnvResponse.room_id),
-          [Game.RoomKey.create_time]: m.number(Game.FetchGameEnvResponse.room_create_time),
-        };
+        this.roomKey = room.roomKey;
+        this.expectedRoomKey = null;
         const roomKey = Object.values(this.roomKey).join(":");
         const sameGame = roomKey === this.boardRoomKey;
         if (!sameGame || m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END) this.opponentDisconnectDeadline = null;

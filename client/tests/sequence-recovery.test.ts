@@ -120,8 +120,8 @@ test("foreign sequence errors and ordinary action rejection retain their separat
   try {
     reply(ID.GC_SET_PIECE_REQUEST, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 3: { ...roomKey, 4: 100 } });
     reply(ID.GC_SKIP_SET_PIECE_REQUEST, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 2: { ...roomKey, 3: 99 } });
-    reply(ID.GS_OP_ERROR, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 3: GAME_SVR, 4: 64 });
-    reply(ID.GS_OP_ERROR, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 3: 1, 4: 63 });
+    reply(ID.GS_OP_ERROR, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 7: GAME_SVR, 8: 64 });
+    reply(ID.GS_OP_ERROR, { 1: ErrorCode.NEC_CHECK_SYC_ERROR, 7: 1, 8: 63 });
     reply(ID.GS_OP_ERROR, { 1: ErrorCode.NEC_CHECK_SYC_ERROR }, 64);
     assert.equal(requests().length, 0);
     s.play(3, 3);

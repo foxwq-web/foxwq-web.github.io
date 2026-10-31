@@ -65,7 +65,13 @@ test("game completion, new games and closing clear opponent disconnect state", (
   for (const op of [402, 403, 405, 107, 501, 0]) {
     const { session, notice } = setup();
     try {
-      notice(GoGameMessageID.GC_OPPONENT_OFFLINE_NOTIFY, offline);
+      notice(503, offline);
+      if (op === 107 || op === 501) {
+        session.phase = "matching";
+        session.roomKey = {};
+        session.fgwConnection = { send() {}, close() {} };
+        session.gameSvrMgrProcess(100140, decode(encode({ 1: 0, 2: game.GAME_SVR, 3: 61, 4: 358, 7: 1792463396 })));
+      }
       if (op === 0) session.close();
       else if (op === GoGameMessageID.GC_START_SET_PIECE_NOTIFY) notice(GoGameMessageID.GC_START_SET_PIECE_NOTIFY, { 6: 358, 7: 1792463396 });
       else if (op === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST) notice(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, { 1: 0, 12: game.GAME_SVR, 13: 61, 7: 358, 10: 1792463396 });

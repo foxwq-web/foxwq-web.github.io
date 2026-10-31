@@ -186,6 +186,9 @@ test('final results decode Fox hundredths of zi to points for either winner', ()
 test('recorded timeout result packets show White winning on time in the UI and SGF', () => {
   const { s } = countingSession();
   try {
+    const [first] = extractNetMsgFromBytes(Buffer.from(timeoutResult.packets[0].frame, 'base64'))!;
+    const room = game.decodeFgwMessage(first.rawProto)[1].sub(13);
+    s.roomKey = Object.fromEntries([1, 2, 3, 4].map(field => [field, room.number(field)]));
     assert.equal(timeoutResult.packets.length, 2);
     for (const packet of timeoutResult.packets) {
       const bytes = Buffer.from(packet.frame, 'base64');

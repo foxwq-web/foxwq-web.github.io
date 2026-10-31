@@ -73,8 +73,9 @@ test("synchronization preserves known timing only for the same game's matching h
     assert.match(s.board.sgf(), /;B\[dd\]BL\[1190\];W\[pp\]WL\[1180\];B\[\]\)/);
     notify(s, 501, environment([black, { ...white, 2: 14 }]));
     assert.match(s.board.sgf(), /;B\[dd\]BL\[1190\];W\[op\]\)/);
+    const beforeForeignSnapshot = s.board.sgf();
     notify(s, 501, environment([black, white], 203));
-    assert.doesNotMatch(s.board.sgf(), /(?:BL|WL|TM)\[/);
+    assert.equal(s.board.sgf(), beforeForeignSnapshot, "a different room cannot replace the board or its timing");
   } finally { s.close(); }
 });
 
