@@ -154,6 +154,12 @@ export class Session {
   private reconnectStatus = "";
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private lastFgwResponse = 0;
+  private gameEnvRecovery: {
+    roomKey: Record<number, number>;
+    state: SessionState;
+    requestedAt: number;
+    attempts: number;
+  } | null = null;
   constructor({
     host = "43.132.13.39",
     port = 10000,
@@ -279,6 +285,7 @@ export class Session {
     });
   }
   private resetGame() {
+    this.gameEnvRecovery = null;
     this.rollbackMove();
     this.clearEstimate();
     this.playerInfo.close();
@@ -400,6 +407,8 @@ export class Session {
   failed(generation: number, reason: string) {
     try {
       if (generation !== this.generation) return;
+      const recovery = this.gameEnvRecovery;
+      this.gameEnvRecovery = null;
       if (this.phase === "finished" && this.gameOver) {
         // Review is local. Losing the optional connection for the next game
         // must not reset the board, variations, or an in-progress estimate.
@@ -414,9 +423,9 @@ export class Session {
         return;
       }
       if (this.loginPacket &&
-          (this.reconnectBoard || (this.phase === "playing" && [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)))) {
+          (this.reconnectBoard || recovery || (this.phase === "playing" && [StoneColor.BLACK, StoneColor.WHITE].includes(this.color)))) {
         const first = !this.reconnectBoard;
-        this.reconnectBoard ??= this.snapshot();
+        this.reconnectBoard ??= recovery?.state ?? this.snapshot();
         this.clearEstimate();
         this.rollbackMove();
         this.playerInfo.reset();
@@ -548,6 +557,33 @@ export class Session {
       game.encodeFgwMessage(this.uid, serverType, messageId, fields, serverId),
     );
   }
+  private matchesGameRoom(header: Message, roomKey?: Message) {
+    if (header.has(8) && header.number(8) !== this.roomKey[2]) return false;
+    return !roomKey || [1, 2, 3, 4].every(field =>
+      !roomKey.has(field) || roomKey.number(field) === this.roomKey[field]);
+  }
+  private requestGameEnvRecovery() {
+    if (this.gameEnvRecovery || this.phase !== "playing" || this.gameOver ||
+        ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color) || !Object.keys(this.roomKey).length) return;
+    this.gameEnvRecovery = {
+      roomKey: { ...this.roomKey }, state: this.snapshot(), requestedAt: now(), attempts: 0,
+    };
+    this.clearEstimate();
+    this.pending = true;
+    this.pendingMessageId = GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST;
+    this.pendingConfirmation = null;
+    this.countingAnswer = null;
+    this.counting = false;
+    this.status = "Synchronizing game...";
+    this.fetchGameEnvForRecovery();
+  }
+  private fetchGameEnvForRecovery() {
+    const recovery = this.gameEnvRecovery!;
+    recovery.attempts++;
+    recovery.requestedAt = this.pendingSince = now();
+    this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST,
+      { 1: recovery.roomKey }, recovery.roomKey[2]);
+  }
   heartbeat(generation: number) {
     try {
       if (generation !== this.generation || !this.fgwConnection) return;
@@ -561,9 +597,16 @@ export class Session {
         this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_HEART_BEAT_REQUEST, { [Room.HeartBeatRequest.client_time_us]: ticks });
         this.refreshFieldPlayers(ticks);
         if (Object.keys(this.roomKey).length) {
-          if (this.pending && now() - this.pendingSince > 8) {
-            this.sendFgwChannelMsg(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {}, this.roomKey[Game.RoomKey.server_id]);
-            this.pendingSince = now();
+          if (this.gameEnvRecovery) {
+            if (now() - this.gameEnvRecovery.requestedAt > 8) {
+              if (this.gameEnvRecovery.attempts >= 3) {
+                this.failed(generation, "Game synchronization timed out");
+                return;
+              }
+              this.fetchGameEnvForRecovery();
+            }
+          } else if (this.pending && now() - this.pendingSince > 8) {
+            this.requestGameEnvRecovery();
           }
           this.sendFgwChannelMsg(
             game.GAME_SVR,
@@ -754,6 +797,47 @@ export class Session {
         messageId !== GoGameMessageID.GC_START_SET_PIECE_NOTIFY
       )
         return;
+      // Partial events cannot repair a divergent board or confirm an uncertain
+      // move. Only the requested snapshot (or a terminal result) may unlock it.
+      if (this.gameEnvRecovery && ![
+        GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST,
+        GoGameMessageID.GC_SET_GAME_END_NOTIFY,
+        GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY,
+        GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
+      ].includes(messageId)) return;
+      if (messageId === GoGameMessageID.GC_HEART_BEAT_REQUEST) {
+        if (this.matchesGameRoom(header, m.has(4) ? m.sub(4) : undefined) &&
+            m.has(3) && m.sub(3).has(1) && m.sub(3).number(1) !== this.synSeqId)
+          this.requestGameEnvRecovery();
+        return;
+      }
+      if ([
+        GoGameMessageID.GC_SET_PIECE_REQUEST,
+        GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST,
+        GoGameMessageID.GC_CALCULATE_REQUEST,
+        GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST,
+        GoGameMessageID.GC_GIVE_UP_REQUEST,
+        GoGameMessageID.GS_OP_ERROR,
+      ].includes(messageId) && signed(m.one(1)) === ErrorCode.NEC_CHECK_SYC_ERROR) {
+        const generic = messageId === GoGameMessageID.GS_OP_ERROR;
+        const roomField = messageId === GoGameMessageID.GC_SET_PIECE_REQUEST ? 3 : 2;
+        if (!this.matchesGameRoom(header, !generic && m.has(roomField) ? m.sub(roomField) : undefined)) return;
+        if (generic && ((m.has(3) && m.number(3) !== this.roomKey[1]) ||
+                        (m.has(4) && m.number(4) !== this.roomKey[2]))) return;
+        this.requestGameEnvRecovery();
+        return;
+      }
+      if (this.gameEnvRecovery) {
+        if (!this.matchesGameRoom(header)) return;
+        if (messageId === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST && !signed(m.one(1))) {
+          // The existing PC snapshot decoder consumes these identity fields.
+          // A snapshot for an old/reused room must not release input.
+          const fields = [12, 13, 7, 10];
+          if (!fields.every((field, index) => m.has(field) &&
+              m.number(field) === this.gameEnvRecovery!.roomKey[index + 1])) return;
+          if (!m.has(5)) throw Error("Game snapshot has no synchronization state");
+        }
+      }
       const confirmsMove = messageId === GoGameMessageID.GC_SET_PIECE_NOTIFY && this.pendingMove &&
         this.pendingMove.color === m.number(Game.SetPieceNotify.color) &&
         this.pendingMove.x === m.number(Game.SetPieceNotify.x) && this.pendingMove.y === m.number(Game.SetPieceNotify.y);
@@ -960,6 +1044,7 @@ export class Session {
         GoGameMessageID.LEGACY_GC_SET_GAME_END_NOTIFY,
       ].includes(messageId)) {
         if (!this.gameOver) {
+          this.gameEnvRecovery = null;
           this.playerInfo.invalidate();
           this.preloadPlayerInfo();
         }
@@ -1031,8 +1116,10 @@ export class Session {
           this.countingAnswer = null;
         }
         this.gameOver = m.number(Game.FetchGameEnvResponse.game_state) === GameStatus.GS_END;
-        if (this.reconnectBoard && ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color))
+        if ((this.reconnectBoard || this.gameEnvRecovery) && ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color))
           throw Error("Game synchronization did not restore the player");
+        if (this.gameEnvRecovery) this.pendingMessageId = null;
+        this.gameEnvRecovery = null;
         this.reconnectBoard = null;
         this.reconnectAttempt = 0;
         clearTimeout(this.bootstrapTimer);

@@ -160,3 +160,45 @@ test("rejected synchronization retries and partial game events cannot unlock rec
     assert.ok(blocked(s.snapshot()));
   } finally { s.close(); }
 });
+
+for (const failure of ["socket loss", "snapshot rejection", "snapshot timeout", "invalid snapshot move", "missing player"]) {
+  test(`sequence recovery hands ${failure} to reconnect and accepts its restored snapshot`, async context => {
+    context.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const { s, sockets, start, authenticate, fields, restore, reply } = setup();
+    try {
+      await start();
+      const oldGateway = sockets[1];
+      reply(game.GAME_SVR, GoGameMessageID.GC_HEART_BEAT_REQUEST, { 3: { 1: s.synSeqId + 1 } });
+      assert.ok(blocked(s.snapshot()));
+      if (failure === "socket loss") oldGateway.fail("Proxy connection closed");
+      else if (failure === "snapshot rejection") reply(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, { 1: 123 });
+      else if (failure === "invalid snapshot move" || failure === "missing player") {
+        reply(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, {
+          1: 0, 3: [{ 1: failure === "missing player" ? 43 : 42, 6: 1 }],
+          4: [{ 1: 1, 2: failure === "invalid snapshot move" ? 99 : 3, 3: 3, 4: 1 }],
+          5: { 1: 1 }, 6: 3, 7: 23, 10: 202, 12: game.GAME_SVR, 13: 63,
+        });
+      }
+      else {
+        for (let step = 1; step <= 6; step++) {
+          context.mock.timers.tick(5000);
+          if (step < 6) reply(game.SVR_TYPE_FGW, ClientMessageID.MID_HEART_BEAT_REQUEST);
+        }
+        const fetches = oldGateway.sent.filter(packet => packet.command === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET)
+          .map(packet => game.decodeFgwMessage(packet.payload))
+          .filter(([header]) => header.number(1) === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST);
+        assert.equal(fetches.length, 3);
+      }
+      assert.equal(s.snapshot().phase, "reconnecting");
+      assert.equal(s.snapshot().moves, 1, "a malformed replacement cannot overwrite the preserved game");
+      assert.ok(oldGateway.closed);
+      await authenticate(); fields();
+      reply(game.GAME_SVR_MGR, 100115, { 1: 0, 2: game.GAME_SVR, 3: 63 });
+      restore();
+      assert.equal(s.phase, "playing");
+      assert.equal(s.pending, false);
+      assert.equal(s.board.moves.length, 2);
+      assert.doesNotThrow(() => s.play(4, 4));
+    } finally { s.close(); }
+  });
+}
