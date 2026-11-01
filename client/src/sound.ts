@@ -186,8 +186,13 @@ export class FoxSounds {
       };
     }
   }
-  stopCountdown() {
-    if ((this.pendingVoiceName ?? this.voiceName) !== "start-play") this.stopVoice();
+  stopCountdown(finishCurrent = false) {
+    if ((this.pendingVoiceName ?? this.voiceName) === "start-play") return;
+    if (finishCurrent) {
+      // A move cancels counts waiting to start, but lets the spoken clip finish.
+      this.voiceRevision++;
+      this.pendingVoiceName = null;
+    } else this.stopVoice();
   }
   stopVoice() {
     this.voiceRevision++;

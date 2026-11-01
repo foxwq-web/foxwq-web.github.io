@@ -632,6 +632,8 @@ test('controller plays both players’ countdowns without cancelling them and st
         controller.state.session[flag] = false;
       }
       assert.equal(stop.mock.callCount(), 3);
+      assert.deepEqual(stop.mock.calls.map(call => call.arguments), [[true], [], []],
+        'pending moves let the current clip finish; counting and confirmation interrupt it');
       assert.deepEqual(voices, ['count-9']);
     } finally { controller.dispose(); }
   }

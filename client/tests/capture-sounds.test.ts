@@ -124,6 +124,51 @@ function suspendedSounds() {
 
 const flushAudio = () => new Promise<void>(resolve => setImmediate(resolve));
 
+test('a pending move lets the current countdown clip finish alongside the stone', () => {
+  for (const name of ['count-9', 'periods-2', 'byoyomi-start']) {
+    const s = suspendedSounds(), stopped: string[] = [];
+    s.context.state = 'running';
+    s.audio.buffers.set(name, name as unknown as AudioBuffer);
+    const createSource = s.context.createBufferSource.bind(s.context);
+    s.context.createBufferSource = () => {
+      const source = createSource();
+      source.stop = () => { stopped.push(String(source.buffer)); };
+      return source;
+    };
+    s.audio.play(name);
+    const voice = s.audio.voice;
+    s.audio.stopCountdown(true);
+    s.audio.play('stone');
+    s.audio.stopCountdown(true);
+    assert.equal(s.audio.voice, voice);
+    assert.deepEqual(stopped, []);
+    assert.deepEqual(s.started, [name, 'stone']);
+    voice!.onended!(new Event('ended'));
+    assert.equal(s.audio.voice, null);
+  }
+});
+
+test('a pending move cancels countdown clips still waiting for resume or decoding', async () => {
+  for (const waiting of ['resume', 'decoding']) {
+    const s = suspendedSounds();
+    let decoded!: () => void;
+    if (waiting === 'decoding') {
+      s.context.state = 'running';
+      s.audio.buffers.delete('count-9');
+      s.audio.loading = new Promise<void[]>(resolve => { decoded = () => {
+        s.audio.buffers.set('count-9', 'count-9' as unknown as AudioBuffer);
+        resolve([]);
+      }; });
+    }
+    s.audio.play('count-9');
+    s.audio.stopCountdown(true);
+    if (waiting === 'decoding') decoded();
+    else s.finish();
+    await flushAudio();
+    assert.deepEqual(s.started, [], waiting);
+  }
+});
+
 test('audio hardware is opened only for a game and closed with all pending playback on exit', async t => {
   const contexts: FakeContext[] = [], started: FakeContext[] = [];
   class FakeContext {
