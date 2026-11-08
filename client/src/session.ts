@@ -722,7 +722,9 @@ export class Session {
         serverType = fgwHead.number(Common.FGWHead.server_type),
         messageId = fgwHead.number(Common.FGWHead.message_id);
       if (serverType === SVR_TYPE_USER_INFO_PANEL_SVR && messageId === CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO) {
-        this.playerInfo.receive(m);
+        const profile = this.playerInfo.receive(m);
+        if (this.account && profile?.uid === this.uid && profile.country !== undefined)
+          this.account = { ...this.account, country: profile.country };
       } else if (serverType === game.SVR_TYPE_FGW) {
         if (messageId === ClientMessageID.MID_LOGIN_REQUEST) {
           if (signed(m.one(Fgw.LoginResponse.op_code))) {
@@ -1254,6 +1256,8 @@ export class Session {
     const previous =
       this.players[color]?.id === user.number(Game.GameUserInfo.uid) ? this.players[color] : null;
     this.players[color] = {
+      ...(user.has(Game.GameUserInfo.country) ? { country: user.number(Game.GameUserInfo.country) }
+        : previous?.country !== undefined ? { country: previous.country } : {}),
       id: user.number(Game.GameUserInfo.uid),
       name: user.text(Game.GameUserInfo.nickname) || user.text(Game.GameUserInfo.platform_picture) || previous?.name || "",
       rank: user.has(Game.GameUserInfo.grade)
@@ -1262,8 +1266,10 @@ export class Session {
     };
     if (user.number(Game.GameUserInfo.uid) === this.uid) {
       this.account = {
+        ...this.account,
         name: this.players[color].name || this.account?.name || "",
         rank: this.players[color].rank || this.account?.rank || "",
+        ...(this.players[color].country !== undefined ? { country: this.players[color].country } : {}),
       };
     }
     this.preloadPlayerInfo();

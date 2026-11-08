@@ -681,7 +681,7 @@ export function App({ controller: c }: { controller: Controller }) {
           </p>
           <p id="matchmaking-player" className="login-intro login-copy" hidden={loginStep}>
             Playing as <PlayerName controller={c} uid={loginStep ? undefined : c.session.uid}
-              name={s.account?.name || state.form.username} rank={s.account?.rank} />.
+              name={s.account?.name || state.form.username} rank={s.account?.rank} />
           </p>
           {/* Retire the credential form after login, before game downloads. */}
           {loginStep && <form

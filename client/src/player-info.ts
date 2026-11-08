@@ -8,6 +8,7 @@ import { decode, type Fields, type Message } from './wire';
 
 export { SVR_TYPE_USER_INFO_PANEL_SVR } from "./protocol.ts";
 export interface PlayerInfo extends PlayerHistory {
+  country?: number;
   anchor?: string;
   summaryLoading: boolean;
   summaryError: string;
@@ -30,6 +31,7 @@ export function applyPlayerSummary(info: PlayerInfo, m: Message) {
   if (m.number(Panel.FetchPanelUserInfoResponse.dst_uid) !== info.uid) throw Error('Fox returned a different player.');
   const account = m.sub(Panel.FetchPanelUserInfoResponse.account_info), progress = m.sub(Panel.FetchPanelUserInfoResponse.updown_info), remaining = progress.sub(Panel.UpDownInfo.up_down_condition);
   info.name = account.text(Panel.AccountInfo.englishname) || account.text(Panel.AccountInfo.username) || info.name;
+  if (account.has(Panel.AccountInfo.country)) info.country = account.number(Panel.AccountInfo.country);
   info.rank = m.has(Panel.FetchPanelUserInfoResponse.grade) ? rankLabel(m.number(Panel.FetchPanelUserInfoResponse.grade)) : info.rank;
   // Keep the current run intact: removing separators would join results across
   // a rank change. Fox's rank-progress record is ordered oldest first.
@@ -108,6 +110,7 @@ export class PlayerInfoStore {
     catch (error) { entry.info.summaryError = (error as Error).message; }
     entry.info.summaryLoading = false;
     if (this.current === entry.info) this.changed();
+    return entry.info;
   }
   invalidate() { for (const entry of this.entries.values()) entry.stale = true; }
   close() { this.current = null; this.changed(); }

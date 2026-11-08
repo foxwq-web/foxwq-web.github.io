@@ -9,6 +9,7 @@
   --muted-text: #aaa;
   --field-background: #2b2b2b;
   --ui-font-size: 14px;
+  --player-stone-gap: calc(8em / 14);
   --icon-size: 14px;
   --control-height: 32px;
   --action-gap: 8px;
@@ -115,7 +116,7 @@ html { scrollbar-gutter: stable; }
   column-gap: .35em;
 }
 .player-panel.to-play .clock-display { border-color: var(--app-text); }
-.player-title { grid-column: 1 / -1; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.player-title { grid-column: 1 / -1; gap: var(--player-stone-gap); min-width: 0; overflow-wrap: anywhere; }
 .player-title, .player-captures, .player-clock dt { min-height: var(--player-row-height); display: flex; align-items: center; }
 .player-captures { grid-column: 1; overflow-wrap: anywhere; }
 .player-captures, .player-clock { font-variant-numeric: tabular-nums; }
@@ -197,7 +198,7 @@ a:focus-visible { color: #fff; }
 .player-stone.black { background: #111; border: 1px solid #777; }
 .player-stone.white { background: #fff; border: 1px solid #c5cbbc; }
 @media (max-width: 800px) {
-  :root { --sidebar-gap: 8px; }
+  :root { --sidebar-gap: 8px; --player-stone-gap: calc(6em / 14); }
   html { scrollbar-gutter: auto; }
   body { margin: 0; }
   main { --page-padding: 0px; --board-gap: 0px; }
@@ -209,7 +210,6 @@ a:focus-visible { color: #fff; }
   aside { margin-inline: var(--sidebar-gap); }
   #sidebar-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-panel { --player-row-height: 20px; column-gap: 4px; padding: 8px; }
-  .player-title { gap: 6px; }
   .player-clock .remaining-time { bottom: 0; }
   .primary-actions-slot { grid-column: 1 / -1; min-height: 0; }
   #primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -296,3 +296,8 @@ button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-o
 #game-review { display: grid; gap: var(--action-gap); }
 #game-review button { display: flex; align-items: center; justify-content: center; }
 #game-review svg { display: block; }
+
+.player-name-with-rank { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: calc(var(--player-stone-gap) / 2); }
+.player-name-with-rank { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: calc(var(--player-stone-gap) / 2); }
+/* Keep the flag's 4:3 proportions as the font scales. */
+.player-flag { flex: none; width: calc(11em / 14 * 4 / 3); height: calc(11em / 14); object-fit: contain; }

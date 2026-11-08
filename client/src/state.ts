@@ -33,8 +33,8 @@ export interface SessionState {
   pending: boolean;
   pendingMove?: boolean;
   quitRequested: boolean;
-  account: { name: string; rank: string } | null;
-  players: Record<string, { id?: number; name: string; rank?: string }>;
+  account: { name: string; rank: string; country?: number } | null;
+  players: Record<string, { id?: number; name: string; rank?: string; country?: number }>;
   clocks: Record<string, Clock>;
   opponentDisconnectDeadline?: number | null;
   paused?: boolean;

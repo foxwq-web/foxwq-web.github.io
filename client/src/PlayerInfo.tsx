@@ -3,8 +3,21 @@ import { createPortal, memo, useEffect, useId, useLayoutEffect, useRef, useState
 import type { Controller } from './controller';
 import type { PlayerInfo } from './player-info';
 
-export function PlayerName({ controller: c, uid, name, rank = '', id }: {
-  controller: Controller; uid?: number; name: string; rank?: string; id?: string;
+import { playerFlags } from './player-flags';
+export function PlayerFlag({ country }: { country?: number }) {
+  const flag = country === undefined ? undefined : playerFlags[country];
+  return flag ? <img className="player-flag" src={flag.src} alt={flag.name} title={flag.name}
+    width={flag.width} height={flag.height} /> : null;
+}
+function PlayerRank({ rank }: { rank?: string }) {
+  return <span className="player-rank">{rank || '—'}</span>;
+}
+function RankedPlayerLabel({ name, rank, country, ai }: { name: string; rank?: string; country?: number; ai?: boolean }) {
+  return <span className="player-name-with-rank"><PlayerFlag country={country} />
+    <span>{name}</span>{' '}<PlayerRank rank={rank} /></span>;
+}
+export function PlayerName({ controller: c, uid, name, rank = '', country, id }: {
+  controller: Controller; uid?: number; name: string; rank?: string; country?: number; id?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -64,7 +77,7 @@ export function PlayerName({ controller: c, uid, name, rank = '', id }: {
     window.addEventListener('scroll', place, true);
     return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
   }, [visible, info]);
-  const label = `${name}${rank ? ` (${rank})` : ''}`;
+  const label = <RankedPlayerLabel name={name} rank={rank} />;
   if (!uid) return <span id={id}>{label}</span>;
   return <>
     <button ref={trigger} id={id} type="button" className="player-name" aria-expanded={!!visible}
@@ -121,7 +134,7 @@ const InfoContent = memo(function InfoContent({ info: h }: { info: PlayerInfo })
   if (h.promotion) progress.push(<span key="up">{h.promotion} wins to promote{h.doublePromotion ? ` (${h.doublePromotion} for 2 ranks)` : ''}</span>);
   if (h.demotion) progress.push(<span key="down">{h.demotion} losses to demote{h.doubleDemotion ? ` (${h.doubleDemotion} for 2 ranks)` : ''}</span>);
   return <>
-    <h2>{h.name}{h.rank ? ` (${h.rank})` : ''}</h2>
+    <h2><RankedPlayerLabel name={h.name} rank={h.rank} country={h.country} /></h2>
     <div className="player-info-summary" aria-live="polite">
       {h.summaryLoading && !h.recent && h.wins === undefined && <p role="status">Loading player details…</p>}
       {h.summaryError && <p className="is-error">{h.summaryError}</p>}
