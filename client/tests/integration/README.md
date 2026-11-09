@@ -5,7 +5,7 @@ WebSocket and heartbeat timer boundaries reproduce browser scheduling from the
 recording. The WebSocket implementation feeds recorded server frames into the
 normal client transport and captures every client send. Inferred actions use DOM inputs,
 buttons, and board clicks. The runner never reads or changes Controller,
-Session, board, or React state. No Fox server or running proxy is needed, and
+Session, board, or Preact state. No Fox server or running proxy is needed, and
 remote network requests cannot escape the harness.
 
 ## Add a recording

@@ -47,7 +47,7 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
     heartbeatClocks[i] = upcomingClock;
   }
   const settle = () => page.evaluate(async () => {
-    // Flush browser tasks and React effects without sleeps or advancing time.
+    // Flush browser tasks and scheduled renders without sleeps or advancing time.
     for (let i = 0; i < 2; i++) await new Promise<void>(resolve => {
       const channel = new MessageChannel();
       channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };

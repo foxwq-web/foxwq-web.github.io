@@ -1,6 +1,5 @@
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
-import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'preact/compat';
 import type { Controller } from './controller';
 import type { PlayerInfo } from './player-info';
 

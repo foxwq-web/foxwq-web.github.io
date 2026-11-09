@@ -13,8 +13,8 @@
     "build": "vite build --config client/vite.config.ts",
     "preview": "vite preview --config client/vite.config.ts --host 127.0.0.1",
     "test": "npm run test:unit && npm run test:browser && npm run test:integration:harness && npm run test:integration && npm run test:visual",
-    "test:unit": "node --import tsx --test client/tests/*.test.ts proxy/tests/*.test.ts score-estimator/tests/*.test.ts",
-    "test:client": "node --import tsx --test client/tests/*.test.ts",
+    "test:unit": "TSX_TSCONFIG_PATH=client/tsconfig.json node --import tsx --test client/tests/*.test.ts proxy/tests/*.test.ts score-estimator/tests/*.test.ts",
+    "test:client": "TSX_TSCONFIG_PATH=client/tsconfig.json node --import tsx --test client/tests/*.test.ts",
     "test:proxy": "node --import tsx --test proxy/tests/*.test.ts",
     "test:browser": "node --import tsx client/tests/browser-check.ts",
     "test:integration": "node --import tsx client/tests/integration/run.ts",
@@ -38,27 +38,25 @@
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
     "buffer": "^6.0.3",
     "fflate": "^0.8.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "preact": "^11.2.0",
     "spark-md5": "^3.0.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
     "@types/spark-md5": "^3.0.5",
     "esbuild": "^0.28.2",
-    "miniflare": "^5.20261006.1-alpha",
+    "miniflare": "^5.20261116.0-beta",
     "playwright": "1.64.0",
+    "preact-render-to-string": "^6.6.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^7.0.0",
-    "wrangler": "^4.148.0"
+    "wrangler": "^4.163.0"
   },
   "allowScripts": {
     "fsevents@2.3.3": true,
     "esbuild@0.28.2": true,
-    "workerd@1.20261006.1": true
+    "workerd@1.20261116.1": true
   },
   "packageManager": "npm@12.2.0"
 }

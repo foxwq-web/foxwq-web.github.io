@@ -1,4 +1,4 @@
-import { createRoot } from "react-dom/client";
+import { render } from "preact";
 import { App } from "./Application";
 import { Controller } from "./controller";
 const controller = new Controller();
@@ -8,8 +8,9 @@ window.downloadNetworkLog = () => controller.save("network-log");
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") void controller.session.networkLog.flush();
 });
-createRoot(document.getElementById("root")!).render(
+render(
   <App controller={controller} />,
+  document.getElementById("root")!,
 );
 if (import.meta.env.DEV) {
   const screen = new URLSearchParams(location.search).get("dev-screen");

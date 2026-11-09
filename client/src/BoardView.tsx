@@ -1,4 +1,4 @@
-import React, { memo, useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "react";
+import { Fragment, memo, useLayoutEffect, useRef, useState, type PointerEvent, type MouseEvent } from "preact/compat";
 import { Board } from "./board.ts";
 import { clockReading } from "./clock.ts";
 import { blocked, boardAvailable, reviewAvailable, type UIState } from "./state";
@@ -172,7 +172,8 @@ export function BoardView({
       id="board"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`${coordinates ? inset - coordinateGutter : inset} ${coordinates ? inset - coordinateGutter : inset} ${coordinates ? width + 2 * coordinateGutter : width} ${coordinates ? width + 2 * coordinateGutter : width}`}
-      tabIndex={-1}
+      // Lowercase: Preact writes the prop name verbatim, and SVG only honours tabindex.
+      tabindex={-1}
       onPointerMove={(e) => hover(playablePoint(state, pointAt(e)))}
       onPointerLeave={() => hover(null)}
       onPointerCancel={() => hover(null)}
@@ -246,12 +247,12 @@ export function BoardView({
             const nearEdge = inset - coordinateGutter / 2;
             const farEdge = extent - inset + coordinateGutter / 2;
             const letter = "ABCDEFGHJKLMNOPQRST"[i];
-            return <React.Fragment key={i}>
+            return <Fragment key={i}>
               <text x={p / coordinateScale} y={nearEdge / coordinateScale}>{letter}</text>
               <text x={p / coordinateScale} y={farEdge / coordinateScale}>{letter}</text>
               <text x={nearEdge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
               <text x={farEdge / coordinateScale} y={p / coordinateScale}>{size - i}</text>
-            </React.Fragment>;
+            </Fragment>;
           })}
         </g>
       )}

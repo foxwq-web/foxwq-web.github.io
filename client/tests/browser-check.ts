@@ -401,7 +401,8 @@ try {
       const result = {finished:'B+33.5', 'finished-resign':'W+R', 'finished-void':'Void', 'room-left':'W+R', 'replay-variation':'W+R'}[fixture.id];
       assert.equal(await js("document.getElementById('game-state-title').textContent"), `Game over: ${result}`, fixture.id);
       assert.equal(await js("[...document.querySelectorAll('#game-state-panel > p:not(#game-state-title)')].filter(p=>p.getClientRects().length).map(p=>p.textContent).join('|')"), '', fixture.id);
-      const outcome = await page.locator('#game-result').getAttribute('class');
+      // Preact omits the attribute for an empty class name where React rendered class="".
+      const outcome = await page.locator('#game-result').getAttribute('class') ?? '';
       assert.equal(outcome, result === 'Void' ? '' : result?.startsWith('B+') ? 'win' : 'loss', fixture.id);
       if (outcome) assert.equal(await page.locator('#game-result').evaluate(el => getComputedStyle(el).color), outcome === 'win' ? 'rgb(5, 172, 1)' : 'rgb(249, 53, 0)', fixture.id);
       assert.equal(await js("document.getElementById('counting-dialog').open"), false, fixture.id);
@@ -822,7 +823,9 @@ try {
   await pointerAt(4, 3);
   assert.equal(await js("document.querySelector('#board > g.stone-preview circle').getAttribute('fill')"), 'url(#white-stone)');
   assert.equal(await js("document.querySelector('#board > g.stone-preview ellipse').getAttribute('fill')"), 'url(#white-stone-glow)');
-  await js("document.getElementById('board').dispatchEvent(new PointerEvent('pointerout', {bubbles:true}))");
+  // Preact binds onPointerLeave to the native pointerleave event; React's
+  // synthetic leave event was driven by pointerout.
+  await js("document.getElementById('board').dispatchEvent(new PointerEvent('pointerleave', {bubbles:true}))");
   assert.equal(await previewCount(), 0);
 
   await js("document.getElementById('pass').click()");

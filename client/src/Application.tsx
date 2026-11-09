@@ -11,7 +11,7 @@ import {
   lazy,
   Suspense,
   type CSSProperties,
-} from "react";
+} from "preact/compat";
 import { BoardView, coordinateGutterPixels } from "./BoardView";
 import { Controller } from "./controller";
 import {
@@ -714,8 +714,8 @@ export function App({ controller: c }: { controller: Controller }) {
                 required
                 disabled={loginPending}
                 value={state.form.username}
-                onChange={(e) =>
-                  c.emit({ type: "form.username", value: e.target.value })
+                onInput={(e) =>
+                  c.emit({ type: "form.username", value: e.currentTarget.value })
                 }
               />
             </label>
@@ -730,7 +730,7 @@ export function App({ controller: c }: { controller: Controller }) {
                 required
                 disabled={loginPending}
                 defaultValue={c.password}
-                onChange={(e) => c.editPassword(e.target.value)}
+                onInput={(e) => c.editPassword(e.currentTarget.value)}
               />
             </label>
             <div className="login-options login-copy">
@@ -741,7 +741,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   type="checkbox"
                   disabled={loginPending}
                   checked={state.form.remember}
-                  onChange={(e) => c.remember(e.target.checked)}
+                  onChange={(e) => c.remember(e.currentTarget.checked)}
                 />
                 Remember me
               </label>

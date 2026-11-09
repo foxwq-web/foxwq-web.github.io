@@ -6,7 +6,7 @@ Run from the repository root with the pinned Node/npm and Playwright Chromium:
 npm run bench:runtime -- /absolute/path/to/report.json
 ```
 
-The runner builds production React and app code in a temporary directory. A
+The runner builds production Preact and app code in a temporary directory. A
 build-only driver exposes the existing controller and explicitly imports the
 offline `board-black` fixture (38 stones). It never ships in `client/dist`.
 External requests are blocked. No real login or Fox server is used.
@@ -14,7 +14,7 @@ External requests are blocked. No real login or Fox server is used.
 At desktop (1280×900) and narrow (390×844) CSS viewports, each workload runs
 in five fresh pages after 80 warmup events and asset preload. Each sample sends
 720 clock events at quarter-second simulated increments, or 720 pointermove
-DOM events across all intersections. `flushSync` forces one React commit per
+DOM events across all intersections. `flushSync` forces one Preact commit per
 state-changing event. This is an accelerated synchronous CPU stress test, not
 an FPS, input latency, or paint-throughput measurement. Narrow viewport tests
 use desktop Chromium, without mobile hardware or CPU emulation. `workMs`

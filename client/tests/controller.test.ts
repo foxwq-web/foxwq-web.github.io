@@ -9,8 +9,8 @@ import { Session } from "../src/session.ts";
 import { boardAvailable, type UIState } from "../src/state";
 import { BoardView, playablePoint } from "../src/BoardView";
 import { Board } from "../src/board";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "preact/compat";
+import { renderToStaticMarkup } from "preact/compat/server";
 import { applyDevScreen } from "../src/dev-screens";
 import { rememberedCredentials, rememberCredentials } from "../src/credentials.ts";
 import { Buffer } from "buffer";
@@ -195,7 +195,7 @@ test("byoyomi replaces the last-move marker with contrasting seconds and restore
     const render = () => renderToStaticMarkup(createElement(BoardView, {
       state, hover() {}, play() {},
     }));
-    const digit = () => render().match(/<text class="byoyomi-countdown"[^>]*>(\d)<\/text>/);
+    const digit = () => render().match(/<text[^>]*class="byoyomi-countdown"[^>]*>(\d)<\/text>/);
     assert.equal(digit()?.[1], "9", "offline preview shows countdown despite frozen clocks");
     assert.match(digit()![0], /fill="#000"/, "black digit on the last white stone");
     assert.doesNotMatch(render(), /<polygon/);
@@ -283,7 +283,7 @@ test("opponent stone appears while the rendered estimate markers stay unchanged"
     const before = render();
     s.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, decode(encode({1: 10, 2: 10, 3: 3 - s.color})), decode(encode({})));
     const after = render();
-    const markers = (svg: string) => svg.match(/<g class="estimated-territory"[^>]*>.*?<\/g>/)![0];
+    const markers = (svg: string) => svg.match(/<g[^>]*class="estimated-territory"[^>]*>.*?<\/g>/)![0];
     assert.equal(markers(after), markers(before));
     assert.equal((after.match(/class="stone stone-white"/g) ?? []).length,
       (before.match(/class="stone stone-white"/g) ?? []).length + 1);

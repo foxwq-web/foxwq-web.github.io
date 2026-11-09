@@ -8,7 +8,7 @@ import { survey, estimatorSoak } from './survey.ts';
 
 // Only the temporary benchmark build exposes a driver; shipped code is unchanged.
 const driver = `
-import { flushSync } from 'react-dom';
+import { flushSync } from 'preact/compat';
 import { applyDevScreen, DEV_SCREENS } from './dev-screens.ts';
 import { localEstimate } from '../../score-estimator/src/local-score-estimation.ts';
 import { netMsgToBytes as encodeNetMsg } from './framing.ts';

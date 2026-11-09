@@ -14,7 +14,7 @@ interface ReplayBrowser {
 declare global { interface Window { __networkReplay: ReplayBrowser } }
 
 // Only external I/O and browser scheduling boundaries are replaced. No
-// Controller, Session or React state is exposed; actions use DOM controls.
+// Controller, Session or Preact state is exposed; actions use DOM controls.
 export function installReplay({ channels }: ReplayOptions) {
   const sockets = new Map<string, ReplaySocket>();
   // Recorded tabs may throttle timers for minutes. Keep the real heartbeat
