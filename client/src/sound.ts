@@ -78,7 +78,7 @@ export class FoxSounds {
       this.names.map(async (name) => {
         try {
           const response = await fetch(
-            `${import.meta.env?.BASE_URL ?? "/"}sounds/${name}.mp3`,
+            `${import.meta.env?.BASE_URL ?? "/"}sounds/${name}.wav`,
           );
           if (response.ok) return [name, await response.arrayBuffer()] as [string, ArrayBuffer];
         } catch {
