@@ -132,8 +132,8 @@ test('history preserves 64-bit IDs, limits to 20 and decodes colors and endings 
   assert.equal(time.result, 'W+T');
   assert.equal(time.color, 'White');
   assert.throws(() => historyGames({ result: 0, chesslist: [record('18446744073709551616')] }, 42), /identifier/);
-  assert.throws(() => historyGames({ result: 1 }, 42), /Fox/);
-  assert.throws(() => applyPlayerSummary({ uid: 42 } as PlayerInfo, decode(encode({ 1: 2 }))), /Fox/);
+  assert.throws(() => historyGames({ result: 1 }, 42), /fox/);
+  assert.throws(() => applyPlayerSummary({ uid: 42 } as PlayerInfo, decode(encode({ 1: 2 }))), /fox/);
 });
 
 test('preload runs both reads before hover, deduplicates in-flight work and preserves cached results during refresh', async () => {

@@ -65,7 +65,7 @@ for (const phase of ["gateway", "ready", "matching", "joining"]) {
     try {
       kick({ 1: ErrorCode.EC_ACCOUNT_KICKOUT_BY_ANOTHER_LOGIN });
       assert.equal(s.phase, "error");
-      assert.equal(s.status, "Another client logged in");
+      assert.equal(s.status, "another client logged in");
       assert.equal(s.gameOver, false);
       assert.equal(s.uid, 0);
       assert.equal(s.token.length, 0);
@@ -119,12 +119,12 @@ test("an active kick preserves confirmed history, stops actions and ignores call
 });
 
 for (const [fields, expected] of [
-  [{}, "Fox ended this session"],
-  [{ 1: 123 }, "Fox ended this session (code 123)"],
+  [{}, "fox ended this session"],
+  [{ 1: 123 }, "fox ended this session code 123"],
   [{ 1: 123, 8: "  Account disabled  " }, "Account disabled"],
-  [{ 1: 123, 8: " " }, "Fox ended this session (code 123)"],
-  [{ 1: 123, 8: "Account disabled", 11: 600n }, "Account disabled. Fox has restricted login"],
-  [{ 1: "invalid-code", 8: 42, 11: "invalid-time" }, "Fox ended this session"],
+  [{ 1: 123, 8: " " }, "fox ended this session code 123"],
+  [{ 1: 123, 8: "Account disabled", 11: 600n }, "Account disabled fox has restricted login"],
+  [{ 1: "invalid-code", 8: 42, 11: "invalid-time" }, "fox ended this session"],
 ] as [Fields, string][]) {
   test(`kick reason is displayed without reclassifying every termination as another login: ${expected}`, async () => {
     const { s, kick } = await setup();

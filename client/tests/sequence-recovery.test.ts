@@ -144,7 +144,7 @@ test("only three snapshot attempts are sent before recovery fails into the norma
       assert.equal(requests().length, Math.min(3, 1 + Math.floor(step / 2)));
     }
     assert.equal(s.phase, "error"); // This fixture has no cached credentials to reconnect with.
-    assert.equal(s.status, "Game synchronization timed out");
+    assert.equal(s.status, "game synchronization timed out");
     assert.equal(closed(), true);
     context.mock.timers.tick(60000);
     assert.equal(requests().length, 3);

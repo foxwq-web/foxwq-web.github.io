@@ -21,9 +21,9 @@ export interface PlayerHistory {
 }
 
 function responseObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid Fox game response.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("invalid fox game response");
   const response = value as Record<string, unknown>;
-  if (response.result !== 0) throw Error(`Fox could not load this record (${response.result ?? "unknown"}).`);
+  if (response.result !== 0) throw Error(`fox could not load this record ${response.result ?? "unknown"}`);
   return response;
 }
 
@@ -31,16 +31,16 @@ function responseObject(value: unknown): Record<string, unknown> {
 // them to Number changes the ID and can merge distinct table rows.
 export function historyGames(value: unknown, uid: number): HistoryGame[] {
   const response = responseObject(value);
-  if (!Array.isArray(response.chesslist)) throw Error("Invalid Fox game history response.");
+  if (!Array.isArray(response.chesslist)) throw Error("invalid fox game history response");
   return response.chesslist.map((item): HistoryGame | null => {
-    if (!item || typeof item !== "object") throw Error("Invalid Fox game history record.");
+    if (!item || typeof item !== "object") throw Error("invalid fox game history record");
     const record = item as Record<string, unknown>;
     const color = record.blackuid === uid ? 1 : record.whiteuid === uid ? 2 : 0;
     if (!color) return null;
     if (typeof record.chessid !== "string" || !/^[1-9][0-9]{0,19}$/.test(record.chessid) || BigInt(record.chessid) > 18446744073709551615n)
-      throw Error("Invalid Fox game identifier.");
+      throw Error("invalid fox game identifier");
     const date = gameTime(record.gamestarttime, record.gameendtime);
-    if (date === null) throw Error("Invalid Fox game date.");
+    if (date === null) throw Error("invalid fox game date");
     const opponentColor = color === 1 ? "white" : "black";
     const name = record[`${opponentColor}enname`] || record[`${opponentColor}nick`];
     const rank = record[`${opponentColor}dan`];

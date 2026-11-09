@@ -115,7 +115,7 @@ export class FoxSounds {
   }
   private resumeContext(fromGesture = false) {
     if (!this.context || this.context.state === "closed")
-      return Promise.reject(new Error("Audio context unavailable"));
+      return Promise.reject(new Error("audio context unavailable"));
     if (this.context.state === "running") return Promise.resolve();
     if (this.resuming && !fromGesture) return this.resuming;
     const pending: Promise<void> = this.context.resume().finally(() => {

@@ -186,8 +186,8 @@ export function App({ controller: c }: { controller: Controller }) {
     counting: boolean;
   } | null>(null);
   const statusError = !!state.menuError ||
-    (s.phase === "error" && s.status !== "Another client logged in") ||
-    s.status.startsWith("matchmaking rejected:");
+    (s.phase === "error" && s.status !== "another client logged in") ||
+    s.status.startsWith("matchmaking rejected");
   const statusSeparate = statusError ||
     (s.phase === "ready" && s.status.startsWith("Matchmaking "));
   const statusHidden =

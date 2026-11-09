@@ -102,7 +102,7 @@ for (const screen of menu) {
       await expect(page.locator('.player-info-summary')).toContainText(screen.id === 'board-white-player-info' ? '157 wins' : '427 wins');
     }
     if (screen.id === 'matchmaking-rejected') {
-      await expect(page.locator('#status')).toHaveText('Error: matchmaking rejected: -1');
+      await expect(page.locator('#status')).toHaveText('Error: matchmaking rejected -1');
     }
     if (screen.id === 'matchmaking') {
       await expect(page.locator('.time-option > span')).toHaveText([

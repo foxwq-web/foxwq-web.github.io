@@ -96,14 +96,14 @@ for (const failure of ["recorded server logout", "socket close", "heartbeat time
       s.flushChanges();
       assert.deepEqual(closed.sort(), ["gateway", "login"]);
       assert.deepEqual(s.snapshot(), { ...before,
-        ...(failure === "recorded server logout" ? { phase: "kicked", status: "Another client logged in" } : {}),
+        ...(failure === "recorded server logout" ? { phase: "kicked", status: "another client logged in" } : {}),
         estimation: { phase: "loading" }, gatewayAvailable: false });
       assert.equal(c.state.review, position, "disconnect must preserve the review cursor");
       assert.ok(boardAvailable(c.state.session));
       assert.equal(s.board.sgf(s.result), sgf, "the downloadable game stays intact");
       // Callbacks from the closed sockets cannot reset the finished game.
       s.receive(generation, frames[0]);
-      s.failed(generation, "Another client logged in");
+      s.failed(generation, "another client logged in");
       finishEstimate({ ret: 0, board_size: 19, judge_status: "0".repeat(361) });
       await estimate;
       s.flushChanges();

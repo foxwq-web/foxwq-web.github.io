@@ -53,7 +53,7 @@ test('malformed incoming traffic is recorded once but redacted before storage', 
   assert.equal(entries.length, 2);
   assert.ok(entries.every(e=>e.payload === ''));
   assert.equal(entries[0].source,'fox.example:10000'); assert.match(entries[0].destination,/^client:.+:1$/);
-  assert.equal(failure,'Invalid protocol response'); assert.equal(connection.closed,true);
+  assert.equal(failure,'invalid protocol response'); assert.equal(connection.closed,true);
 });
 
 test('exports redact login credentials and tokens across compressed, split and coalesced frames', async () => {

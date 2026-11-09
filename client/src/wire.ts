@@ -69,12 +69,12 @@ export class Message extends Map<number, WireValue[]> {
 
     if (typeof value === "bigint") return Number.NaN;
     if (typeof value !== "number")
-      throw Error("Expected numeric protobuf field");
+      throw Error("expected numeric protobuf field");
     return value;
   }
   bytes(field: number): Buffer {
     const value = this.one(field, Buffer.alloc(0));
-    if (!Buffer.isBuffer(value)) throw Error("Expected protobuf bytes");
+    if (!Buffer.isBuffer(value)) throw Error("expected protobuf bytes");
     return value;
   }
   sub(field: number) {
@@ -82,12 +82,12 @@ export class Message extends Map<number, WireValue[]> {
   }
   text(field: number, fallback = "") {
     const value = this.one(field, Buffer.from(fallback));
-    if (!Buffer.isBuffer(value)) throw Error("Expected protobuf bytes");
+    if (!Buffer.isBuffer(value)) throw Error("expected protobuf bytes");
     return value.toString("utf8");
   }
 }
 export function decode(input: WireValue | Uint8Array) {
-  if (!(input instanceof Uint8Array)) throw Error("Expected protobuf bytes");
+  if (!(input instanceof Uint8Array)) throw Error("expected protobuf bytes");
   const data = Buffer.from(input);
   const out = new Message();
   let offset = 0;
@@ -121,6 +121,6 @@ export function decode(input: WireValue | Uint8Array) {
   return out;
 }
 export function signed(value: WireValue) {
-  if (Buffer.isBuffer(value)) throw Error("Expected numeric protobuf field");
+  if (Buffer.isBuffer(value)) throw Error("expected numeric protobuf field");
   return Number(BigInt.asIntN(32, BigInt(value)));
 }

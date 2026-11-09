@@ -37,7 +37,7 @@ export class NetworkLog {
   }
   private recording() { return this.store.enabled !== false; }
   get error() {
-    return this.store.error ?? (this.recording() ? undefined : "Browser storage is unavailable");
+    return this.store.error ?? (this.recording() ? undefined : "browser storage is unavailable");
   }
   flush() { return this.store.flush?.(); }
 
@@ -116,7 +116,7 @@ export class NetworkLog {
     let stored: StoredNetworkEntry[] = [];
     try { stored = await this.store.read(); }
     catch (error) {
-      console.warn("Network log could not read browser storage.", error);
+      console.warn("network log could not read browser storage", error);
     }
     if (!this.recording()) { this.streams.clear(); return "[]"; }
     const records = new Map(stored.map(record => [record.key, record]));

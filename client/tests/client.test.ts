@@ -71,7 +71,7 @@ test('framing matches reference bytes, fragmentation, extended headers and compr
   assert.deepEqual(frame(2000, Buffer.alloc(0)), fixture);
   for (let i = 0; i < fixture.length; i++) assert.equal(extractNetMsgFromBytes(fixture.subarray(0, i)), null);
   assert.equal(extractNetMsgFromBytes(fixture)![0].msgTypeID, 2000);
-  assert.throws(() => extractNetMsgFromBytes(Buffer.from('000707d00001b800d9', 'hex')), /Adler/);
+  assert.throws(() => extractNetMsgFromBytes(Buffer.from('000707d00001b800d9', 'hex')), /adler/);
   const small = frame(7000, Buffer.alloc(0x7ffe - 7, 120)), large = frame(7000, Buffer.alloc(0x7fff - 7, 120));
   assert.equal(small.readUInt16BE(0), 0x7ffe); assert.equal(large.subarray(0, 8).toString('hex'), '7fff000b00007fff');
   assert.equal(extractNetMsgFromBytes(large)![0].rawProto.length, 0x7fff - 7);
@@ -110,10 +110,10 @@ test('counting request uses the game node, blocks duplicate requests and recover
   assert.throws(() => s.play(3, 3), /confirmation/); assert.throws(() => s.passTurn(), /confirmation/);
   notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { 1: false, 2: 1 }); assert.equal(s.counting, false); assert.equal(s.phase, 'playing');
   s.requestCounting(); notify(GoGameMessageID.GC_CALCULATE_REQUEST, { 1: -1 }); assert.equal(s.counting, false); assert.equal(s.pending, false);
-  s.close(); assert.throws(() => s.requestCounting(), /No active/);
+  s.close(); assert.throws(() => s.requestCounting(), /no active/);
 });
 test('confirmed moves clear stale pass and rejection status', () => {
-  for (const status of ['Opponent passed', 'Action 201 rejected: 1']) {
+  for (const status of ['Opponent passed', 'action 201 rejected 1']) {
     const { s, notify } = countingSession();
     s.status = status;
     notify(GoGameMessageID.GC_SET_PIECE_NOTIFY, { 1: 3, 2: 3, 3: 1 });
@@ -127,7 +127,7 @@ test('counting outside your turn never sends a request', () => {
   try {
     s.board.turn = 3 - s.color;
     const before = sent.length;
-    assert.throws(() => s.requestCounting(), /Wait for your turn/);
+    assert.throws(() => s.requestCounting(), /wait for your turn/);
     assert.equal(sent.length, before);
     assert.equal(s.pending, false);
     assert.equal(s.counting, false);
@@ -153,7 +153,7 @@ test('both counting confirmation stages reply with their own mode; only Fox ends
     assert.equal(sent.at(-1)![1].one(1), 304); assert.equal(sent.at(-1)![1].one(8), 63);
     assert.equal(sent.at(-1)![2].one(1), Number(accept)); assert.equal(sent.at(-1)![2].one(2), mode);
     assert.equal(s.snapshot().confirmation, false); assert.equal(s.phase, 'playing');
-    assert.throws(() => s.confirm(accept), /No pending/);
+    assert.throws(() => s.confirm(accept), /no pending/);
     notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { 1: 0 }); assert.equal(s.counting, accept);
     notify(GoGameMessageID.GC_CALCULATE_ANSWER_NOTIFY, { 1: accept, 2: mode });
     assert.equal(s.counting, accept); assert.equal(s.phase, 'playing');
@@ -247,7 +247,7 @@ test('Fox clock resumption ends counting after a rejection without a 306 notific
       assert.equal(s.countingAnswer, null);
       assert.equal(s.snapshot().confirmation, false);
       assert.equal(s.clocks[1].main, 732);
-      assert.throws(() => s.confirm(false), /No pending confirmation/);
+      assert.throws(() => s.confirm(false), /no pending confirmation/);
       notify(GoGameMessageID.GC_SET_PIECE_NOTIFY, { 1: 1, 2: 3, 3: 1, 5: { 1: 31 } });
       s.play(3, 3);
       assert.equal(sent.at(-1)![1].number(1), 201);
@@ -480,7 +480,7 @@ test('Fox time controls are discovered dynamically and the selected field is sen
   assert.deepEqual(s.snapshot().matchFields.map(f => f.id), [103,102,101]);
   assert.equal(s.fieldId, 101);
   s.selectMatchField(102); assert.equal(s.snapshot().time, '5m30s');
-  assert.throws(() => s.selectMatchField(999), /No time control available/);
+  assert.throws(() => s.selectMatchField(999), /no time control available/);
   s.match();
   assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
   assert.equal(sent.at(-1)![1].one(1), 102); assert.equal(sent.at(-1)![1].one(2), 0);
@@ -490,7 +490,7 @@ test('Fox time controls are discovered dynamically and the selected field is sen
     s.gameSvrMgrProcess(op, decode(encode({1:7,2:{1:19,6:1200,8:3,7:60}})));
     assert.deepEqual(s.snapshot(), before);
     assert.equal(sent.length, sentBefore);
-    assert.throws(() => s.confirm(true), /No pending confirmation/);
+    assert.throws(() => s.confirm(true), /no pending confirmation/);
   }
   s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, decode(encode({})));
   s.selectMatchField(103); assert.equal(s.snapshot().time, '30s');
@@ -571,7 +571,7 @@ test('quitting an active room waits for Fox resignation, then returns to matchma
   assert.equal(sent.at(-1)![1].one(1), 311); assert.equal(sent.at(-1)![1].one(8), 63);
   assert.deepEqual(game.plain(sent.at(-1)![2].sub(2)), {1:GAME_SVR,2:63,3:23,4:202});
   assert.equal(s.phase, 'playing'); assert.equal(s.snapshot().quitRequested, true);
-  assert.throws(() => s.quitRoom(), /Waiting to confirm/);
+  assert.throws(() => s.quitRoom(), /waiting to confirm/);
   notify(GoGameMessageID.GC_GIVE_UP_REQUEST, {1:0}); assert.equal(s.phase, 'playing');
   notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, {1:0,2:2,3:-1,4:3});
   assert.equal(s.phase, 'ready'); assert.equal(s.result, ''); assert.equal(s.gameOver, false);
@@ -603,13 +603,13 @@ test('finished rooms quit immediately; rejected or failed resignation stays in t
   assert.equal(s.phase, 'ready'); assert.equal(s.gameOver, false);
   s.phase = 'finished'; s.roomKey = {1:GAME_SVR,2:63}; s.color = 1;
   s.quitRoom(); assert.equal(s.phase, 'ready'); assert.deepEqual(s.roomKey, {});
-  assert.throws(() => s.quitRoom(), /No room to quit/); s.close();
+  assert.throws(() => s.quitRoom(), /no room to quit/); s.close();
 });
 
 test('matchmaking outcomes explain why searching stopped and allow retrying', () => {
   const outcomes = [
-    [RoomMessageID.RM_AUTO_INVITE_REQUEST, { 1: -1 }, 'matchmaking rejected: -1'],
-    [RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, {}, 'Matchmaking timed out'],
+    [RoomMessageID.RM_AUTO_INVITE_REQUEST, { 1: -1 }, 'matchmaking rejected -1'],
+    [RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, {}, 'matchmaking timed out'],
     [RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, { 1: 0 }, 'Matchmaking cancelled'],
     [RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, {}, 'Matchmaking cancelled'],
   ] as const;
@@ -810,10 +810,10 @@ test('resignation can follow an unconfirmed placement and remains pending after 
       s.play(3, 3); s.resign();
       assert.deepEqual(sent, [201, 311]);
       assert.equal(s.snapshot().pendingMove, false);
-      assert.throws(() => s.resign(), /Waiting to confirm/);
+      assert.throws(() => s.resign(), /waiting to confirm/);
       s.gameSvrProcess(rejected ? 201 : 203, decode(encode(rejected ? {1: 7} : {1: 3, 2: 3, 3: 1})), decode(encode({})));
       assert.equal(s.pending, true);
-      assert.throws(() => s.resign(), /Waiting to confirm/);
+      assert.throws(() => s.resign(), /waiting to confirm/);
       s.gameSvrProcess(GoGameMessageID.GC_GIVE_UP_REQUEST, decode(encode({1: 7})), decode(encode({})));
       assert.equal(s.pending, false);
     } finally { s.close(); }

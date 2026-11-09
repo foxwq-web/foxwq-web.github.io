@@ -31,6 +31,6 @@ test("database open failure warns once with the cause without affecting traffic"
   assert.equal(log.error, "SecurityError: denied");
   await store.flush();
   assert.equal(warning.mock.callCount(), 1);
-  assert.match(warning.mock.calls[0].arguments[0], /Network log recording disabled/);
+  assert.match(warning.mock.calls[0].arguments[0], /network log recording disabled/);
   assert.equal(warning.mock.calls[0].arguments[1], failure);
 });

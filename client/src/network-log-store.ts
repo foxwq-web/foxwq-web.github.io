@@ -43,11 +43,11 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
         db.createObjectStore("metadata");
       };
       request.onerror = () => reject(request.error);
-      request.onblocked = () => reject(Error("Network log database is blocked"));
+      request.onblocked = () => reject(Error("network log database is blocked"));
       request.onsuccess = () => {
         const db = request.result;
         if (!this.enabled) { db.close(); return; }
-        db.onversionchange = () => { this.disable(Error("Log database changed in another tab")); db.close(); };
+        db.onversionchange = () => { this.disable(Error("log database changed in another tab")); db.close(); };
         resolve(db);
       };
     });
@@ -59,7 +59,7 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
     if (!this.enabled) return;
     this.enabled = false;
     this.error = String(error);
-    console.warn("Network log recording disabled. Reload the page to try again.", error);
+    console.warn("network log recording disabled reload the page to try again", error);
     clearTimeout(this.timer);
     this.timer = undefined;
     this.pending.clear();
@@ -111,7 +111,7 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
         // Read/write transactions serialize accounting and eviction across tabs.
         const tx = db.transaction(["entries", "metadata"], "readwrite");
         tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(tx.error ?? Error("Network log storage transaction aborted"));
+        tx.onabort = () => reject(tx.error ?? Error("network log storage transaction aborted"));
         const entries = tx.objectStore("entries"), metadata = tx.objectStore("metadata");
         const total = metadata.get("bytes");
         total.onsuccess = () => {
@@ -149,7 +149,7 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
       return await new Promise((resolve, reject) => {
         const tx = db.transaction("entries"), request = tx.objectStore("entries").getAll();
         tx.oncomplete = () => resolve((request.result as Row[]).map(({ key, entry }) => ({ key, entry })));
-        tx.onabort = () => reject(tx.error ?? Error("Network log storage transaction aborted"));
+        tx.onabort = () => reject(tx.error ?? Error("network log storage transaction aborted"));
       });
     } catch (error) {
       this.disable(error);

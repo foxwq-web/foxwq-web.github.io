@@ -498,11 +498,11 @@ export class Session {
     const reasonValue = message.one(Fgw.KickOutNotify.reason_phrase);
     let reason = Buffer.isBuffer(reasonValue) ? reasonValue.toString("utf8").trim() : "";
     reason ||= code === ErrorCode.EC_ACCOUNT_KICKOUT_BY_ANOTHER_LOGIN
-      ? "Another client logged in"
-      : `Fox ended this session${code ? ` (code ${code})` : ""}`;
+      ? "another client logged in"
+      : `fox ended this session${code ? ` code ${code}` : ""}`;
     const restriction = message.one(Fgw.KickOutNotify.forbid_login_time);
     if ((typeof restriction === "number" || typeof restriction === "bigint") && restriction > 0)
-      reason += ". Fox has restricted login";
+      reason += " fox has restricted login";
 
     const saved = this.reconnectBoard ?? this.gameEnvRecovery?.state;
     const board = this.reconnectBoardModel ?? this.pendingMove?.board ?? this.board;
@@ -692,7 +692,7 @@ export class Session {
           if (this.gameEnvRecovery) {
             if (now() - this.gameEnvRecovery.requestedAt > 8) {
               if (this.gameEnvRecovery.attempts >= 3) {
-                this.failed(generation, "Game synchronization timed out");
+                this.failed(generation, "game synchronization timed out");
                 return;
               }
               this.fetchGameEnvForRecovery();
@@ -829,14 +829,14 @@ export class Session {
         if (this.phase !== "matching") return;
         this.phase = signed(m.one(Room.AutoInviteResponse.result)) ? "ready" : "matching";
         this.status = signed(m.one(Room.AutoInviteResponse.result))
-          ? `matchmaking rejected: ${signed(m.one(Room.AutoInviteResponse.result))}`
+          ? `matchmaking rejected ${signed(m.one(Room.AutoInviteResponse.result))}`
           : `Searching for a game...`;
       } else if ([RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY].includes(messageId)) {
         if (this.phase !== "matching") return;
         this.pendingConfirmation = null;
         this.phase = "ready";
         this.status = messageId === RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY
-          ? "Matchmaking timed out"
+          ? "matchmaking timed out"
           : "Matchmaking cancelled";
       } else if (messageId === RoomMessageID.RM_ENTER_ROOM_NOTIFY) {
         if (!["matching", "joining", "playing"].includes(this.phase)) return;
@@ -1396,7 +1396,7 @@ export class Session {
     if ((this.pending && !this.awaitingMove) ||
       (this.pendingConfirmation?.[0] !== "counting-request" &&
         (this.counting || this.pendingConfirmation)))
-      throw Error("Finish the pending game action first");
+      throw Error("finish the pending game action first");
     if (this.estimation && this.estimation.phase !== "error")
       throw Error("An estimate is already open");
     const board = this.board.clone();
@@ -1455,7 +1455,7 @@ export class Session {
       if (this.counting || this.pendingConfirmation)
         throw Error("A confirmation or counting request is already active");
       if (this.phase === "playing" && this.board.turn !== this.color)
-        throw Error("Wait for your turn");
+        throw Error("wait for your turn");
       this.onlineAction(GoGameMessageID.GC_CALCULATE_REQUEST, { [Game.CalculateRequest.extend]: 0 });
       this.counting = true;
       this.status = "Counting requested; waiting for opponent";
@@ -1466,12 +1466,12 @@ export class Session {
   confirm(accept: boolean) {
     try {
       if (typeof accept !== "boolean") throw Error("accept must be boolean");
-      if (!this.pendingConfirmation) throw Error("No pending confirmation");
+      if (!this.pendingConfirmation) throw Error("no pending confirmation");
       const [kind] = this.pendingConfirmation;
       if (!["counting-request", "counting-result"].includes(kind))
         throw Error("No pending counting confirmation");
       if (this.phase !== "playing")
-        throw Error("No active game");
+        throw Error("no active game");
 
       this.clearEstimate();
 
@@ -1493,7 +1493,7 @@ export class Session {
       if (!["ready", "finished"].includes(this.phase))
         throw Error("Time settings cannot change during matchmaking or a game");
       const field = this.matchFields.find((f) => f.id === id);
-      if (!field) throw Error("No time control available");
+      if (!field) throw Error("no time control available");
       this.fieldId = id;
       this.matchSettings = field;
       this.preferredTimeControl = field;
@@ -1523,9 +1523,9 @@ export class Session {
         !["playing", "finished"].includes(this.phase) ||
         !Object.keys(this.roomKey).length
       )
-        throw Error("No room to quit");
+        throw Error("no room to quit");
       if (this.quitRequested || this.pending)
-        throw Error("Waiting to confirm previous action");
+        throw Error("waiting to confirm previous action");
       if (this.phase === "finished") {
         this.leaveFinishedRoom();
         return;
@@ -1562,11 +1562,11 @@ export class Session {
         !Object.keys(this.roomKey).length ||
         ![StoneColor.BLACK, StoneColor.WHITE].includes(this.color)
       )
-        throw Error("No active game");
+        throw Error("no active game");
       if (this.paused && messageId !== GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST) throw Error("Game is paused");
-      if (this.estimation) throw Error("Return to the game before playing");
+      if (this.estimation) throw Error("return to the game before playing");
       if (this.pending && !(messageId === GoGameMessageID.GC_GIVE_UP_REQUEST && this.awaitingMove))
-        throw Error("Waiting to confirm the previous action");
+        throw Error("waiting to confirm the previous action");
       this.sendFgwChannelMsg(game.GAME_SVR, messageId, fields, this.roomKey[Game.RoomKey.server_id]);
       this.pending = true;
       this.pendingMessageId = messageId;

@@ -65,8 +65,8 @@ test('estimate, return and retry preserve the board and resume normal game actio
   const before = structuredClone(s.board), status = s.status, clocks = structuredClone(s.clocks);
   const done = s.estimateScore();
   assert.equal(s.snapshot().estimation!.phase, 'loading');
-  assert.throws(() => s.play(10, 10), /Return to the game/);
-  assert.throws(() => s.passTurn(), /Return to the game/);
+  assert.throws(() => s.play(10, 10), /return to the game/);
+  assert.throws(() => s.passTurn(), /return to the game/);
   assert.throws(() => s.estimateScore(), /already open/);
   task.resolve(reply(Array(361).fill(0))); await done;
   assert.equal(s.snapshot().estimation!.phase, 'result');
@@ -102,7 +102,7 @@ test('opponent moves and passes preserve completed and pending estimates of the 
       if (pending) { task.resolve(reply(map)); await done; }
       assert.deepEqual(s.snapshot().estimation, expected);
       assert.equal(calls, 1);
-      assert.throws(() => s.play(11, 10), /Return to the game/);
+      assert.throws(() => s.play(11, 10), /return to the game/);
       s.returnToGame();
       assert.equal(s.estimation, null);
       s.play(11, 10);
@@ -180,7 +180,7 @@ test('estimation still waits for outgoing counting and counting results', async 
     const s = new Session();
     try {
       await applyDevScreen(s, id);
-      assert.throws(() => s.estimateScore(), /Finish the pending game action first/);
+      assert.throws(() => s.estimateScore(), /finish the pending game action first/);
     } finally { s.close(); }
   }
 });

@@ -34,14 +34,14 @@ export class Connection {
   ) {
     const url = new URL(proxyUrl);
     if (!["wss:", "ws:"].includes(url.protocol))
-      throw Error("Invalid proxy URL");
+      throw Error("invalid proxy url");
     if (
       url.protocol === "ws:" &&
       !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
     )
-      throw Error("Use wss:// for the proxy");
+      throw Error("use wss for the proxy");
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(proxyToken))
-      throw Error("Invalid proxy access token");
+      throw Error("invalid proxy access token");
     url.pathname = "/proxy";
     url.search = "";
     url.searchParams.set("host", host);
@@ -58,7 +58,7 @@ export class Connection {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         connection.close();
-        reject(Error("Proxy connection timed out"));
+        reject(Error("proxy connection timed out"));
       }, 10000);
       const done = (callback: () => void) => {
         clearTimeout(timer);
@@ -67,12 +67,12 @@ export class Connection {
       ws.addEventListener("open", () => done(resolve), { once: true });
       ws.addEventListener(
         "error",
-        () => done(() => reject(Error("Proxy unreachable"))),
+        () => done(() => reject(Error("proxy unreachable"))),
         { once: true },
       );
       ws.addEventListener(
         "close",
-        () => done(() => reject(Error("Proxy closed before opening"))),
+        () => done(() => reject(Error("proxy closed before opening"))),
         { once: true },
       );
     });
@@ -103,7 +103,7 @@ export class Connection {
     ws.addEventListener("message", ({ data }) => {
       try {
         if (!(data instanceof ArrayBuffer))
-          throw Error("Proxy sent a nonbinary message");
+          throw Error("proxy sent a nonbinary message");
         this.networkLog?.traffic(
           this.connectionId!,
           "inbound",
@@ -120,7 +120,7 @@ export class Connection {
           else this.queued.push(frame);
         }
       } catch {
-        fail("Invalid protocol response");
+        fail("invalid protocol response");
       }
     });
     ws.addEventListener("error", () => fail("Proxy unreachable"));
@@ -133,7 +133,7 @@ export class Connection {
     try {
       for (const frame of this.queued.splice(0)) this.receive(frame);
     } catch {
-      this.fail("Invalid protocol response");
+      this.fail("invalid protocol response");
     }
   }
   send(command: number, payload: Uint8Array) {

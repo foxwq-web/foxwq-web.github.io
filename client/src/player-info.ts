@@ -26,7 +26,7 @@ export interface PlayerInfo extends PlayerHistory {
 // Response mapping verified live against Fox. Rank progress
 // contains the *remaining* wins/losses from Fox, rather than inferred thresholds.
 export function applyPlayerSummary(info: PlayerInfo, m: Message) {
-  if (m.number(Panel.FetchPanelUserInfoResponse.result) !== 0) throw Error(`Fox could not load this player (${m.number(Panel.FetchPanelUserInfoResponse.result)}).`);
+  if (m.number(Panel.FetchPanelUserInfoResponse.result) !== 0) throw Error(`fox could not load this player ${m.number(Panel.FetchPanelUserInfoResponse.result)}`);
   if (m.number(Panel.FetchPanelUserInfoResponse.dst_uid) !== info.uid) throw Error('Fox returned a different player.');
   const account = m.sub(Panel.FetchPanelUserInfoResponse.account_info), progress = m.sub(Panel.FetchPanelUserInfoResponse.updown_info), remaining = progress.sub(Panel.UpDownInfo.up_down_condition);
   info.name = account.text(Panel.AccountInfo.englishname) || account.text(Panel.AccountInfo.username) || info.name;

@@ -63,7 +63,7 @@ export function extractNetMsgFromBytes(
   if (data.length < prefix + length) return null;
   const body = data.subarray(prefix, prefix + length);
   if (adler32(body.subarray(0, -4)) !== body.readUInt32BE(length - 4))
-    throw Error("Adler-32 mismatch");
+    throw Error("adler-32 mismatch");
   const flag = body[2];
   let rawProto: Buffer = Buffer.from(body.subarray(3, -4));
   if (flag === NET_MSG_FLAG_ZLIB) {
