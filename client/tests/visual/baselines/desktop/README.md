@@ -1,20 +1,12 @@
 | Screenshot | Screenshot |
 | --- | --- |
 | **Login**<br>[![Login](login.png)](login.png) | **Connecting**<br>[![Connecting](connecting.png)](connecting.png) |
-| **Authenticating**<br>[![Authenticating](authenticating.png)](authenticating.png) | **Bootstrap**<br>[![Bootstrap](bootstrap.png)](bootstrap.png) |
-| **Gateway**<br>[![Gateway](gateway.png)](gateway.png) | **Resuming**<br>[![Resuming](resuming.png)](resuming.png) |
-| **Login error**<br>[![Login error](login-error.png)](login-error.png) | **Matchmaking**<br>[![Matchmaking](matchmaking.png)](matchmaking.png) |
-| **Matchmaking player info**<br>[![Matchmaking player info](matchmaking-player-info.png)](matchmaking-player-info.png) | **Matching**<br>[![Matching](matching.png)](matching.png) |
-| **Matchmaking rejected**<br>[![Matchmaking rejected](matchmaking-rejected.png)](matchmaking-rejected.png) | **Joining**<br>[![Joining](joining.png)](joining.png) |
-| **Room left**<br>[![Room left](room-left.png)](room-left.png) | **Board black**<br>[![Board black](board-black.png)](board-black.png) |
-| **Board black player info**<br>[![Board black player info](board-black-player-info.png)](board-black-player-info.png) | **Board white player info**<br>[![Board white player info](board-white-player-info.png)](board-white-player-info.png) |
-| **Board white**<br>[![Board white](board-white.png)](board-white.png) | **Opponent turn**<br>[![Opponent turn](opponent-turn.png)](opponent-turn.png) |
-| **Opponent passed**<br>[![Opponent passed](opponent-passed.png)](opponent-passed.png) | **Both passed**<br>[![Both passed](both-passed.png)](both-passed.png) |
-| **Byoyomi**<br>[![Byoyomi](byoyomi.png)](byoyomi.png) | **Action rejected**<br>[![Action rejected](action-rejected.png)](action-rejected.png) |
-| **Counting waiting**<br>[![Counting waiting](counting-waiting.png)](counting-waiting.png) | **Counting request**<br>[![Counting request](counting-request.png)](counting-request.png) |
-| **Counting accepted**<br>[![Counting accepted](counting-accepted.png)](counting-accepted.png) | **Counting result with territory map**<br>[![Counting result](counting-result.png)](counting-result.png) |
-| **Counting rejected**<br>[![Counting rejected](counting-rejected.png)](counting-rejected.png) | **Counting error**<br>[![Counting error](counting-error.png)](counting-error.png) |
-| **Score estimation**<br>[![Score estimation](score-estimation.png)](score-estimation.png) | **Score estimation loading**<br>[![Score estimation loading](score-estimation-loading.png)](score-estimation-loading.png) |
-| **Finished**<br>[![Finished](finished.png)](finished.png) | **Finished resign**<br>[![Finished resign](finished-resign.png)](finished-resign.png) |
-| **Board coordinates**<br>[![Board coordinates](board-coordinates.png)](board-coordinates.png) | **Finished void**<br>[![Finished void](finished-void.png)](finished-void.png) |
-| **Replay variation**<br>[![Replay variation](replay-variation.png)](replay-variation.png) |  |
+| **Login or connection error**<br>[![Login or connection error](login-error.png)](login-error.png) | **Choose time control**<br>[![Choose time control](matchmaking.png)](matchmaking.png) |
+| **Your player info**<br>[![Your player info](matchmaking-player-info.png)](matchmaking-player-info.png) | **Player history: loading**<br>[![Player history: loading](history-loading.png)](history-loading.png) |
+| **Searching**<br>[![Searching](matching.png)](matching.png) | **Game in progress in another tab**<br>[![Game in progress in another tab](game-in-progress.png)](game-in-progress.png) |
+| **Spectating a live game**<br>[![Spectating a live game](spectating.png)](spectating.png) | **Your turn as White**<br>[![Your turn as White](board-white.png)](board-white.png) |
+| **Black player info**<br>[![Black player info](board-black-player-info.png)](board-black-player-info.png) | **Board coordinates**<br>[![Board coordinates](board-coordinates.png)](board-coordinates.png) |
+| **Opponent's turn**<br>[![Opponent's turn](opponent-turn.png)](opponent-turn.png) | **Final byoyomi period**<br>[![Final byoyomi period](byoyomi.png)](byoyomi.png) |
+| **Score estimate**<br>[![Score estimate](score-estimation.png)](score-estimation.png) | **Confirm counting result**<br>[![Confirm counting result](counting-result.png)](counting-result.png) |
+| **Game ended by resignation**<br>[![Game ended by resignation](finished-resign.png)](finished-resign.png) | **5-move variation**<br>[![5-move variation](replay-variation.png)](replay-variation.png) |
+| **Archived game: loading**<br>[![Archived game: loading](record-review-loading.png)](record-review-loading.png) |  |

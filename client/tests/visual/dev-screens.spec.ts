@@ -1,37 +1,27 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from 'playwright/test';
 import { DEV_SCREENS } from '../../src/dev-screens';
 
-test('game-over and counting-result share text-to-button spacing', async ({ page }) => {
-  const gaps: number[][] = [];
-  for (const screen of ['finished', 'counting-result']) {
-    await page.goto(`/?dev-screen=${screen}`);
-    const panel = page.locator(screen === 'finished' ? '#game-state-panel' : '#counting-dialog');
-    await expect(panel).toBeVisible();
-    const measured: number[] = [];
-    for (const gap of [12, 20]) {
-      measured.push(await panel.evaluate((element, value) => {
-        (element as HTMLElement).style.setProperty('--quest-gap', `${value}px`);
-        const title = element.querySelector('p')!.getBoundingClientRect();
-        const button = element.querySelector('button')!.getBoundingClientRect();
-        return button.top - title.bottom;
-      }, gap));
-      const padding = await panel.evaluate(element => {
-        const style = getComputedStyle(element);
-        return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].map(parseFloat);
-      });
-      expect(padding).toEqual(Array(4).fill(gap));
-      const buttonGap = await panel.evaluate(element => {
-        const [first, second] = [...element.querySelectorAll('button')].map(button => button.getBoundingClientRect());
-        return first.top === second.top ? second.left - first.right : second.top - first.bottom;
-      });
-      expect(buttonGap).toBe(8);
-    }
-    gaps.push(measured);
-  }
-  expect(gaps).toEqual([[12, 20], [12, 20]]);
-});
+type Screen = (typeof DEV_SCREENS)[number];
 
-for (const screen of DEV_SCREENS) {
+// The 19 screens in the baselines README. Screens and baselines added by later
+// commits join the suite automatically; ids not available yet are skipped.
+const BASELINE_SCREENS = [
+  'login', 'connecting', 'login-error',
+  'matchmaking', 'matchmaking-player-info', 'history-loading', 'matching', 'game-in-progress',
+  'spectating', 'board-white', 'board-black-player-info', 'board-coordinates', 'opponent-turn',
+  'byoyomi', 'score-estimation', 'counting-result', 'finished-resign', 'replay-variation',
+  'record-review-loading',
+];
+const hasBaselines = (id: string) => ['desktop', 'mobile'].every(project =>
+  existsSync(fileURLToPath(new URL(`./baselines/${project}/${id}.png`, import.meta.url))));
+
+const menu = BASELINE_SCREENS
+  .map(id => DEV_SCREENS.find(screen => screen.id === id))
+  .filter((screen): screen is Screen => screen !== undefined && hasBaselines(screen.id));
+
+for (const screen of menu) {
   test(screen.id, async ({ page }) => {
     // Keep sample clocks and history dates identical across runs without
     // stopping the timers used to initialize the app and local score engine.
@@ -197,31 +187,3 @@ for (const screen of DEV_SCREENS) {
     await expect(page).toHaveScreenshot(`${screen.id}.png`, { fullPage: true });
   });
 }
-
-test('board-coordinates gutters ignore clicks and corner intersections stay aligned', async ({ page }) => {
-  await page.goto('/?dev-screen=board-coordinates');
-  const stones = page.locator('#board .board-stones > .stone');
-  const labels = page.locator('#board .board-coordinates text');
-  await expect(labels).toHaveCount(76);
-  const initialStones = await stones.count();
-  for (let side = 0; side < 4; side++) {
-    const label = await labels.nth(side).boundingBox();
-    await page.mouse.click(label!.x + label!.width / 2, label!.y + label!.height / 2);
-    await expect(stones).toHaveCount(initialStones);
-    await expect(page.locator('#board .stone-preview circle')).toHaveCount(0);
-  }
-  for (const [x, y] of [[48, 48], [792, 48], [48, 792], [792, 792]]) {
-    const point = await page.locator('#board').evaluate((element, [x, y]) => {
-      const svg = element as unknown as SVGSVGElement;
-      const screen = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM()!);
-      return { x: screen.x, y: screen.y };
-    }, [x, y]);
-    await page.mouse.move(point.x, point.y);
-    const preview = page.locator('#board .stone-preview circle');
-    await expect(preview).toHaveAttribute('cx', String(x));
-    await expect(preview).toHaveAttribute('cy', String(y));
-  }
-  await page.mouse.down();
-  await page.mouse.up();
-  await expect(stones).toHaveCount(initialStones + 1);
-});

@@ -13,13 +13,18 @@ npm run dev
 
 Open the URL printed by Vite, normally `http://127.0.0.1:5173`. The app uses the proxy configuration in [client/src/proxy.ts](src/proxy.ts); set `VITE_FOX_PROXY_URL` in a local `.env.local` to override its URL, then restart Vite. Live login requires a reachable proxy with matching token, origin, and destination settings.
 
-Enter your Fox account in the login dialog and select a time control after connecting. An existing game can be restored on login. **Remember credentials** stores the username and password in a JavaScript-readable cookie with a requested lifetime of 10 years, only after Fox accepts the login. Browsers may cap that lifetime. The browser deletes the cookie when it expires; malformed saved entries are deleted when read. The app also remembers the selected time control in a cookie.
+Enter your Fox account in the login dialog and select a time control after connecting. An existing game can be restored on login. **Remember me** automatically logs back in after a reload and stores the username and password in a JavaScript-readable cookie with a requested lifetime of 10 years, only after Fox accepts the login. Browsers may cap that lifetime. The browser deletes the cookie when it expires; malformed saved entries are deleted when read. With Remember me enabled, the app also saves the selected time control and coordinate preference in cookies. With it off, the app saves no cookies or network logs. Turning it off clears existing app cookies and saved logs.
 
-Hover a player name during a game or in matchmaking to see their rank progress, up to 20 results at their current rank, and last 10 games. Keyboard focus or tapping the name also opens the card; Escape dismisses it. Details use Fox's authenticated gateway, while the game list uses one HTTP request signed in the client with the logged-in UID and login token; the proxy forwards that request to Fox unchanged. Both requests start in parallel in the background after login and when players join a game, and refresh after the game ends. Hover reuses pending requests and cached results; completed cards open immediately. Cached data stays visible while refreshing after a minute. The Worker must include the `/fox/chessbook/TXWQFetchChessList` route.
+Click or tap a player name to see their rank progress, up to 20 ranked results, and recent games. Player-list rows are clickable across their full width. The card reserves space for ten games and scrolls to show the complete response. Missing data uses dashes; 9d and professional players have no promotion requirement. Enter or Space opens the focused player; Escape dismisses the card. Click a history row to open `/review/<game-id>` with replay controls and an SGF download. Reviews opened during matchmaking or a live game use a new tab; reviews opened from the lobby preserve the connected lobby for Back navigation.
+
+Player details use Fox's authenticated gateway, while the history list uses one HTTP request signed in the client with the logged-in UID and login token; the proxy forwards it to Fox unchanged. Both requests start in parallel after login and when players join a game, and refresh after the game ends. Opening a card reuses pending requests and cached results. The Worker must include the `/fox/chessbook/TXWQFetchChessList` route. Archived review pages fetch the public SGF by game ID and do not require login.
 
 Press **F** to enter or leave full screen when you are not typing in a form field.
 
 For offline UI previews, open `/?dev-screen=all` on the development server. Preview shortcuts are development-only. They exercise UI states without requiring a live Fox game.
+
+The [visual coverage guide](tests/visual/README.md) maps the lobby, player-history,
+spectator, archived-review and connection previews to their regression checks.
 
 ## Build and verification
 
@@ -32,10 +37,10 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` runs the unit, browser, integration harness, network replay, and visual
-suites in order, stopping on the first failure. Docker must be running for the
-visual suite. Run an individual suite with `npm run test:unit`,
-`npm run test:browser`, `npm run test:integration`, or `npm run test:visual`.
+`npm test` runs the unit, network replay, and visual suites in order, stopping on
+the first failure. Docker must be running for the visual suite. Run an individual
+suite with `npm run test:unit`, `npm run test:integration`, or
+`npm run test:visual`.
 
 [Network replay integration tests](tests/integration/README.md) exercise the
 production UI offline using recorded Fox traffic. Import a downloaded log with
@@ -51,16 +56,9 @@ run offline against an instrumented production build with `npm run bench:runtime
 Their checked-in reports and [findings](tests/performance/FINDINGS.md) include
 before/after evidence for the measured rendering improvements.
 
-Browser checks start their own local server and mute audio:
-
-```sh
-npm run test:browser:install
-npm run test:browser
-```
-
-The setup command installs Playwright's Chromium, which is the only browser
-required by the default suites. For optional cross-browser checks, install the
-additional engines with `npx playwright install --with-deps firefox webkit`.
+The visual suite starts its own local server and mutes audio. Install its browser
+once with `npm run test:browser:install` (Playwright's Chromium), or run the suite
+with Docker as described next.
 
 Run `npm run test:visual` with Docker running to compare every dev screen with
 the PNGs in `client/tests/visual/baselines/`. The test starts its own server in
@@ -104,13 +102,6 @@ The Pages workflow deploys the static app independently of Verify. Build-time `V
 
 ## Logs
 
-Network logs persist across page reloads in IndexedDB. New redacted records are written in small batches, with a shared 20 MiB retention budget across tabs and a 1 MiB pending-write limit. Oldest records are dropped when the budget is exceeded; oversized records are skipped. If IndexedDB is unsupported or fails, network logging stops. There is no migration or in-memory fallback.
+With Remember me enabled, network logs persist across page reloads in IndexedDB. Logging and log downloads are disabled when Remember me is off. New redacted records are written in small batches, with a shared 20 MiB retention budget across tabs and a 1 MiB pending-write limit. Oldest records are dropped when the budget is exceeded; oversized records are skipped. If IndexedDB is unsupported or fails, network logging stops. There is no migration or in-memory fallback.
 
 Network-log downloads wait for pending writes and contain timestamps, source/destination, and base64 payloads. Login/session traffic is redacted before persistence; remaining entries can contain game and account identifiers. SGF and network-log downloads are generated in the browser. A crash can lose the most recent uncommitted batch.
-
-The normal browser suite includes IndexedDB checks. To run them separately, or against other installed Playwright engines:
-
-```sh
-npm run test:browser -- --network-log
-FOX_LOG_BROWSERS=chromium,firefox,webkit npm run test:browser -- --network-log
-```

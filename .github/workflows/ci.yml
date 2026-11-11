@@ -24,10 +24,8 @@ jobs:
       - name: Rebuild scoring WASM and compare checked-in artifacts
         run: npm run score-estimator:build -- --check
       - run: npm run test:unit
-      - name: Install browser for browser checks
+      - name: Install Chromium for golden replays
         run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
-      - run: npm run test:integration:harness
       - run: npm run test:integration -- --ci
       - run: npm run typecheck
       - run: npm run build

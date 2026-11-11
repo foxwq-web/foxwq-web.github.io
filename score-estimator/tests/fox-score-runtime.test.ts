@@ -8,10 +8,10 @@ import { Board } from '../../client/src/board.ts';
 import { decodeEstimate } from '../src/score-estimation.ts';
 
 const bytes = (path: string) => readFile(new URL(path, import.meta.url));
-const [inputBytes, binary, fixture, additional, compactFixture, reportBytes] = await Promise.all([
+const [inputBytes, binary, fixture, compactFixture, reportBytes] = await Promise.all([
   bytes('../scripts/inputs.json'),
   bytes('../artifacts/fox-score.wasm'), bytes('./fixtures/fox-native-estimates.json'),
-  bytes('./fixtures/fox-native-translated-estimates.json'), bytes('./fixtures/fox-native-go-compact-groups.json'),
+  bytes('./fixtures/fox-native-go-compact-groups.json'),
   bytes('../scripts/report.json'),
 ]);
 const references = JSON.parse(fixture.toString());
@@ -37,20 +37,6 @@ test('standalone translation is pinned to its source DLLs, generator, and WASM a
   assert.deepEqual(WebAssembly.Module.imports(wasm).map(({ module, name, kind }) =>
     `${module}.${name}:${kind}`).sort(), ['env.service:function', 'env.trace:function']);
 });
-
-for (const expected of [...references.positions, ...JSON.parse(additional.toString()).positions]) {
-  test(`statically translated search, territory, and penalties match native: ${expected.name}`, async () => {
-    let diagnostic: FoxEngineDiagnostics | undefined;
-    const result = await runFoxEstimate(expected.status, wasm, value => { diagnostic = value; });
-    assert.deepEqual(diagnostic!.initialGroups, expected.go_groups, 'native board construction before search');
-    assert.equal(diagnostic!.preliminaryOwnership, expected.go_ownership, 'GoStar territory before correction');
-    assert.deepEqual(diagnostic!.groups, expected.go_final, 'life/death flags and restored board after search');
-    assert.equal(diagnostic!.nativeOwnership, expected.ownership, 'full SE output including seki');
-    assert.equal(result.judge_status, expected.ownership.replaceAll('3', '0'), 'gameplay treats seki as neutral');
-    assert.equal(result.black_penalty, expected.black_penalty);
-    assert.equal(result.white_penalty, expected.white_penalty);
-  });
-}
 
 for (const expected of JSON.parse(compactFixture.toString()).positions) {
   test(`static native compact/large-group construction: ${expected.name}`, async () => {

@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
@@ -6,8 +7,11 @@ export default defineConfig({
   outputDir: './tests/visual/results',
   snapshotPathTemplate: '{testDir}/baselines/{projectName}/{arg}{ext}',
   updateSnapshots: 'none',
-  // Run both screenshot groups alongside the shorter interaction checks.
-  workers: 3,
+  // Tests are independent; letting them spread across workers keeps the large
+  // generated screen suites from forming a long tail on a single worker.
+  fullyParallel: true,
+  // CI's runner has 4 vCPUs. Locally, match the CPUs available to the runner.
+  workers: Number(process.env.VISUAL_WORKERS) || (process.env.CI ? 3 : availableParallelism()),
   retries: 0,
   forbidOnly: true,
   timeout: 30_000,
