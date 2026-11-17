@@ -113,9 +113,10 @@ export async function act(page: Page, action: Action, username: string, password
       // Leaving a finished room is a local-only action, but a new match implies
       // it when the matchmaking controls are not already shown.
       if (!await page.locator('#match').isVisible()) await click('#quit-room');
-      const control = page.locator(`input[name="time-control"][value="${action.id}"]`);
-      await control.check({ force: true });
-      await click('#match');
+      const field = `#time-controls .matchmaking-button[data-field-id="${action.id}"]`;
+      const selector = await page.locator(field).count() ? field : '#time-controls .matchmaking-button';
+      // One click starts searching that control.
+      await click(selector);
       break;
     }
     case 'play':

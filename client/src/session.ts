@@ -1,3 +1,4 @@
+import { logError } from "./error-message";
 import { StoneColor, StoneMoveFlag, GameStatus, ENGameEndReason, SpecialResult, CalculateProcessType, DuMiaoConst } from "./protocol.ts";
 import { gameFields as Game, roomFields as Room, fgwFields as Fgw, commonFields as Common } from "./protocol-fields.ts";
 import {
@@ -72,6 +73,7 @@ type Confirmation = [
   Fields,
   (ReturnType<typeof game.decodeCalculateConfirmNotify> | null)?,
 ];
+type MatchWire = { kind: "idle" } | { kind: "request"; field: number } | { kind: "cancel" };
 export class Session {
   host!: string;
   port!: number;
@@ -346,6 +348,7 @@ export class Session {
       this.matchFields = [];
       this.matchSettings = null;
       this.fieldsLoaded = false;
+      this.clearMatchmaking();
       this.fieldPlayers = {};
       this.fieldPlayersRequestedAt = 0;
       this.gameLockChecked = false;
@@ -828,24 +831,59 @@ export class Session {
         this.matchSettings = selected ?? null;
         this.discoveryReady();
       } else if (messageId === RoomMessageID.RM_AUTO_INVITE_REQUEST) {
-        if (this.phase !== "matching") return;
-        this.phase = signed(m.one(Room.AutoInviteResponse.result)) ? "ready" : "matching";
-        this.status = signed(m.one(Room.AutoInviteResponse.result))
-          ? `matchmaking rejected ${signed(m.one(Room.AutoInviteResponse.result))}`
-          : `Searching for a game...`;
+        const wire = this.matchWire;
+        if (wire.kind !== "request") return;
+        this.matchWire = { kind: "idle" };
+        const rejected = signed(m.one(Room.AutoInviteResponse.result));
+        if (rejected) {
+          this.matchConfirmed = null;
+          // A newer time control arrived while this request was in flight.
+          if (this.matchIntent !== null && this.matchIntent !== wire.field) {
+            this.pumpMatchmaking();
+            return;
+          }
+          this.matchIntent = null;
+          this.setMatchIntent(null);
+          this.status = `matchmaking rejected ${rejected}`;
+          logError(this.status);
+          return;
+        }
+        this.matchConfirmed = wire.field;
+        // The user may have cancelled or chosen another control meanwhile.
+        this.setMatchIntent(this.matchIntent);
+        this.pumpMatchmaking();
       } else if ([RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST, RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY].includes(messageId)) {
-        if (this.phase !== "matching") return;
+        if (!this.matchmakingPending()) return;
+        const cancelExpected = this.matchWire.kind === "cancel";
+        const searchingField = this.matchConfirmed ??
+          (this.matchWire.kind === "request" ? this.matchWire.field : null) ?? this.fieldId;
+        this.matchWire = { kind: "idle" };
+        this.matchConfirmed = null;
+        // A cancel we asked for always frees the way for a newer search, even
+        // when the user restarted the same time control before the reply.
+        const restart = this.matchIntent !== null &&
+          (cancelExpected || this.matchIntent !== searchingField);
+        if (restart) {
+          this.setMatchIntent(this.matchIntent);
+          this.pumpMatchmaking();
+          return;
+        }
         this.pendingConfirmation = null;
-        this.phase = "ready";
-        this.status = messageId === RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY
-          ? "matchmaking timed out"
-          : "Matchmaking cancelled";
+        this.matchIntent = null;
+        this.setMatchIntent(
+          null,
+          messageId === RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY
+            ? "matchmaking timed out"
+            : "Matchmaking cancelled",
+        );
+        if (messageId === RoomMessageID.RM_AUTO_INVITE_TIMEOUT_NOTIFY) logError(this.status);
       } else if (messageId === RoomMessageID.RM_ENTER_ROOM_NOTIFY) {
         if (!["matching", "joining", "playing"].includes(this.phase)) return;
         if (this.phase === "matching" && signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
         const room = validateGameRoom(messageId, m, undefined, this.expectedGameRoom());
         if (!room || (this.phase === "matching" && this.isPreviousRoom(room.roomKey))) return;
         if (signed(m.one(Room.EnterRoomNotify.result))) throw Error("Room entry failed");
+        this.clearMatchmaking();
         this.roomKey = room.roomKey;
         if (this.phase !== "playing") {
           this.phase = "joining";
@@ -984,6 +1022,7 @@ export class Session {
           };
         }
         clearTimeout(this.bootstrapTimer);
+        this.clearMatchmaking();
         this.phase = "playing";
         this.status = "Game started";
         this.pendingMove = null;
@@ -1494,35 +1533,8 @@ export class Session {
       this.changed();
     }
   }
-  selectMatchField(id: number) {
-    try {
-      if (!["ready", "finished"].includes(this.phase))
-        throw Error("Time settings cannot change during matchmaking or a game");
-      const field = this.matchFields.find((f) => f.id === id);
-      if (!field) throw Error("no time control available");
-      this.fieldId = id;
-      this.matchSettings = field;
-      this.preferredTimeControl = field;
-    } finally {
-      this.changed();
-    }
-  }
-  match() {
-    try {
-      if (
-        !["ready", "finished"].includes(this.phase) ||
-        this.fieldId === null
-      )
-        throw Error("Log in and wait for server discovery first");
-      this.clearEstimate();
-      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_REQUEST, { [Room.AutoInviteRequest.field_id]: this.fieldId, [Room.AutoInviteRequest.only_adjoin_grade]: false });
-      this.resetGame();
-      this.phase = "matching";
-      this.status = "Requesting a match...";
-    } finally {
-      this.changed();
-    }
-  }
+
+
   quitRoom() {
     try {
       if (
@@ -1552,15 +1564,7 @@ export class Session {
       this.changed();
     }
   }
-  cancelMatch() {
-    try {
-      if (this.phase !== "matching")
-        throw Error("No active matchmaking request");
-      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    } finally {
-      this.changed();
-    }
-  }
+
   onlineAction(messageId: number, fields: Fields) {
     try {
       if (
@@ -1635,5 +1639,155 @@ export class Session {
     } finally {
       this.changed();
     }
+  }
+  private matchIntent: number | null = null;
+  private matchConfirmed: number | null = null;
+  private matchWire: MatchWire = { kind: "idle" };
+  private get searching() {
+    return this.matchIntent !== null && this.matchConfirmed === this.matchIntent;
+  }
+  selectMatchField(id: number) {
+    try {
+      if (!["ready", "finished", "matching"].includes(this.phase))
+        throw Error("time settings cannot change during a game");
+      const field = this.matchFields.find((f) => f.id === id);
+      if (!field) throw Error("no time control available");
+      if (this.phase !== "matching") {
+        // A click always starts searching that time control, whether or not it
+        // was the remembered one. Selecting alone made the result depend on
+        // whether a previous search had already finished.
+        this.startMatch(id);
+      } else if (id !== this.fieldId) {
+        this.switchMatchTo(id);
+      } else if (this.searching) {
+        // Clicking the searching control stops it. `searching` is false until
+        // the server confirms the request, so an impatient repeat click cannot
+        // cancel the search it just asked for.
+        this.stopMatch();
+      }
+    } finally {
+      this.changed();
+    }
+  }
+  match() {
+    try {
+      if (!["ready", "finished"].includes(this.phase) || this.fieldId === null)
+        throw Error("log in and wait for server discovery first");
+      this.startMatch(this.fieldId);
+    } finally {
+      this.changed();
+    }
+  }
+  cancelMatch() {
+    try {
+      if (this.phase !== "matching") throw Error("no matchmaking search to cancel");
+      this.stopMatch();
+    } finally {
+      this.changed();
+    }
+  }
+  switchMatch(id: number) {
+    try {
+      if (this.phase !== "matching")
+        throw Error("time settings cannot change outside a search");
+      const field = this.matchFields.find((f) => f.id === id);
+      if (!field) throw Error("no time control available");
+      if (id === this.fieldId) this.stopMatch();
+      else this.switchMatchTo(id);
+    } finally {
+      this.changed();
+    }
+  }
+  private setMatchIntent(id: number | null, status = "Matchmaking cancelled") {
+    this.matchIntent = id;
+    if (id !== null) {
+      const field = this.matchFields.find((f) => f.id === id);
+      if (field) {
+        this.fieldId = id;
+        this.matchSettings = field;
+        this.preferredTimeControl = field;
+      }
+      this.phase = "matching";
+      this.status = this.searchStatus(id);
+      return;
+    }
+    if (this.phase === "matching") this.phase = "ready";
+    this.status = status;
+  }
+  private pumpMatchmaking() {
+    if (this.matchWire.kind !== "idle") return;
+    if (this.matchConfirmed !== null && this.matchConfirmed !== this.matchIntent) {
+      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+      this.matchWire = { kind: "cancel" };
+      return;
+    }
+    if (this.matchIntent !== null && this.matchConfirmed !== this.matchIntent) {
+      const field = this.matchIntent;
+      this.sendFgwChannelMsg(game.GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_REQUEST, {
+        [Room.AutoInviteRequest.field_id]: field,
+        [Room.AutoInviteRequest.only_adjoin_grade]: false,
+      });
+      this.matchWire = { kind: "request", field };
+    }
+  }
+  private startMatch(id: number) {
+    const intent = this.matchIntent;
+    this.matchIntent = id;
+    try {
+      this.pumpMatchmaking();
+    } catch (error) {
+      this.matchIntent = intent;
+      throw error;
+    }
+    this.clearEstimate();
+    this.resetGame();
+    this.setMatchIntent(id);
+  }
+  private switchMatchTo(id: number) {
+    const previous = {
+      fieldId: this.fieldId,
+      settings: this.matchSettings,
+      preferred: this.preferredTimeControl,
+      intent: this.matchIntent,
+    };
+    this.setMatchIntent(id);
+    try {
+      this.pumpMatchmaking();
+    } catch (error) {
+      this.fieldId = previous.fieldId;
+      this.matchSettings = previous.settings;
+      this.preferredTimeControl = previous.preferred;
+      this.matchIntent = previous.intent;
+      this.status = this.searchStatus();
+      throw error;
+    }
+  }
+  private stopMatch() {
+    const intent = this.matchIntent;
+    this.setMatchIntent(null);
+    try {
+      this.pumpMatchmaking();
+    } catch (error) {
+      this.matchIntent = intent;
+      this.setMatchIntent(intent);
+      throw error;
+    }
+  }
+  private clearMatchmaking() {
+    this.matchIntent = null;
+    this.matchConfirmed = null;
+    this.matchWire = { kind: "idle" };
+  }
+  private matchmakingPending() {
+    return this.matchIntent !== null || this.matchConfirmed !== null ||
+      this.matchWire.kind !== "idle";
+  }
+  private searchStatus(fieldId: number | null = this.fieldId) {
+    const field =
+      this.matchFields.find((f) => f.id === fieldId) ??
+      this.matchSettings;
+    return field
+      ? `Searching for 19,${game.timeLabel(field)}...`
+      : "Searching for game...";
   }
 }

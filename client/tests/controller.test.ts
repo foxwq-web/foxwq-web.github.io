@@ -374,8 +374,6 @@ test("quitting a finished room resets the game and review while preserving match
     assert.deepEqual(controller.state.session.account, account);
     assert.equal(controller.session.fgwConnection, gateway);
     controller.command("select-time", { id: 2 });
-    assert.equal(controller.state.session.phase, "ready");
-    controller.command("match");
     assert.equal(controller.state.session.phase, "matching");
     assert.equal(controller.state.session.game_over, false);
   } finally {

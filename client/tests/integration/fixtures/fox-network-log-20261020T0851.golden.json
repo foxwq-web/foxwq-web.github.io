@@ -9,33 +9,21 @@
       "expanded": "false"
     },
     {
-      "tag": "input",
-      "id": "time-control-108",
-      "text": "",
-      "disabled": false,
-      "value": "108",
-      "checked": false
+      "tag": "button",
+      "id": "",
+      "text": "19,1m20s(8070)",
+      "disabled": false
     },
     {
-      "tag": "input",
-      "id": "time-control-100",
-      "text": "",
-      "disabled": false,
-      "value": "100",
-      "checked": false
-    },
-    {
-      "tag": "input",
-      "id": "time-control-101",
-      "text": "",
-      "disabled": false,
-      "value": "101",
-      "checked": true
+      "tag": "button",
+      "id": "",
+      "text": "19,5m30s(6543)",
+      "disabled": false
     },
     {
       "tag": "button",
       "id": "match",
-      "text": "Play",
+      "text": "19,20m60s(5350)",
       "disabled": false
     }
   ],
@@ -44,5 +32,5 @@
     "stones": [],
     "annotations": []
   },
-  "accessibility": "- main\n- heading \"Matchmaking\" [level=2]\n- paragraph:\n  - text: Playing as\n  - button \"Replay player —\"\n- region \"Time control\":\n  - radiogroup \"Time control\":\n    - radio \"19,1m20s(8070 players)\"\n    - text: 19,1m20s(8070 players)\n    - radio \"19,5m30s(6543 players)\"\n    - text: 19,5m30s(6543 players)\n    - radio \"19,20m60s(5350 players)\" [checked]\n    - text: 19,20m60s(5350 players)\n- button \"Play\""
+  "accessibility": "- main\n- heading \"Matchmaking\" [level=2]\n- paragraph:\n  - text: Playing as\n  - button \"Replay player —\"\n- region \"Time control\":\n  - button \"19,1m20s (8070)\"\n  - button \"19,5m30s (6543)\"\n  - button \"19,20m60s (5350)\""
 }

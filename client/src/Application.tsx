@@ -91,42 +91,40 @@ function Player({ state, color, controller }: { state: UIState; color: number; c
   );
 }
 // Clock and pointer updates do not change matchmaking options.
-const TimeControls = memo(function TimeControls({ fields, populations, selected, disabled, controller: c }: {
+const TimeControls = memo(function TimeControls({ fields, populations, selected, searching, disabled, controller: c }: {
   fields: UIState["session"]["matchFields"];
   populations: UIState["session"]["fieldPlayers"];
   selected: UIState["session"]["fieldId"];
+  searching: boolean;
   disabled: boolean;
   controller: Controller;
 }) {
   return (
     <section id="time-settings" aria-label="Time control">
-      <div id="time-controls" className="time-controls" role="radiogroup" aria-label="Time control">
-        {fields.map((field) => (
-          <label key={field.id} className="time-option">
-            <input
-              type="radio"
-              id={`time-control-${field.id}`}
-              name="time-control"
-              value={field.id}
-              checked={selected === field.id}
-              disabled={disabled}
-              onChange={() =>
-                c.command("select-time", { id: field.id })
-              }
-            />
-            <span>
-              <span>19,{timeLabel(field)}</span>
-              <span
-                className="field-population"
-                data-field-id={field.id}
-              >
-                {populations[field.id] == null
-                  ? "(— players)"
-                  : `(${populations[field.id]} ${populations[field.id] === 1 ? "player" : "players"})`}
-              </span>
-            </span>
-          </label>
-        ))}
+      <div id="time-controls" className="time-controls">
+        {fields.map((field) => {
+          const active = searching && selected === field.id;
+          return (
+            <button
+              key={field.id}
+              type="button"
+              id={selected === field.id ? "match" : undefined}
+              className="button matchmaking-button"
+              data-field-id={field.id}
+              disabled={disabled || searching}
+              onClick={() => c.command("select-time", { id: field.id })}
+            >
+              {active
+                ? <span id="matchmaking-title" role="status">{`Searching for 19,${timeLabel(field)}...`}</span>
+                : <>
+                    <span>{`19,${timeLabel(field)}`}</span>
+                    <span className="field-population" data-field-id={field.id}>
+                      {populations[field.id] == null ? "(—)" : `(${populations[field.id]})`}
+                    </span>
+                  </>}
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -438,7 +436,8 @@ export function App({ controller: c }: { controller: Controller }) {
     </span>
   );
   const bottomColor = s.color === 2 ? 2 : 1,
-    estimate = s.estimation;
+    estimate = s.estimation,
+    searching = s.phase === "matching";
   return (
     <>
       <main
@@ -760,22 +759,9 @@ export function App({ controller: c }: { controller: Controller }) {
           {loginStep && statusSeparate && status}
           <div id="matchmaking" hidden={loginStep}>
             <TimeControls fields={s.matchFields} populations={s.fieldPlayers}
-              selected={s.fieldId} disabled={!["ready", "finished"].includes(s.phase)} controller={c} />
-            <button
-              id="match"
-              disabled={
-                !(
-                  ["ready", "finished"].includes(s.phase) &&
-                  s.fieldId !== null &&
-                  s.gatewayAvailable
-                )
-              }
-              onClick={() => command("match")}
-            >
-              {statusHidden || statusSeparate ? "Play" : null}
-              {!loginStep && !statusSeparate && status}
-            </button>
-            {!loginStep && statusSeparate && status}
+              selected={s.fieldId} searching={searching}
+              disabled={!s.gatewayAvailable || !["ready", "finished", "matching"].includes(s.phase)}
+              controller={c} />
           </div>
         </div>
       </div>

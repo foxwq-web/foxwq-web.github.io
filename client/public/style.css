@@ -198,11 +198,15 @@ a:hover { color: #fff; }
 #login, #match { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 #time-settings { display: grid; gap: 12px; }
 #time-settings h3, #time-settings p { margin: 0; font-size: 1em; }
-#time-controls { display: grid; gap: 10px; }
-.time-option { display: flex; align-items: center; }
-.time-option > span { white-space: nowrap; }
-.time-option .field-population { margin-left: 4px; }
-.time-option input { flex: none; margin: 0; }
+#time-controls { display: grid; gap: var(--action-gap); }
+#time-controls .matchmaking-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 1px 10px;
+  white-space: nowrap;
+}
 #counting-dialog { position: static; color: inherit; }
 .player-stone { --stone-size: 12px; display: inline-block; width: var(--stone-size); height: var(--stone-size); flex: 0 0 var(--stone-size); border-radius: 50%; box-shadow: 0 1px 2px #252b2526; vertical-align: middle; }
 .player-stone.black { background: #111; border: 1px solid #777; }

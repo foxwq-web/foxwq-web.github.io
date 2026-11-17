@@ -105,10 +105,10 @@ for (const screen of menu) {
       await expect(page.locator('#status')).toHaveText('Error: matchmaking rejected -1');
     }
     if (screen.id === 'matchmaking') {
-      await expect(page.locator('.time-option > span')).toHaveText([
-        '19,1m20s(727 players)',
-        '19,5m30s(612 players)',
-        '19,20m60s(493 players)',
+      await expect(page.locator('.matchmaking-button')).toHaveText([
+        '19,1m20s(727)',
+        '19,5m30s(612)',
+        '19,20m60s(493)',
       ]);
     }
     if (screen.id === 'score-estimation') {
@@ -189,5 +189,13 @@ for (const screen of menu) {
     }
     expect(errors).toEqual([]);
     await expect(page).toHaveScreenshot(`${screen.id}.png`, { fullPage: true });
+    if (screen.id === 'matchmaking') {
+      const timeControls = page.locator('#time-controls button');
+      await expect(timeControls).toHaveCount(3);
+      const chosen = timeControls.nth(1);
+      await chosen.click();
+      await expect(chosen).toHaveText('Searching for 19,5m30s...');
+      for (const button of await timeControls.all()) await expect(button).toBeDisabled();
+    }
   });
 }
