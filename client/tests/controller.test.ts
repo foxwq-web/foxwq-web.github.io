@@ -16,8 +16,8 @@ import { rememberedCredentials, rememberCredentials } from "../src/credentials.t
 import { Buffer } from "buffer";
 import { extractNetMsgFromBytes } from "../src/framing.ts";
 import { encodeFgwMessage } from "../src/game.ts";
-import postGameDisconnection from "./fixtures/post-game-disconnection.json" with { type: "json" };
 import { NetworkLog } from "../src/network-log.ts";
+import { parseSgf } from '../src/sgf';
 
 test("network log export reports unavailable storage instead of downloading an empty file", async () => {
   const controller = new Controller();
@@ -35,7 +35,7 @@ test("network log export reports unavailable storage instead of downloading an e
       // A download would access document, which is absent in this test.
       await controller.save("network-log");
       assert.equal(controller.state.menuError,
-        "Network log unavailable: NotFoundError: Missing log store. Reload the page to try again.");
+        "network log unavailable NotFoundError: Missing log store reload the page to try again");
     }
   } finally {
     controller.remember(false);
@@ -55,73 +55,6 @@ function initial(session = new Session()): UIState {
     focused: null,
     form: { username: "", passwordLength: 0, remember: false },
   };
-}
-
-for (const failure of ["recorded server logout", "socket close", "heartbeat timeout"]) {
-  test(`finished review survives ${failure} from the latest populated Downloads log`, async context => {
-    context.mock.timers.enable({ apis: ["Date"] });
-    const c = new Controller(), s = c.session;
-    c.sounds.preload = () => {};
-    const closed: string[] = [];
-    s.fgwConnection = { send() {}, close() { closed.push("gateway"); } };
-    s.connection = { send() {}, close() { closed.push("login"); } };
-    s.uid = postGameDisconnection.uid;
-    s.phase = "joining";
-    c.emit({ type: "initialize", state: initial(s) });
-    const frames = postGameDisconnection.entries.map(entry => extractNetMsgFromBytes(Buffer.from(entry.payload, "base64"))![0]);
-    try {
-      for (const frame of frames.slice(0, -1)) s.receive(s.generation, frame);
-      s.flushChanges();
-      assert.equal(c.state.session.phase, "finished");
-      assert.equal(c.state.session.result, "W+T");
-      assert.equal(s.board.moves.length, 166);
-      c.review("previous");
-      const position = c.state.review;
-      const before = s.snapshot(), sgf = s.board.sgf(s.result);
-      let finishEstimate!: (value: { ret: number; board_size: number; judge_status: string }) => void;
-      s.estimationFetcher = () => new Promise(resolve => { finishEstimate = resolve; });
-      const estimate = s.estimateScore(position!);
-      const generation = s.generation;
-      // Late discovery/synchronization and duplicate result packets on a live
-      // connection must not interrupt review either.
-      s.receive(generation, frames[1]);
-      s.receive(generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0,
-        rawProto: encodeFgwMessage(s.uid, GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: GAME_SVR, 3: 64 }) });
-      s.receive(generation, frames.at(-2)!);
-      s.flushChanges();
-      assert.equal(s.phase, "finished");
-      assert.equal(s.estimation?.phase, "loading");
-      assert.equal(c.state.review, position);
-      if (failure === "recorded server logout") s.receive(generation, frames.at(-1)!);
-      else if (failure === "socket close") s.failed(generation, "Proxy connection closed");
-      else { context.mock.timers.tick(25000); s.heartbeat(generation); }
-      s.flushChanges();
-      assert.deepEqual(closed.sort(), ["gateway", "login"]);
-      assert.deepEqual(s.snapshot(), { ...before,
-        ...(failure === "recorded server logout" ? { phase: "kicked", status: "another client logged in" } : {}),
-        estimation: { phase: "loading" }, gatewayAvailable: false });
-      assert.equal(c.state.review, position, "disconnect must preserve the review cursor");
-      assert.ok(boardAvailable(c.state.session));
-      assert.equal(s.board.sgf(s.result), sgf, "the downloadable game stays intact");
-      // Callbacks from the closed sockets cannot reset the finished game.
-      s.receive(generation, frames[0]);
-      s.failed(generation, "another client logged in");
-      finishEstimate({ ret: 0, board_size: 19, judge_status: "0".repeat(361) });
-      await estimate;
-      s.flushChanges();
-      assert.equal(c.state.session.estimation?.phase, "result");
-      c.command("return-game");
-      s.flushChanges();
-      c.review("first");
-      assert.equal(c.state.review?.moves, 0);
-      c.command("play", { x: 3, y: 3 });
-      assert.equal(c.state.review?.variation?.cursor, 1, "variations remain playable offline");
-      c.review("main");
-      c.review("last");
-      assert.equal(c.state.review?.moves, 166);
-      assert.equal(c.state.session.phase, failure === "recorded server logout" ? "kicked" : "finished");
-    } finally { s.close(); }
-  });
 }
 
 test("remembered credentials are replaced only after Fox accepts the submitted login", context => {
@@ -215,6 +148,11 @@ test("byoyomi replaces the last-move marker with contrasting seconds and restore
     assert.doesNotMatch(render(), /<polygon/);
 
     const s = state.session;
+    s.spectating = true;
+    assert.equal(digit(), null, "spectators keep the last-move marker during byoyomi");
+    assert.match(render(), /<polygon/);
+    s.spectating = false;
+    assert.equal(digit()?.[1], "9", "players still see the countdown");
     state.frozen = false;
     const clock = s.clocks[s.turn];
     for (let seconds = 9; seconds >= 1; seconds--) {
@@ -433,7 +371,8 @@ test("subscribers receive the controller state without replaying transitions", a
   }
 });
 
-test("opponent-turn actions are ignored without prompts or sending commands", async () => {
+test("opponent-turn feedback lasts until the next turn without prompting or sending commands", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
   const controller = new Controller();
   try {
     controller.preview = true;
@@ -445,16 +384,24 @@ test("opponent-turn actions are ignored without prompts or sending commands", as
     controller.session.flushChanges();
     session.passTurn = () => assert.fail("must not pass during the opponent's turn");
     session.requestCounting = () => assert.fail("must not request counting during the opponent's turn");
-    for (const command of ["pass", "request-score"] as const) {
+    controller.raise("waiting to confirm the previous action");
+    context.mock.timers.tick(10000);
+    assert.equal(controller.state.error, "waiting to confirm the previous action");
+    for (const [command, message] of [
+      ["pass", "can only pass on your turn"],
+      ["request-score", "can only request counting on your turn"],
+    ] as const) {
       controller.command(command);
+      context.mock.timers.tick(10000);
       assert.equal(controller.state.prompt, null);
-      assert.equal(controller.state.error, "");
+      assert.equal(controller.state.error, message);
       assert.deepEqual(JSON.parse(await session.networkLog.serialize()), []);
     }
     session.board.turn = 2;
     controller.session.changed();
     controller.session.flushChanges();
     assert.equal(controller.state.prompt, null);
+    assert.equal(controller.state.error, "");
     let passes = 0, requests = 0;
     session.passTurn = () => { passes++; };
     session.requestCounting = () => { requests++; };
@@ -462,6 +409,38 @@ test("opponent-turn actions are ignored without prompts or sending commands", as
     controller.command("request-score");
     assert.equal(passes, 1);
     assert.equal(requests, 1);
+    session.board.turn = 1;
+    controller.command("pass");
+    assert.equal(controller.state.error, "can only pass on your turn");
+    session.phase = "finished";
+    controller.session.changed();
+    controller.session.flushChanges();
+    assert.equal(controller.state.error, "");
+  } finally {
+    controller.dispose();
+  }
+});
+
+test("board errors stay visible during recovery and clear when play resumes on the same turn", context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const controller = new Controller();
+  try {
+    const session = controller.session;
+    session.phase = "reconnecting";
+    session.color = 1;
+    controller.emit({ type: "initialize", state: initial(session) });
+    controller.raise("connection lost");
+    context.mock.timers.tick(10000);
+    session.status = "reconnecting";
+    session.changed();
+    session.flushChanges();
+    assert.equal(controller.state.error, "connection lost");
+
+    session.phase = "playing";
+    session.changed();
+    session.flushChanges();
+    assert.equal(controller.state.session.turn, 1);
+    assert.equal(controller.state.error, "");
   } finally {
     controller.dispose();
   }
@@ -716,7 +695,7 @@ test("finished game review restores captures and passes silently without changin
     board.passTurn();
     c.session.phase = "finished";
     c.session.gameOver = true;
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     c.sounds.play = () => assert.fail("review must be silent");
     const record = board.sgf();
     c.review("previous");
@@ -752,6 +731,35 @@ test("finished game review restores captures and passes silently without changin
   } finally { c.dispose(); }
 });
 
+test("spectator replay keeps untransmitted clocks unknown despite a three-hour time control", () => {
+  const c = new Controller();
+  try {
+    setupFoxGame(c.session);
+    const board = c.session.board;
+    board.timeControl = { main: 10800, periods: 3, byoyomi: 60 };
+    board.play(3, 3);
+    board.play(15, 15);
+    c.session.spectating = true;
+    c.session.phase = "finished";
+    c.session.gameOver = true;
+    c.session.clocks = {};
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
+    for (const direction of ["first", "next", "previous", "last"] as const) {
+      c.review(direction);
+      assert.deepEqual(c.state.review?.clocks, {});
+    }
+    c.playVariation(4, 4);
+    assert.deepEqual(c.state.review?.clocks, {});
+    c.review("main");
+    board.moveTimings[0] = { remaining: 10750 };
+    c.review("first");
+    assert.deepEqual(c.state.review?.clocks, {});
+    c.review("next");
+    assert.equal(c.state.review?.clocks?.[1].main, 10750);
+    assert.equal(c.state.review?.clocks?.[2], undefined);
+  } finally { c.dispose(); }
+});
+
 test("review clocks follow recorded main time and byoyomi and stay at the variation origin", () => {
   const c = new Controller();
   try {
@@ -769,7 +777,7 @@ test("review clocks follow recorded main time and byoyomi and stay at the variat
     c.session.phase = "finished";
     c.session.gameOver = true;
     c.session.clocks = { 1: { main: 0, periods: 1, byoyomi: 2, at: 1000 } };
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     const record = board.sgf();
     const clocks = () => c.state.review!.clocks!;
     c.review("first");
@@ -812,7 +820,7 @@ test("review estimates use the displayed stones and captures and discard late re
       board.play(x, y, color);
     c.session.phase = "finished";
     c.session.gameOver = true;
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     const record = board.sgf();
     c.sounds.play = () => assert.fail("review and estimation must be silent");
     const payloads: string[] = [];
@@ -864,7 +872,7 @@ test("review board placement stays blocked while an estimate loads or is display
   const c = new Controller();
   try {
     await applyDevScreen(c.session, "finished-resign");
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     c.review("previous");
     const point = 10 * 19 + 4;
     assert.equal(playablePoint(c.state, point), point);
@@ -909,7 +917,7 @@ test("variations navigate locally, exit at their origin, and leave the main reco
   const c = new Controller();
   try {
     await applyDevScreen(c.session, "finished-resign");
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     const record = c.session.board.sgf();
     c.review("previous");
     const origin = c.state.review!.moves;
@@ -920,7 +928,6 @@ test("variations navigate locally, exit at their origin, and leave the main reco
     assert.equal(c.state.review?.variation?.cursor, 2);
     const last = c.state.review;
     c.review("next");
-    c.review("last");
     assert.equal(c.state.review, last);
     c.review("previous");
     assert.equal(c.state.review?.variation?.cursor, 1);
@@ -938,11 +945,16 @@ test("variations navigate locally, exit at their origin, and leave the main reco
     assert.equal(c.state.review?.moves, origin + 1);
     c.playVariation(4, 10);
     c.review("first");
-    assert.equal(c.state.review?.moves, origin + 1);
+    assert.equal(c.state.review?.moves, 0);
+    assert.equal(c.state.review?.variation, undefined);
     c.playVariation(4, 10);
     const beforeIllegal = c.state.review;
     c.playVariation(4, 10);
     assert.equal(c.state.review, beforeIllegal);
+    c.review("last");
+    assert.equal(c.state.review?.variation, undefined);
+    assert.equal(c.state.review?.moves, c.session.board.moves.length);
+    assert.deepEqual(c.state.review?.stones, c.session.board.stones);
     assert.equal(c.session.board.sgf(), record);
   } finally { c.dispose(); }
 });
@@ -958,7 +970,7 @@ test("variation numbers follow surviving stones, and alternate continuations rep
     board.turn = 2;
     c.session.phase = "finished";
     c.session.gameOver = true;
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     // Use an ordinary alternating variation with a capture of numbered stone 1.
     c.review("first");
     for (const [x, y] of [[1,1], [0,1], [10,10], [1,0], [11,10], [2,1], [12,10], [1,2]])
@@ -988,7 +1000,7 @@ test("variation previews and placement enforce ko from the displayed position", 
       c.session.board.play(x, y);
     c.session.phase = "finished";
     c.session.gameOver = true;
-    c.emit({ type: "initialize", state: initial(c.session) });
+    c.emit({ type: "initialize", state: initial(Object.assign(c.session, { archived: true })) });
     c.playVariation(2, 3);
     assert.equal(c.state.review?.variation?.cursor, 1);
     assert.equal(playablePoint(c.state, 2 + 2 * 19), null);

@@ -8,6 +8,6 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://foxwq-web.github.io,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173,http://localhost:4173",
-    "ALLOWED_TARGETS": "43.132.13.39:10000,119.91.247.46:3001"
+    "ALLOWED_TARGETS": "43.132.13.39:10000,119.91.247.46:3001,134.175.158.86:8000"
   }
 }

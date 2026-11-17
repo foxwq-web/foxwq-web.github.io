@@ -3,15 +3,17 @@ import type { Fields } from './wire';
 // Live Fox snapshot fetched on 2026-10-30.
 // Profiles: authenticated 20043/1001; games: TXWQFetchChessList.
 // Latest 20 games per player, retaining only fields used by the history parser.
+// Ranked records below are synthetic preview data: the retained profile
+// snapshots only kept overall counters, which are also kept separately.
 // Credentials and login tokens are never included in this offline fixture.
 // The current board position and clocks remain independent preview scenarios.
 export const PREVIEW_PLAYERS = [
   {
-    uid: 531127799, name: '黑白双杀29', rank: 19,
+    uid: 531127799, name: '黑白双杀29', rank: 19, country: 86,
     summary: {
-      1: 0, 3: 531127799, 7: 19, 8: { 5: '黑白双杀29' },
+      1: 0, 3: 531127799, 7: 19, 8: { 5: '黑白双杀29', 7: 86 },
       9: { 1: { 1: 6, 2: 0, 3: 9, 4: 0 }, 2: '-++-++-++-' },
-      16: [{ 1: 0, 2: 427, 3: 407, 4: 0 }],
+      16: [{ 1: 2, 2: 427, 3: 407, 4: 0 }, { 1: 0, 2: 427, 3: 407, 4: 0 }],
     } satisfies Fields,
     games: [
       {
@@ -137,11 +139,11 @@ export const PREVIEW_PLAYERS = [
     ],
   },
   {
-    uid: 533702962, name: '拉依苏圣泉', rank: 21,
+    uid: 533702962, name: '拉依苏圣泉', rank: 21, country: 81,
     summary: {
-      1: 0, 3: 533702962, 7: 21, 8: { 5: '拉依苏圣泉' },
+      1: 0, 3: 533702962, 7: 21, 8: { 5: '拉依苏圣泉', 7: 81 },
       9: { 1: { 1: 10, 2: 0, 3: 2, 4: 0 }, 2: '-+---++-+-++---+--+-' },
-      16: [{ 1: 0, 2: 157, 3: 43, 4: 1 }],
+      16: [{ 1: 2, 2: 157, 3: 43, 4: 1 }, { 1: 0, 2: 157, 3: 43, 4: 1 }],
     } satisfies Fields,
     games: [
       {

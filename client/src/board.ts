@@ -18,6 +18,8 @@ export class Board {
   passes: number;
   moveTimings: (MoveTiming | null)[];
   timeControl: GameTimeControl | null;
+  startedAt = 0;
+  handicap = 0;
   constructor(size = 19) {
     this.size = size;
     this.stones = Array(size * size).fill(0);
@@ -31,6 +33,26 @@ export class Board {
   }
   clone() {
     return Object.assign(new Board(this.size), structuredClone(this));
+  }
+  setupHandicap(count: number) {
+    if (count < 2) return;
+    if (this.size !== 19 || !Number.isInteger(count) || count > 9 || this.moves.length)
+      throw Error("unsupported handicap setup");
+    // Fox's three-stone setup leaves the lower-right corner free.
+    const points = [[15, 3], [3, 15], [3, 3], [15, 15]];
+    if (count >= 6) points.push([3, 9], [15, 9]);
+    if (count >= 8) points.push([9, 3], [9, 15]);
+    if (count >= 5 && count % 2) points.push([9, 9]);
+    for (const [x, y] of points.slice(0, count)) this.stones[y * this.size + x] = 1;
+    this.handicap = count;
+    this.turn = 2;
+  }
+  initialPosition() {
+    const board = new Board(this.size);
+    board.setupHandicap(this.handicap);
+    board.timeControl = this.timeControl;
+    board.startedAt = this.startedAt;
+    return board;
   }
   *neighbors(point: number) {
     const x = point % this.size,
@@ -120,6 +142,12 @@ export class Board {
     const escape = (s: string) =>
       String(s).replaceAll("\\", "\\\\").replaceAll("]", "\\]");
     let text = `(;GM[1]FF[4]CA[UTF-8]SZ[${this.size}]KM[${komi}]PB[${escape(black)}]PW[${escape(white)}]`;
+    if (this.handicap) {
+      text += `HA[${this.handicap}]AB`;
+      this.initialPosition().stones.forEach((color, point) => {
+        if (color === 1) text += `[${String.fromCharCode(97 + point % this.size, 97 + Math.floor(point / this.size))}]`;
+      });
+    }
     if (this.timeControl) {
       const { main, periods, byoyomi } = this.timeControl;
       text += `TM[${main}]`;

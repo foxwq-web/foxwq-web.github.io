@@ -83,6 +83,8 @@ export function rankLabel(rank: number) {
   if (rank < 18) return `${18 - rank}k`;
   if (rank < 27) return `${rank - 17}d`;
   if (rank < 36) return `${rank - 26}p`;
+  // Fox also sends professional grades as 100–108 (1p–9p).
+  if (rank >= 100 && rank <= 108) return `${rank - 99}p`;
   return "";
 }
 export function resultLabel(winner: unknown, points: number | null, ending: "R" | "T" | "F" | "Void" | "" = "") {

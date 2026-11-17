@@ -102,6 +102,12 @@ export function normalizeLog(input: unknown): { entries: NetworkEntry[]; usernam
   }
   const request = start.frame ? decode(start.frame.rawProto) : null;
   const response = loginResponse ? decode(loginResponse.rawProto) : null;
+  const classicAddresses = new Set<string>();
+  for (const entry of retained) if (entry.frame?.msgTypeID === 3005)
+    for (const bytes of decode(entry.frame.rawProto).get(3) ?? []) {
+      const server = decode(bytes);
+      if (server.text(5) && server.number(6)) classicAddresses.add(`${server.text(5)}:${server.number(6)}`);
+    }
   const username = request?.text(1) || response?.sub(3).text(3) || response?.sub(3).text(2) || 'Replay player';
   const seenEmpty = new Set<string>();
   const requestIds = new Map<string, string>();
@@ -118,7 +124,10 @@ export function normalizeLog(input: unknown): { entries: NetworkEntry[]; usernam
       if (seenEmpty.has(key)) continue;
       seenEmpty.add(key);
       if (!uid) throw Error('Cannot reconstruct redacted authentication: no account ID remains in the log.');
-      bytes = connection(entry) === connection(start)
+      bytes = classicAddresses.has(address(entry))
+        ? outbound(entry) ? frame(4000, encode({ 1: uid, 2: 11509231, 3: false, 4: TOKEN, 5: MAC, 6: false, 7: false }), true)
+          : frame(4005, encode({ 1: 0, 2: uid }), true)
+        : connection(entry) === connection(start)
         ? outbound(entry) ? frame(2000, login(username), true)
           : frame(2005, encode({ 1: 0, 2: uid, 3: { 1: uid, 3: username }, 8: TOKEN }), true)
         : frame(LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, encodeFgwPacket(encode({ [Common.FGWHead.message_id]: ClientMessageID.MID_LOGIN_REQUEST, [Common.FGWHead.uid]: uid, [Common.FGWHead.client_type]: ENClientType.E_CLIENT_TYPE_PC, [Common.FGWHead.account_type]: 6, [Common.FGWHead.server_type]: SVR_TYPE_FGW, [Common.FGWHead.server_id]: 0, [Common.FGWHead.pc_client_version]: '11509231', [Common.FGWHead.language]: 4 }), encode(outbound(entry) ? { [Fgw.LoginRequest.session]: TOKEN } : { [Fgw.LoginResponse.op_code]: 0 })), true);
@@ -129,6 +138,8 @@ export function normalizeLog(input: unknown): { entries: NetworkEntry[]; usernam
       const fields = fieldsOf(body);
       if (body.bytes(8).length) fields[8] = TOKEN;
       bytes = frame(2005, encode(fields), true);
+    } else if (entry.frame.msgTypeID === 4000) {
+      bytes = frame(4000, encode({ ...fieldsOf(decode(entry.frame.rawProto)), 4: TOKEN, 5: MAC }), true);
     } else if (entry.frame.msgTypeID === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) {
       const [header, body] = decodeFgwMessage(entry.frame.rawProto);
       if (header.number(Common.FGWHead.server_type) === SVR_TYPE_FGW && header.number(Common.FGWHead.message_id) === ClientMessageID.MID_LOGIN_REQUEST && outbound(entry))
@@ -165,13 +176,13 @@ export function packets(entries: NetworkEntry[]): Packet[] {
   });
 }
 
-export type Action = { type: 'login' | 'match' | 'cancel' | 'play' | 'pass' | 'count' | 'confirm' | 'resign'; x?: number; y?: number; id?: number; accept?: boolean };
+export type Action = { type: 'login' | 'match' | 'play' | 'pass' | 'count' | 'confirm' | 'resign'; x?: number; y?: number; id?: number; accept?: boolean };
 export function inferAction(packet: NetMsg): Action | null {
   if (packet.msgTypeID === 2000) return { type: 'login' };
   if (packet.msgTypeID !== LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) return null;
   const [header, body] = decodeFgwMessage(packet.rawProto), service = header.number(Common.FGWHead.server_type), op = header.number(Common.FGWHead.message_id);
+  if (service === SVR_TYPE_FGW && op === ClientMessageID.MID_LOGIN_REQUEST) return { type: 'login' };
   if (service === GAME_SVR_MGR && op === RoomMessageID.RM_AUTO_INVITE_REQUEST) return { type: 'match', id: body.number(Room.AutoInviteRequest.field_id) };
-  if (service === GAME_SVR_MGR && op === RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST) return { type: 'cancel' };
   if (service !== GAME_SVR) return null;
   if (op === GoGameMessageID.GC_SET_PIECE_REQUEST) return { type: 'play', x: body.number(Game.SetPieceRequest.x), y: body.number(Game.SetPieceRequest.y) };
   if (op === GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST) return { type: 'pass' };

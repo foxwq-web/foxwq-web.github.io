@@ -1,15 +1,15 @@
-import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
-import { formatError } from "./error-message";
+import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faDownload } from "@fortawesome/free-solid-svg-icons";
 import { Icon } from "./Icon";
+import { formatError } from "./error-message";
 import { PlayerName } from "./PlayerInfo";
 import {
-  memo,
   useEffect,
   useLayoutEffect,
   useSyncExternalStore,
   useRef,
   useState,
   lazy,
+  memo,
   Suspense,
   type CSSProperties,
 } from "preact/compat";
@@ -17,12 +17,12 @@ import { BoardView, coordinateGutterPixels } from "./BoardView";
 import { Controller } from "./controller";
 import {
   boardAvailable,
+  quitRoomPrompt,
   reviewAvailable,
   actionsBlocked,
-  promptForAction,
+  isLoginStep,
   type UIState,
   type Command,
-  type Prompt,
 } from "./state";
 import { timeLabel } from "./game.ts";
 import { clockInputValue, clockReading } from "./clock.ts";
@@ -31,66 +31,6 @@ import { rememberedCoordinates, rememberCoordinates } from "./coordinate-prefere
 
 const DevMenu = import.meta.env.DEV ? lazy(() => import("./DevMenu")) : null;
 
-function Player({ state, color, controller }: { state: UIState; color: number; controller: Controller }) {
-  const s = state.session,
-    name = color === 1 ? "black" : "white",
-    player = s.players[color];
-  const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
-  const clock = s.clocks[color];
-  const disconnected = color === 3 - s.color && s.opponentDisconnectDeadline != null;
-  const elapsed =
-    clock && !state.review && !state.frozen && !s.paused && !s.counting && s.phase === "playing" && s.turn === color &&
-    !disconnected
-      ? Math.max(0, state.now - clock.at)
-      : 0;
-  const reading = clock ? clockReading(clock, elapsed, 60, color === s.color) : null;
-  const seconds = reading
-    ? Math.ceil(reading.overtime ? reading.seconds : reading.main)
-    : 0;
-  const total =
-    state.review?.totalPeriods ?? s.matchFields.find((field) => field.id === s.fieldId)?.periods ?? 3;
-  const clockId = color === (s.color === 2 ? 2 : 1) ? "hours" : `${name}-hours`;
-  const clockValue = clockInputValue(seconds);
-  const clockText = seconds < 3600 ? clockValue.slice(3) : clockValue;
-  return (
-    <section
-      id={`${name}-player`}
-      aria-labelledby={`${name}-player-title`}
-      className={`player-panel${!state.review && s.phase === "playing" && s.turn === color && !disconnected ? " to-play" : ""}`}
-    >
-      <p id={`${name}-player-title`} className="player-title">
-        <span className={`player-stone ${name}`} />
-        <PlayerName controller={controller} id={`${name}-player-name`} uid={player?.id}
-          name={player?.name || (color === 1 ? "Black" : "White")} rank={player?.rank} />
-      </p>
-      <p
-        id={`${name}-captures`}
-        className="player-captures"
-      >{`Captures: ${s.captures[color]}${komi ? ` + ${komi}` : ""}`}</p>
-      <dl className="player-clock">
-        <div>
-          <dt id={`${name}-time-label`}>
-            {reading?.overtime && clock?.periods
-              ? <>Byoyomi: <span id={`${name}-periods`}>{reading.periods}/{total}</span></>
-              : "Main time"}
-          </dt>
-          <dd id={`${name}-time`} className={`remaining-time${clock ? "" : " no-clock"}`}>
-            {clock
-              ? <time
-                  className="clock-display"
-                  id={clockId}
-                  dateTime={`PT${seconds}S`}
-                >
-                  <span className="clock-text">{clockText}</span>
-              </time>
-              : "—"}
-          </dd>
-        </div>
-      </dl>
-    </section>
-  );
-}
-// Clock and pointer updates do not change matchmaking options.
 const TimeControls = memo(function TimeControls({ fields, populations, selected, searching, disabled, controller: c }: {
   fields: UIState["session"]["matchFields"];
   populations: UIState["session"]["fieldPlayers"];
@@ -130,6 +70,82 @@ const TimeControls = memo(function TimeControls({ fields, populations, selected,
   );
 });
 
+function Player({ state, color, controller }: { state: UIState; color: number; controller: Controller }) {
+  const s = state.session,
+    name = color === 1 ? "black" : "white",
+    player = s.players[color];
+  const loading = ["joining", "resuming"].includes(s.phase);
+  const komi = color === 1 ? Math.max(0, -s.komi) : Math.max(0, s.komi);
+  const clock = s.clocks[color];
+  const disconnected = color === 3 - s.color && s.opponentDisconnectDeadline != null;
+  const elapsed =
+    clock && !state.review && !state.frozen && !s.paused && !s.counting && s.phase === "playing" && !s.resignationResult && s.turn === color &&
+    !disconnected
+      ? Math.max(0, state.now - clock.at)
+      : 0;
+  const reading = clock ? clockReading(clock, elapsed, 60, color === s.color) : null;
+  const seconds = reading
+    ? Math.ceil(reading.overtime ? reading.seconds : reading.main)
+    : 0;
+  const total =
+    state.review?.totalPeriods ?? s.totalPeriods ?? s.matchFields.find((field) => field.id === s.fieldId)?.periods ?? 3;
+  const clockId = color === (s.color === 2 ? 2 : 1) ? "hours" : `${name}-hours`;
+  const clockValue = clockInputValue(seconds);
+  const clockText = seconds < 3600 ? clockValue.slice(3) : clockValue;
+  return (
+    <section
+      id={`${name}-player`}
+      className={`player-panel${!state.review && s.phase === "playing" && !s.resignationResult && s.turn === color && !disconnected ? " to-play" : ""}`}
+      aria-labelledby={loading ? undefined : `${name}-player-title`}
+      aria-label={loading ? `Loading ${name} player` : undefined}
+    >
+      {loading ? <>
+        <p className="player-title"><span className="player-skeleton player-card-name-skeleton" /></p>
+        <p className="player-captures"><span className="player-skeleton player-card-detail-skeleton" /></p>
+        <dl className="player-clock"><div>
+          <dt><span className="player-skeleton player-card-detail-skeleton" /></dt>
+          <dd className="remaining-time"><span className="player-skeleton player-card-clock-skeleton" /></dd>
+        </div></dl>
+      </> : <>
+      <p id={`${name}-player-title`} className="player-title">
+        <span className={`player-stone ${name}`} />
+        <PlayerName controller={controller} id={`${name}-player-name`} uid={player?.id}
+          name={player?.name || (color === 1 ? "Black" : "White")} rank={player?.rank} country={player?.country} />
+      </p>
+      <p
+        id={`${name}-captures`}
+        className="player-captures"
+      >{`Score: ${s.captures[color]}${komi ? ` + ${komi}` : ""}`}</p>
+      <dl className="player-clock">
+        <div>
+          <dt id={`${name}-time-label`}>
+            {reading?.overtime && clock?.periods
+              ? <>Byoyomi: <span id={`${name}-periods`}>{reading.periods}/{total}</span></>
+              : !clock && s.spectating ? "Time not transmitted" : "Main time"}
+          </dt>
+          <dd id={`${name}-time`} className={`remaining-time${clock ? "" : " no-clock"}`}>
+            {clock
+              ? <time
+                  className="clock-display"
+                  id={clockId}
+                  dateTime={`PT${seconds}S`}
+                >
+                  <span className="clock-text">{clockText}</span>
+              </time>
+              : s.spectating
+                ? <span className="clock-display unavailable" id={clockId}>
+                    <span className="clock-text clock-placeholder">
+                      <span>-</span><span>-</span><span>:</span><span>-</span><span>-</span>
+                    </span>
+                  </span>
+                : "—"}
+          </dd>
+        </div>
+      </dl>
+      </>}
+    </section>
+  );
+}
 function countingText(s: UIState["session"]) {
   if (s.confirmationKind !== "counting-result") return "";
   const score = s.countingResult;
@@ -141,7 +157,10 @@ function countingText(s: UIState["session"]) {
   return `${score.winner === "Black wins" ? "B" : "W"}+${margin ?? ""}`;
 }
 
-export function App({ controller: c }: { controller: Controller }) {
+export function App({ controller: c, recordError }: {
+  controller: Controller;
+  recordError?: string;
+}) {
   const [coordinates, setCoordinates] = useState(rememberedCoordinates);
   useEffect(() => rememberCoordinates(coordinates), [coordinates]);
   const state = useSyncExternalStore(c.subscribe, c.getState);
@@ -151,20 +170,12 @@ export function App({ controller: c }: { controller: Controller }) {
   const variation = state.review && "variation" in state.review ? state.review.variation : undefined;
   const reviewMove = state.review?.moves ?? state.session.moves;
   const s = state.session,
-    playing = s.phase === "playing";
+    playing = s.phase === "playing" && !s.resignationResult;
+  const replayLoading = !!c.recordedGame && s.phase === "joining";
   const available = boardAvailable(s),
     reviewing = reviewAvailable(s),
     showMenu = !available;
-  const loginStep =
-    [
-      "disconnected",
-      "error",
-      "connecting",
-      "authenticating",
-      "bootstrap",
-      "gateway",
-      "resuming",
-    ].includes(s.phase);
+  const loginStep = isLoginStep(s);
   const loginPending = [
     "connecting",
     "authenticating",
@@ -172,117 +183,101 @@ export function App({ controller: c }: { controller: Controller }) {
     "gateway",
     "resuming",
   ].includes(s.phase);
-  const disabled = actionsBlocked(s) || s.pending || !!state.prompt,
-    yourTurn = s.color === s.turn,
+  const [resignConfirm, setResignConfirm] = useState(false);
+  const gameActionsBlocked = actionsBlocked(s);
+  useEffect(() => setResignConfirm(false), [c, s.gameId, gameActionsBlocked]);
+  useEffect(() => {
+    if (!resignConfirm) return;
+    let disabledClick: ReturnType<typeof setTimeout> | undefined;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || event.target.closest("#resign")) return;
+      setResignConfirm(false);
+    };
+    // Disabled controls do not emit clicks. Wait until the pointer interaction
+    // finishes before enabling them again, so this click cannot activate them.
+    const dismissDisabled = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest("button:disabled"))
+        disabledClick = setTimeout(() => setResignConfirm(false), 0);
+    };
+    document.addEventListener("click", dismiss, true);
+    document.addEventListener("pointerup", dismissDisabled, true);
+    return () => {
+      document.removeEventListener("click", dismiss, true);
+      document.removeEventListener("pointerup", dismissDisabled, true);
+      clearTimeout(disabledClick);
+    };
+  }, [resignConfirm]);
+  const turnActionsBlocked = gameActionsBlocked || !!state.prompt,
     countingOpen = !!s.confirmationKind?.startsWith("counting-");
-  const menu = useRef<HTMLDivElement>(null),
-    dialog = useRef<HTMLDialogElement>(null),
-    passwordInput = useRef<HTMLInputElement>(null);
-  const previous = useRef<{
-    menu: boolean;
-    login: boolean;
-    prompt: Prompt | null;
-    counting: boolean;
-  } | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null),
+    passwordInput = useRef<HTMLInputElement>(null),
+    wasSearching = useRef(false);
+  useLayoutEffect(() => {
+    if (s.phase === "matching") wasSearching.current = true;
+    else if (wasSearching.current) {
+      wasSearching.current = false;
+      if (showMenu) document.getElementById("match")?.focus();
+    }
+  }, [s.phase, showMenu]);
+  const notice = s.notice;
   const statusError = !!state.menuError ||
     s.phase === "error" ||
-    s.status.startsWith("matchmaking rejected");
+    notice?.kind === "matchmaking-rejected";
   const statusSeparate = statusError ||
-    (s.phase === "ready" && s.status.startsWith("Matchmaking "));
+    (s.phase === "ready" && notice?.kind === "matchmaking-cancelled");
   const statusHidden =
     !statusSeparate &&
     (s.phase === "disconnected" ||
       (["ready", "finished"].includes(s.phase) && s.matchFields.length > 0));
-  const promptCounting = playing && s.passes >= 2 && !disabled && !s.counting && !s.confirmation;
+  const promptCounting = !s.spectating && playing && s.passes >= 2 && !turnActionsBlocked && !s.pending && !s.counting && !s.confirmation;
   const gameMessage =
     playing &&
-    (s.paused || s.counting ||
-      /passed|counting|rejected|failed|leaving/i.test(s.status));
+    (s.paused || s.counting || !!notice?.game);
   const countingRequested =
-    s.counting && s.status === "Counting requested; waiting for opponent";
+    s.counting && notice?.kind === "counting-requested";
   const countingResultPending =
     playing && s.counting && !s.pending && !s.confirmation && !countingRequested;
+  const showResult = s.game_over || !!s.resignationResult;
   const gameHidden =
     s.phase !== "reconnecting" &&
     s.phase !== "kicked" &&
-    !s.game_over &&
+    !showResult &&
     !promptCounting &&
     !s.paused &&
-    ((s.counting && !countingRequested && !countingResultPending) || s.pending || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
-  const resultWinner = s.result.startsWith("B+") ? 1 : s.result.startsWith("W+") ? 2 : 0;
+    ((s.counting && !countingRequested && !countingResultPending) || (s.pending && !notice?.game) || !gameMessage || s.confirmation || !!s.estimation || !!state.prompt);
+  const result = s.resignationResult ?? s.result;
+  const resultWinner = result.startsWith("B+") ? 1 : result.startsWith("W+") ? 2 : 0;
   const resultClass = resultWinner && [1, 2].includes(s.color)
     ? resultWinner === s.color ? "win" : "loss"
     : "";
-  const boardStatus = s.paused && !s.confirmation && !s.counting
+  const localBoardStatus = s.resignationResult ? "" : s.paused && !s.confirmation && !s.counting
     ? "Game paused"
     : countingRequested
       ? "Waiting for opponent..."
       : countingResultPending
         ? "Waiting for counting result..."
-        : s.pending && !s.counting && !s.quitRequested
+        : s.pending && !s.pendingMove && !s.counting && !s.quitRequested && !notice?.game
           ? "Waiting to confirm action"
-          : s.status;
+          : null;
+  const boardStatus = state.error || (localBoardStatus ?? s.status);
+  const boardStatusError = !!state.error || (!localBoardStatus && !!notice?.error);
   const disconnectSeconds = Math.max(0, Math.ceil((s.opponentDisconnectDeadline ?? 0) - state.now));
-  const ask = (command: Command) => {
-    const prompt = promptForAction(command);
-    if (prompt) c.emit({ type: "prompt.open", prompt });
-  };
   const command = (name: Command) => c.command(name);
 
   useLayoutEffect(() => {
     document.body.classList.toggle("board-unavailable", !available);
     if (dialog.current) {
-      if (countingOpen && !dialog.current.open) dialog.current.show();
-      if (!countingOpen && dialog.current.open) dialog.current.close();
+      const showCounting = countingOpen && !s.resignationResult;
+      if (showCounting && !dialog.current.open) dialog.current.show();
+      if (!showCounting && dialog.current.open) dialog.current.close();
     }
-    if (countingOpen && !previous.current?.counting)
-      document.getElementById("counting-reject")?.focus();
-    else if (state.prompt && state.prompt !== previous.current?.prompt)
-      document.getElementById("action-cancel")?.focus();
-    else if (
-      showMenu &&
-      (!previous.current?.menu || previous.current.login !== loginStep)
-    ) {
-      const match = document.getElementById("match") as HTMLButtonElement;
-      (loginStep
-        ? menu.current
-        : match?.disabled
-          ? menu.current
-          : match
-      )?.focus();
-    } else if (
-      showMenu &&
-      (document.activeElement as HTMLButtonElement)?.disabled &&
-      menu.current?.contains(document.activeElement)
-    ) {
-      menu.current?.focus();
-    } else if (!showMenu && previous.current?.menu)
-      document.getElementById("board")?.focus();
-    const focused = (document.activeElement as HTMLElement)?.id || null;
-    if (focused !== c.state.focused)
-      c.emit({ type: "focus.changed", id: focused });
-    previous.current = {
-      menu: showMenu,
-      login: loginStep,
-      prompt: state.prompt,
-      counting: countingOpen,
-    };
-  }, [
-    available,
-    countingOpen,
-    state.prompt,
-    showMenu,
-    loginStep,
-    s.phase,
-    state.focused,
-    c,
-  ]);
+  }, [available, countingOpen, s.resignationResult]);
   useLayoutEffect(() => {
     if (passwordInput.current)
       passwordInput.current.value = c.password;
   }, [state.form.passwordLength, loginStep, c]);
   useEffect(() => {
-    if (state.frozen || s.phase !== "playing" || s.game_over) return;
+    if (state.frozen || s.spectating || s.phase !== "playing" || s.game_over) return;
     const confirmLeave = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       // Browsers supply their own confirmation text.
@@ -290,7 +285,7 @@ export function App({ controller: c }: { controller: Controller }) {
     };
     window.addEventListener("beforeunload", confirmLeave);
     return () => window.removeEventListener("beforeunload", confirmLeave);
-  }, [state.frozen, s.phase, s.game_over]);
+  }, [state.frozen, s.phase, s.game_over, s.spectating]);
   useEffect(() => {
     const clear = () => {
       if (c.state.preview !== null)
@@ -329,7 +324,7 @@ export function App({ controller: c }: { controller: Controller }) {
         event.key.toLowerCase() === "c" && !c.previewCoordinates && !event.repeat &&
         !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
         !(event.target instanceof HTMLElement &&
-          (event.target.isContentEditable || event.target.closest("input, textarea, select, [role='dialog'], #dev-menu")))
+          (event.target.isContentEditable || event.target.closest("input, textarea, select, .player-info, #dev-menu")))
       ) {
         event.preventDefault();
         setCoordinates((shown) => !shown);
@@ -340,11 +335,24 @@ export function App({ controller: c }: { controller: Controller }) {
         ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) &&
         !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
         !(event.target instanceof HTMLElement &&
-          (event.target.isContentEditable || event.target.closest("input, textarea, select, [role='dialog'], #dev-menu")))
+          (event.target.isContentEditable || event.target.closest("input, textarea, select, .player-info, #dev-menu")))
       ) {
         event.preventDefault();
         c.review(event.key === "Home" ? "first" : event.key === "End" ? "last"
           : event.key === "ArrowLeft" ? "previous" : "next");
+        return;
+      }
+      if (
+        event.type === "keydown" && !menuShown && event.key.toLowerCase() === "e" &&
+        !event.repeat && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
+        !(event.target instanceof HTMLElement &&
+          (event.target.isContentEditable || event.target.closest("input, textarea, select, .player-info, #dev-menu")))
+      ) {
+        const estimateButton = document.getElementById("estimate-score") as HTMLButtonElement | null;
+        if (estimateButton && !estimateButton.disabled && estimateButton.checkVisibility()) {
+          event.preventDefault();
+          estimateButton.click();
+        }
         return;
       }
       if (event.key === "Escape") {
@@ -358,46 +366,7 @@ export function App({ controller: c }: { controller: Controller }) {
         else if (current.session.confirmationKind?.startsWith("counting-"))
           c.command("confirm", { accept: false });
         else if (current.review && "variation" in current.review && current.review.variation)
-          c.review("first");
-      }
-      if (
-        !menuShown ||
-        event.type !== "keydown" ||
-        event.key !== "Tab"
-      )
-        return;
-      const controls = [
-        ...(menu.current?.querySelectorAll<HTMLElement>(
-          'a[href], button, input, [tabindex="0"]',
-        ) ?? []),
-        ...document.querySelectorAll<HTMLElement>(
-          "#dev-menu summary, #dev-menu button, #dev-menu input, #dev-menu a",
-        ),
-      ].filter(
-        (control) =>
-          !(control as HTMLButtonElement).disabled &&
-          control.getClientRects().length &&
-          control.checkVisibility(),
-      );
-      const first = controls[0],
-        last = controls.at(-1);
-      if (!first) {
-        event.preventDefault();
-        menu.current?.focus();
-      } else if (
-        event.shiftKey &&
-        (document.activeElement === first ||
-          !controls.includes(document.activeElement as HTMLElement))
-      ) {
-        event.preventDefault();
-        last?.focus();
-      } else if (
-        !event.shiftKey &&
-        (document.activeElement === last ||
-          !controls.includes(document.activeElement as HTMLElement))
-      ) {
-        event.preventDefault();
-        first.focus();
+          c.review("main");
       }
     };
     for (const type of ["blur", "resize", "scroll"])
@@ -406,7 +375,7 @@ export function App({ controller: c }: { controller: Controller }) {
     document.addEventListener("focusin", focus);
     document.addEventListener("keydown", key, true);
     document.addEventListener("keyup", key, true);
-    const hide = () => c.dispose();
+    const hide = () => { if (c.recordedGame) c.dispose(); };
     // pagehide permanently disposes the controller, even when the browser caches
     // this document. Start a fresh session rather than restore a frozen UI.
     const show = (event: PageTransitionEvent) => {
@@ -428,7 +397,6 @@ export function App({ controller: c }: { controller: Controller }) {
   const status = (
     <span
       id="status"
-      role="status"
       hidden={statusHidden}
       className={statusError ? "is-error" : ""}
     >
@@ -467,36 +435,53 @@ export function App({ controller: c }: { controller: Controller }) {
                 color={3 - bottomColor}
               />
               <Player key={bottomColor} state={displayState} controller={c} color={bottomColor} />
-              <div className="primary-actions-slot">
+              <button
+                id="quit-room"
+                className="button secondary"
+                hidden={!s.spectating && !s.resignationResult && s.phase !== "finished" && s.phase !== "kicked"}
+                disabled={(s.pending && !s.resignationResult) || s.quitRequested || !!estimate}
+                onClick={() => {
+                  if (!s.spectating && playing) c.emit({ type: "prompt.open", prompt: quitRoomPrompt });
+                  else command(!s.spectating && s.phase === "kicked" ? "disconnect" : "quit-room");
+                }}
+              >
+                {s.phase === "kicked" ? "Return to Login" : "Quit Room"}
+              </button>
+              <div className="primary-actions-slot" hidden={!!s.spectating || showResult}>
                 <div id="primary-actions">
                   <button
                     id="pass"
-                    className="secondary"
-                    disabled={disabled || !yourTurn}
+                    className="button secondary"
+                    disabled={resignConfirm || turnActionsBlocked}
                     onClick={() => command("pass")}
                   >
                     Pass
                   </button>
                   <button
                     id="request-score"
-                    className="secondary"
-                    disabled={disabled || !yourTurn || s.counting}
+                    className="button secondary"
+                    disabled={resignConfirm || turnActionsBlocked || s.counting}
                     onClick={() => command("request-score")}
                   >
                     Request Counting
                   </button>
                   <button
                     id="resign"
-                    className="secondary"
-                    disabled={actionsBlocked(s)}
-                    onClick={() => command("resign")}
+                    className="button secondary"
+                    disabled={gameActionsBlocked}
+                    onClick={() => {
+                      if (resignConfirm) {
+                        setResignConfirm(false);
+                        command("resign");
+                      } else setResignConfirm(true);
+                    }}
                   >
-                    Resign
+                    <span className={resignConfirm ? "resign-label" : undefined}>{resignConfirm ? "Confirm resignation" : "Resign"}</span>
                   </button>
                   <button
                     id="estimate-score"
-                    className="secondary"
-                    disabled={!playing || s.game_over || !!state.review || !!state.prompt || (!estimate && actionsBlocked(s))}
+                    className="button secondary"
+                    disabled={resignConfirm || !!s.spectating || !playing || s.game_over || !!state.review || !!state.prompt || (!estimate && gameActionsBlocked)}
                     onClick={() => command(estimate ? "return-game" : "estimate-score")}
                   >
                     {estimate ? "Return to Game" : "Estimate Score"}
@@ -516,12 +501,12 @@ export function App({ controller: c }: { controller: Controller }) {
                   <div className="actions">
                     <button
                       id="action-cancel"
-                      className="secondary"
+                      className="button secondary"
                       onClick={() => c.emit({ type: "prompt.close" })}
                     >
                       {state.prompt?.action ? "Cancel" : state.prompt?.label}
                     </button>
-                    <button
+                    <button className="button"
                       id="action-confirm"
                       hidden={!state.prompt?.action}
                       onClick={() => {
@@ -544,7 +529,7 @@ export function App({ controller: c }: { controller: Controller }) {
                       : "Opponent requested counting"}
                   </p>
                   <div className="actions">
-                    <button
+                    <button className="button"
                       id="counting-accept"
                       disabled={s.pending || !!state.prompt}
                       onClick={() => c.command("confirm", { accept: true })}
@@ -553,7 +538,7 @@ export function App({ controller: c }: { controller: Controller }) {
                     </button>
                     <button
                       id="counting-reject"
-                      className="secondary"
+                      className="button secondary"
                       disabled={s.pending || !!state.prompt}
                       onClick={() => c.command("confirm", { accept: false })}
                     >
@@ -567,7 +552,7 @@ export function App({ controller: c }: { controller: Controller }) {
                   hidden={!estimate || estimate.phase === "loading"}
                 >
                   <p id="estimation-status" hidden={estimate?.phase !== "error"}>
-                    {estimate?.phase === "error" ? estimate.error : ""}
+                    {estimate?.phase === "error" ? formatError(estimate.error) : ""}
                   </p>
                   <p id="estimation-lead" hidden={estimate?.phase !== "result"}>
                     {estimate?.phase === "result"
@@ -576,7 +561,7 @@ export function App({ controller: c }: { controller: Controller }) {
                         : `${estimate.lead > 0 ? "Black" : "White"} leads by ${Math.abs(estimate.lead)} points`
                       : ""}
                   </p>
-                  <button
+                  <button className="button"
                     id="estimation-retry"
                     hidden={estimate?.phase !== "error"}
                     onClick={() => command("estimate-score")}
@@ -589,76 +574,72 @@ export function App({ controller: c }: { controller: Controller }) {
                   className="quest-panel"
                   hidden={!playing || s.opponentDisconnectDeadline == null}
                 >
-                  <p id="opponent-connection-status" role="status">
+                  <p id="opponent-connection-status">
                     Opponent disconnected ({Math.floor(disconnectSeconds / 60)}:{String(disconnectSeconds % 60).padStart(2, "0")})
                   </p>
                 </section>
                 <section
                   id="game-state-panel"
-                  className="quest-panel"
-                  hidden={gameHidden}
+                  className={s.spectating && !s.game_over && !replayLoading && s.phase !== "reconnecting" ? 'quest-panel spectator-actions' : 'quest-panel'}
+                  hidden={gameHidden && !s.spectating && !state.error}
                 >
-                  <p id="game-state-title" role={s.game_over ? "status" : undefined} hidden={!s.game_over && !promptCounting}>
-                    {s.game_over
-                      ? <>Game over: <span id="game-result" className={resultClass}>{s.result || "Unknown"}</span></>
-                      : promptCounting
-                        ? "Both players passed"
-                        : ""}
-                  </p>
+                  <div id="game-state-heading" hidden={!showResult && !promptCounting && !replayLoading}>
+                    <p id="game-state-title" className={recordError ? "is-error" : undefined} hidden={!showResult && !promptCounting && !replayLoading}>
+                      {recordError
+                        ? formatError(recordError)
+                        : replayLoading
+                        ? <span className="player-skeleton game-result-skeleton" />
+                        : showResult
+                        ? "Game over: "
+                        : promptCounting
+                          ? "Both players passed"
+                          : ""}
+                      <button className="text-button"
+                        id="save-sgf"
+                        type="button"
+                        hidden={!showResult || !reviewing || replayLoading || !!recordError}
+                        disabled={!!estimate || replayLoading}
+                        onClick={() => c.save("sgf")}
+                      >
+                        <span id="game-result" className={resultClass}>{showResult && !replayLoading && !recordError ? result || "Unknown" : null}</span>
+                        <span id="game-downloads" hidden={!showResult || !reviewing || replayLoading}>
+                          <Icon icon={faDownload} standalone />
+                        </span>
+                      </button>
+                    </p>
+                  </div>
+                  <div id="game-review" hidden={!reviewing && !replayLoading}>
+                    <div className="actions">
+                      {([
+                        ["first", faBackwardStep, !variation && reviewMove === 0],
+                        ["previous", faArrowLeft, reviewMove === 0],
+                        ["next", faArrowRight, variation ? variation.cursor === variation.moves.length : reviewMove === s.moves],
+                        ["last", faForwardStep, !variation && reviewMove === s.moves],
+                      ] as const).map(([direction, icon, disabled]) => (
+                        <button key={direction} id={`review-${direction}`} type="button"
+                          className="button secondary"
+                          disabled={disabled || !!estimate || s.phase === "joining"} onClick={() => c.review(direction)}>
+                          <svg viewBox={`0 0 ${icon.icon[0]} ${icon.icon[1]}`}>
+                            <path fill="currentColor" d={Array.isArray(icon.icon[4]) ? icon.icon[4].join(" ") : icon.icon[4]} />
+                          </svg>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <p
                     id="board-status"
-                    role="status"
-                    hidden={s.phase === "kicked" || s.game_over || promptCounting || !boardStatus}
+                    role={boardStatusError ? "alert" : undefined}
+                    hidden={!state.error && (s.phase === "kicked" || s.game_over || promptCounting || !boardStatus || (s.spectating && s.phase === "joining"))}
                     className={
-                      /failed|rejected|error/i.test(s.status) ? "is-error" : ""
+                      boardStatusError ? "is-error" : ""
                     }
                   >
-                    {boardStatus}
+                    {boardStatusError ? formatError(boardStatus) : boardStatus}
                   </p>
-                  <p id="session-ended-status" role="status" hidden={s.phase !== "kicked"}>
+                  <p id="session-ended-status" hidden={s.phase !== "kicked"}>
                     {s.phase === "kicked" ? s.status : ""}
                   </p>
-                  <div id="game-downloads" hidden={!reviewing}>
-                    <button
-                      id="save-sgf"
-                      type="button"
-                      className="secondary"
-                      disabled={!!estimate}
-                      onClick={() => c.save("sgf")}
-                    >
-                      Download SGF
-                    </button>
-                  </div>
-                  <button
-                    id="quit-room"
-                    className="secondary"
-                    hidden={s.phase !== "finished" && s.phase !== "kicked"}
-                    disabled={s.pending || s.quitRequested || !!estimate}
-                    onClick={() =>
-                      s.phase === "kicked" ? command("disconnect") : playing ? ask("quit-room") : command("quit-room")
-                    }
-                  >
-                    {s.phase === "kicked" ? "Return to Login" : "Quit Room"}
-                  </button>
                 </section>
-                <div id="game-review" hidden={!reviewing}>
-                  <div className="actions" role="group" aria-label="Review game">
-                    {([
-                      ["first", "First move", faBackwardStep, !!variation || reviewMove === 0],
-                      ["previous", "Previous move", faArrowLeft, reviewMove === 0],
-                      ["next", "Next move", faArrowRight, variation ? variation.cursor === variation.moves.length : reviewMove === s.moves],
-                      ["last", "Last move", faForwardStep, !!variation || reviewMove === s.moves],
-                    ] as const).map(([direction, label, icon, disabled]) => (
-                      <button key={direction} id={`review-${direction}`} type="button"
-                        className="secondary" aria-label={label} title={label}
-                        disabled={disabled || !!estimate} onClick={() => c.review(direction)}>
-                        <svg viewBox={`0 0 ${icon.icon[0]} ${icon.icon[1]}`} aria-hidden="true" focusable="false">
-                          <path fill="currentColor" d={Array.isArray(icon.icon[4]) ? icon.icon[4].join(" ") : icon.icon[4]} />
-                        </svg>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           </aside>
@@ -669,7 +650,7 @@ export function App({ controller: c }: { controller: Controller }) {
         hidden={!showMenu}
       >
         <div
-          id="connection-menu" ref={menu} tabIndex={-1}
+          id="connection-menu"
         >
           <h2 id="menu-title">{loginStep ? "Foxwq-web" : "Matchmaking"}</h2>
           <p className="login-intro login-copy" hidden={!loginStep}>
@@ -764,9 +745,6 @@ export function App({ controller: c }: { controller: Controller }) {
               controller={c} />
           </div>
         </div>
-      </div>
-      <div id="error" hidden={!state.error}>
-        {state.error}
       </div>
       {DevMenu && (
         <Suspense fallback={null}>

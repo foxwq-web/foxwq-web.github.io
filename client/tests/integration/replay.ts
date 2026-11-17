@@ -81,6 +81,10 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
         await page.evaluate(ticks => { window.__networkReplay.ticks = ticks; }, clock.ticks + time - clock.time);
       if (packet.outbound && identify(packet.frame) === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}`) lastHeartbeat = clock;
       if (!packet.outbound) {
+        // The client no longer opens the classic PC lobby or login-server
+        // sockets that older recordings contain. Their traffic cannot be
+        // delivered during a regeneration pass and is dropped with them.
+        if (updateMessages && await page.evaluate(id => window.__networkReplay.connectionState(id), packet.connection) === 'absent') continue;
         // Socket open latency and independent inbound streams can place server
         // frames before an already queued send. Strict mode compares that send
         // at its recorded outbound entry; it must not consume or discard it.
@@ -93,9 +97,16 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
         continue;
       }
       const expectedId = identify(packet.frame);
+      const action = inferAction(packet.frame);
       // In update mode retain newly generated automatic messages and remove old
       // automatic requests that no longer exist. UI actions are still required.
       if (updateMessages) {
+        // Archiving a finished game disposes the live session; traffic that
+        // the recorded client still sent on those sockets no longer exists.
+        // Classic PC lobby and login-server sockets are never opened at all,
+        // but their login packet still maps to the login UI action.
+        const state = await page.evaluate(id => window.__networkReplay.connectionState(id), packet.connection);
+        if (state === 'closed' || (state === 'absent' && !action)) continue;
         while ((await pending()).length) {
           const first = (await pending())[0];
           if (identify(extractNetMsgFromBytes(Buffer.from(first.payload, 'base64'))![0]) === expectedId) break;
@@ -106,15 +117,15 @@ export async function replay(browser: Browser, url: string, input: unknown, upda
         }
       }
       let queued = await pending();
-      const action = inferAction(packet.frame);
       if ((!queued.length || (updateMessages && identify(extractNetMsgFromBytes(Buffer.from(queued[0].payload, 'base64'))![0]) !== expectedId)) && action) {
         const before = queued.length;
-        await act(page, action, normalized.username, PASSWORD);
+        try { await act(page, action, normalized.username, PASSWORD); }
+        catch (error) { throw Error(`Entry ${packet.index + 1} (${expectedId}): ${error instanceof Error ? error.message : error}`); }
         await settle();
         queued = await pending();
         if (queued.length <= before) throw Error(`Entry ${packet.index + 1}: inferred ${action.type} produced no client packet.`);
       }
-      if (!queued.length && expectedId === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}`) {
+      if (!queued.length && (expectedId === `${SVR_TYPE_FGW}/${ClientMessageID.MID_HEART_BEAT_REQUEST}` || expectedId === '100')) {
         // Run the actual production timer callback at the recorded dispatch.
         if (clock) await page.evaluate(ticks => { window.__networkReplay.ticks = ticks; }, clock.ticks);
         await page.evaluate(() => window.__networkReplay.fireHeartbeat());

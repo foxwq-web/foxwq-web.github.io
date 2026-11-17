@@ -5,12 +5,26 @@ import { createHash } from 'node:crypto';
 import { PlayerInfoStore, applyPlayerSummary, type PlayerInfo } from '../src/player-info';
 import { historyGames } from '../src/player-history';
 import { encode, decode, type Fields } from '../src/wire';
+import { Buffer } from 'buffer';
+import { panelFields as Panel } from '../src/protocol-fields';
 
 const record = (id: string, uid = 42) => ({ chessid: id, blackuid: uid, whiteuid: 43,
   blackenname: 'River', whiteenname: 'Moon', whitedan: 19,
   gamestarttime: '1791872071', winner: 1, point: -1, reason: 3, movenum: 120 });
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const config = () => ({ proxyUrl: 'wss://proxy.example/proxy', proxyToken: 'test-token', uid: 7, token: new Uint8Array([251, 255, 0, 1]) });
+
+test('profiles and history show professional ranks and prefer localized names', () => {
+  const info = { uid: 4190222, name: '魏笑林', rank: '' } as PlayerInfo;
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 4190222, 7: 103, 8: { 4: '魏笑林', 5: 'Weixl' } })));
+  assert.equal(info.name, '魏笑林');
+  assert.equal(info.rank, '4p');
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 4190222, 8: { 4: '魏笑林' } })));
+  assert.equal(info.name, '魏笑林');
+  const games = historyGames({ result: 0, chesslist: [{ ...record('1'), whiteenname: 'Weixl', whitenick: '魏笑林', whitedan: 103 }] }, 42);
+  assert.equal(games[0].opponent, '魏笑林');
+  assert.equal(games[0].opponentRank, '4p');
+});
 
 test('history uses the signed-in UID and base64 login token with the desktop signature', async () => {
   let requests = 0;
@@ -49,7 +63,7 @@ test('history never falls back to guest requests without a signed-in UID and tok
     try {
       const info = store.prefetch(42, 'River')!;
       await settle();
-      assert.equal(info.error, 'Sign in to load recent games.');
+      assert.equal(info.error, 'sign in to load recent games');
       assert.equal(info.loading, false);
     } finally { store.reset(); }
   }
@@ -73,7 +87,7 @@ test('native summary stays cached regardless of elapsed time until invalidation'
     assert.equal(info.summaryLoading, true);
     store.receive(decode(encode({ 1: 0, 2: sent[0][3], 3: 42, 7: 19,
       8: { 5: 'River' }, 9: { 1: { 1: 9, 2: 13, 3: 10, 4: 0 }, 2: '-+--++' },
-      16: [{ 1: 5, 2: 3, 3: 3 }, { 1: 0, 2: 9, 3: 16, 4: 0 }] })));
+      16: [{ 1: 5, 2: 3, 3: 3 }, { 1: 0, 2: 90, 3: 160, 4: 0 }, { 1: 2, 2: 9, 3: 16, 4: 0 }] })));
     assert.equal(info.summaryLoading, false);
     assert.equal(info.loading, true);
     assert.equal(info.rank, '2d');
@@ -118,11 +132,11 @@ test('switching players and resetting ignore stale native and HTTP completions',
   assert.equal(store.current, null);
 });
 
-test('history preserves 64-bit IDs, limits to 20 and decodes colors and endings without extra fetches', () => {
+test('history preserves every game in one response, 64-bit IDs, colors and endings without extra fetches', () => {
   const games = historyGames({ result: 0, chesslist: Array.from({ length: 25 }, (_, i) => ({
     ...record(String(1791872071030044736n + BigInt(i))), gamestarttime: String(1791872071 + i),
   })) }, 42);
-  assert.equal(games.length, 20);
+  assert.equal(games.length, 25);
   assert.equal(games[0].id, '1791872071030044760');
   assert.equal(games[0].opponent, 'Moon');
   assert.equal(games[0].color, 'Black');
@@ -198,7 +212,7 @@ test('game-end invalidation replaces in-flight reads and ignores their late resp
   } finally { store.reset(); }
 });
 
-test('session preloads on room login and player discovery, refreshes after game end, and cancels queued work on close', async () => {
+test('session preloads on gateway login and player discovery, refreshes after game end, and cancels queued work on close', async () => {
   const { Session } = await import('../src/session');
   const { encodeFgwMessage, decodeFgwMessage, SVR_TYPE_FGW, GAME_SVR_MGR } = await import('../src/game');
   let calls = 0;
@@ -222,7 +236,8 @@ test('session preloads on room login and player discovery, refreshes after game 
   try {
     session.receive(session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: encodeFgwMessage(42, SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { 1: 0 }) });
     await settle();
-    assert.equal(calls, 0); // Wait for room login before preloading.
+    assert.deepEqual(native, [42]);
+    assert.equal(calls, 1, 'profile preloading does not wait for room manager login');
     session.receive(session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0, rawProto: encodeFgwMessage(42, GAME_SVR_MGR, RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { 1: 0 }) });
     await settle();
     assert.deepEqual(native, [42]);
@@ -272,3 +287,121 @@ test('ranked results keep at most twenty games from the latest uninterrupted ran
   assert.equal(recent('++++|'), '');
   assert.equal(recent(''), '');
 });
+
+test('profile room locations offer valid playing and watching rooms, preferring playing for duplicate locations', () => {
+  const room = (id: number, role: number) => ({ 1: { 1: 31000, 2: 12, 3: id, 4: 1793551153 }, 2: role });
+  const info = { uid: 42, name: 'Player', rank: '3d' } as PlayerInfo;
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 42, 20: { 2: 1, 1: [
+    room(56, 1), room(57, 2), room(56, 2), room(0, 1), room(58, 0),
+  ] } })));
+  assert.deepEqual(info.rooms, [
+    { id: '31000:12:56:1793551153', role: 'playing' },
+    { id: '31000:12:57:1793551153', role: 'playing' },
+  ]);
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 42, 20: { 2: 1, 1: [room(56, 1)] } })));
+  assert.deepEqual(info.rooms, [{ id: '31000:12:56:1793551153', role: 'watching' }]);
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 42, 20: { 2: 0, 1: [room(56, 2)] } })));
+  assert.deepEqual(info.rooms, [], 'offline players have no current room links');
+  applyPlayerSummary(info, decode(encode({ 1: 0, 3: 42 })));
+  assert.equal(info.rooms, undefined, 'missing status must not preserve a stale link');
+});
+
+test('reopening a player card refreshes room locations without refetching history or accepting stale replies', async () => {
+  const sent: Fields[] = [];
+  let historyRequests = 0;
+  const store = new PlayerInfoStore(fields => sent.push(fields), () => {}, config, async () => {
+    historyRequests++; return Response.json({ result: 0, chesslist: [] });
+  });
+  const reply = (request: number, roomId: number) => store.receive(decode(encode({ 1: 0, 2: `player-${request}`, 3: 42,
+    20: { 2: 1, 1: { 1: { 1: 31000, 2: 12, 3: roomId, 4: 1793551153 }, 2: 2 } },
+  })));
+  try {
+    const info = store.prefetch(42, 'Player')!;
+    assert.equal(info.summaryLoaded, false);
+    reply(1, 56);
+    assert.equal(info.summaryLoaded, true, 'an empty recent streak is a loaded profile');
+    assert.equal(info.recent, '');
+    await settle();
+    store.open(42, 'Player');
+    store.open(42, 'Player');
+    assert.equal(sent.length, 2, 'only one room refresh can be in flight');
+    assert.equal(info.rooms, undefined, 'hide the old link while refreshing');
+    assert.equal(info.summaryLoading, true);
+    assert.equal(info.summaryLoaded, true, 'room refresh preserves the loaded profile');
+    reply(1, 56);
+    assert.equal(info.rooms, undefined, 'the previous response cannot restore an outdated room');
+    reply(2, 57);
+    assert.equal(store.current?.rooms?.[0].id, '31000:12:57:1793551153');
+    assert.equal(historyRequests, 1);
+    store.invalidate();
+    store.prefetch(42, 'Player');
+    assert.equal(info.rooms, undefined, 'game-end invalidation also clears obsolete room locations');
+  } finally { store.reset(); }
+});
+
+
+test('cards reuse ranked list totals and keep the same category when the profile arrives', async () => {
+  const sent: Fields[] = [];
+  const store = new PlayerInfoStore(fields => sent.push(fields), () => {}, config,
+    async () => Response.json({ result: 0, chesslist: [] }));
+  try {
+    // Sanitized counters from fox-network-log-20261106T0807.json, account 3270.
+    const listed = { country: 86, wins: 103, losses: 149 };
+    store.open(42, 'River', '2d', 'row', listed);
+    const info = store.current!;
+    assert.equal(info.country, 86);
+    assert.equal(info.wins, 103);
+    assert.equal(info.losses, 149);
+    assert.equal(info.summaryLoading, true);
+    store.receive(decode(encode({ 1: 0, 2: sent[0][3], 3: 42,
+      8: { [Panel.AccountInfo.country]: 82 }, 16: [
+        { 1: 2, 2: 103, 3: 149, 4: 3 }, // ranked: matches the lobby
+        { 1: 1, 2: 176, 3: 169, 4: 0 }, // free games
+        { 1: 0, 2: 279, 3: 318, 4: 3 }, // overall
+        { 1: 5, 2: 98, 3: 117, 4: 2 },
+      ] })));
+    assert.equal(info.country, 82);
+    assert.equal(info.wins, 103);
+    assert.equal(info.losses, 149);
+    assert.equal(info.draws, 3);
+    store.open(42, 'River', '2d', 'row', listed);
+    assert.equal(info.country, 82);
+    assert.equal(info.wins, 103);
+    assert.equal(info.losses, 149);
+    await settle();
+  } finally { store.reset(); }
+});
+
+test('list seeds fill cached gaps, preserve zero values and survive missing summary fields', async () => {
+  const sent: Fields[] = [];
+  const store = new PlayerInfoStore(fields => sent.push(fields), () => {}, config,
+    async () => Response.json({ result: 0, chesslist: [] }));
+  try {
+    const info = store.prefetch(42, 'River')!;
+    store.open(42, 'River', '2d', 'row', { country: 0, wins: 0, losses: 0 });
+    assert.equal(store.current, info);
+    assert.equal(sent.length, 1);
+    store.receive(decode(encode({ 1: 0, 2: sent[0][3], 3: 42 })));
+    assert.equal(info.country, 0);
+    assert.equal(info.wins, 0);
+    assert.equal(info.losses, 0);
+    store.open(42, 'River');
+    assert.equal(info.country, 0);
+    assert.equal(info.wins, 0);
+    await settle();
+  } finally { store.reset(); }
+});
+
+
+test('missing ranked records never fall back to overall or free-game totals', () => {
+  for (const seeded of [false, true]) {
+    const info = { uid: 42, name: 'River', rank: '2d',
+      ...(seeded ? { wins: 103, losses: 149 } : {}) } as PlayerInfo;
+    applyPlayerSummary(info, decode(encode({ 1: 0, 3: 42, 16: [
+      { 1: 0, 2: 279, 3: 318 }, { 1: 1, 2: 176, 3: 169 },
+    ] })));
+    assert.equal(info.wins, seeded ? 103 : undefined);
+    assert.equal(info.losses, seeded ? 149 : undefined);
+  }
+});
+

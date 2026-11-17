@@ -1,10 +1,13 @@
 import { rankLabel, resultLabel } from "./game";
+import { playerName } from "./player-name";
 
-export const RECENT_GAME_LIMIT = 20;
+// The captured TXWQFetchChessList response contains one page of 20 games.
+export const HISTORY_PAGE_SIZE = 20;
 export interface HistoryGame {
   id: string;
   date: number;
   opponent: string;
+  opponentId?: number;
   opponentRank: string;
   color: "Black" | "White";
   result: string;
@@ -42,7 +45,11 @@ export function historyGames(value: unknown, uid: number): HistoryGame[] {
     const date = gameTime(record.gamestarttime, record.gameendtime);
     if (date === null) throw Error("invalid fox game date");
     const opponentColor = color === 1 ? "white" : "black";
-    const name = record[`${opponentColor}enname`] || record[`${opponentColor}nick`];
+    const opponentId = record[`${opponentColor}uid`];
+    const name = playerName(...['enname', 'nick'].map(field => {
+      const value = record[`${opponentColor}${field}`];
+      return typeof value === 'string' ? value : undefined;
+    }));
     const rank = record[`${opponentColor}dan`];
     const winner = record.winner;
     const outcome = record.reason === 8 ? "unknown" : winner === 3 ? "draw" : winner === 1 || winner === 2
@@ -56,14 +63,15 @@ export function historyGames(value: unknown, uid: number): HistoryGame[] {
     return {
       id: record.chessid, date,
       opponent: typeof name === "string" && name ? name : "Unknown player",
+      ...(typeof opponentId === 'number' && Number.isSafeInteger(opponentId) && opponentId > 0 ? { opponentId } : {}),
       opponentRank: typeof rank === "number" ? rankLabel(rank) : "",
       color: color === 1 ? "Black" : "White",
-      result: resultLabel(winner, points, ending) || "Unknown",
+      result: resultLabel(winner, points, ending) || "Draw",
       moves: typeof record.movenum === "number" && Number.isSafeInteger(record.movenum) && record.movenum >= 0 ? record.movenum : null,
       outcome,
     };
   }).filter((record): record is HistoryGame => !!record)
-    .sort((a, b) => b.date - a.date).slice(0, RECENT_GAME_LIMIT);
+    .sort((a, b) => b.date - a.date);
 }
 
 function gameTime(...values: unknown[]): number | null {

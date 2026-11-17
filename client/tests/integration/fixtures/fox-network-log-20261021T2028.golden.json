@@ -4,51 +4,25 @@
     {
       "tag": "button",
       "id": "white-player-name",
-      "text": "努力AAA 4d",
-      "disabled": false,
-      "expanded": "false"
+      "text": "昵称不好找 4d",
+      "disabled": false
     },
     {
       "tag": "button",
       "id": "black-player-name",
       "text": "products 3d",
-      "disabled": false,
-      "expanded": "false"
-    },
-    {
-      "tag": "button",
-      "id": "pass",
-      "text": "Pass",
-      "disabled": true
-    },
-    {
-      "tag": "button",
-      "id": "request-score",
-      "text": "Request Counting",
-      "disabled": true
-    },
-    {
-      "tag": "button",
-      "id": "resign",
-      "text": "Resign",
-      "disabled": true
-    },
-    {
-      "tag": "button",
-      "id": "estimate-score",
-      "text": "Estimate Score",
-      "disabled": true
-    },
-    {
-      "tag": "button",
-      "id": "save-sgf",
-      "text": "Download SGF",
       "disabled": false
     },
     {
       "tag": "button",
       "id": "quit-room",
       "text": "Quit Room",
+      "disabled": false
+    },
+    {
+      "tag": "button",
+      "id": "save-sgf",
+      "text": "Void",
       "disabled": false
     },
     {
@@ -81,58 +55,13 @@
     "stones": [
       {
         "color": "black",
-        "x": "130.66666666666669",
-        "y": "130.66666666666669"
-      },
-      {
-        "color": "white",
-        "x": "172",
-        "y": "130.66666666666669"
-      },
-      {
-        "color": "black",
-        "x": "254.66666666666669",
-        "y": "130.66666666666669"
-      },
-      {
-        "color": "white",
-        "x": "337.33333333333337",
-        "y": "130.66666666666669"
-      },
-      {
-        "color": "black",
-        "x": "130.66666666666669",
-        "y": "172"
-      },
-      {
-        "color": "white",
         "x": "172",
         "y": "172"
-      },
-      {
-        "color": "black",
-        "x": "668",
-        "y": "172"
-      },
-      {
-        "color": "white",
-        "x": "172",
-        "y": "213.33333333333334"
-      },
-      {
-        "color": "white",
-        "x": "172",
-        "y": "626.6666666666667"
-      },
-      {
-        "color": "black",
-        "x": "668",
-        "y": "668"
       }
     ],
     "annotations": [
-      "<polygon points=\"172,213.33333333333334 172,234 192.66666666666666,213.33333333333334\" fill=\"#000\"></polygon>"
+      "<polygon points=\"172,172 172,192.66666666666666 192.66666666666666,172\" fill=\"#fff\"></polygon>"
     ]
   },
-  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"努力AAA 4d\":\n      - paragraph:\n        - button \"努力AAA 4d\"\n      - paragraph: \"Captures: 0 + 7.5\"\n      - term: Main time\n      - definition:\n        - time: 19:48\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Captures: 0\"\n      - term: Main time\n      - definition:\n        - time: 19:39\n    - button \"Pass\" [disabled]\n    - button \"Request Counting\" [disabled]\n    - button \"Resign\" [disabled]\n    - button \"Estimate Score\" [disabled]\n    - status: \"Game over: Void\"\n    - button \"Download SGF\"\n    - button \"Quit Room\"\n    - group \"Review game\":\n      - button \"First move\"\n      - button \"Previous move\"\n      - button \"Next move\" [disabled]\n      - button \"Last move\" [disabled]"
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"昵称不好找 4d\":\n      - paragraph:\n        - button \"昵称不好找 4d\"\n      - paragraph: \"Score: 0\"\n      - term: Main time\n      - definition:\n        - time: 20:00\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Score: 0\"\n      - term: Main time\n      - definition:\n        - time: 19:57\n    - button \"Quit Room\"\n    - paragraph:\n      - text: \"Game over:\"\n      - button \"Void\":\n        - text: Void\n        - img\n    - button:\n      - img\n    - button:\n      - img\n    - button [disabled]:\n      - img\n    - button [disabled]:\n      - img"
 }

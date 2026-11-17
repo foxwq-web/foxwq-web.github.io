@@ -1,10 +1,10 @@
 import type { Clock, SessionState } from "./state";
 import type { Board } from "./board.ts";
 
-export function recordedClocks(board: Board, move: number): Record<string, Clock> {
+export function recordedClocks(board: Board, move: number, includeInitialTime = true): Record<string, Clock> {
   const control = board.timeControl;
   const clocks: Record<string, Clock> = {};
-  if (control) {
+  if (control && includeInitialTime) {
     for (const color of [1, 2]) clocks[color] = {
       main: control.main, periods: control.periods, byoyomi: control.byoyomi,
       periodLength: control.byoyomi, at: 0,

@@ -5,15 +5,13 @@
       "tag": "button",
       "id": "black-player-name",
       "text": "a155ff01 3d",
-      "disabled": false,
-      "expanded": "false"
+      "disabled": false
     },
     {
       "tag": "button",
       "id": "white-player-name",
       "text": "products 3d",
-      "disabled": false,
-      "expanded": "false"
+      "disabled": false
     },
     {
       "tag": "button",
@@ -153,5 +151,5 @@
       "<polygon points=\"172,585.3333333333334 172,606 192.66666666666666,585.3333333333334\" fill=\"#fff\"></polygon>"
     ]
   },
-  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"a155ff01 3d\":\n      - paragraph:\n        - button \"a155ff01 3d\"\n      - paragraph: \"Captures: 0\"\n      - term: Main time\n      - definition:\n        - time: 17:02\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Captures: 0 + 7.5\"\n      - term: Main time\n      - definition:\n        - time: 18:49\n    - button \"Pass\"\n    - button \"Request Counting\"\n    - button \"Resign\"\n    - button \"Estimate Score\""
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"a155ff01 3d\":\n      - paragraph:\n        - button \"a155ff01 3d\"\n      - paragraph: \"Score: 0\"\n      - term: Main time\n      - definition:\n        - time: 17:02\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Score: 0 + 7.5\"\n      - term: Main time\n      - definition:\n        - time: 18:49\n    - button \"Pass\"\n    - button \"Request Counting\"\n    - button \"Resign\"\n    - button \"Estimate Score\""
 }

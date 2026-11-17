@@ -27,12 +27,14 @@ test('replay starts at the last login and ignores older traffic, clocks and conn
 
 test('replay reconstructs redacted login and gateway authentication with deterministic credentials', () => {
   const redacted = fixture.map(entry => ({ ...entry }));
-  for (const index of [0, 1, 5, 9]) redacted[index].payload = '';
+  for (const packet of packets(fixture)) {
+    if ([2000, 2005, 4000, 4005].includes(packet.frame.msgTypeID) || identify(packet.frame) === '20001/1') redacted[packet.index].payload = '';
+  }
   const result = normalizeLog(redacted), decoded = packets(result.entries);
   assert.equal(result.synthetic, true);
   assert.equal(decode(decoded[1].frame.rawProto).number(2), decode(packets(fixture)[1].frame.rawProto).number(2));
   assert.deepEqual(decoded[0].frame.rawProto, loginRequest('Replay player', PASSWORD, MAC));
-  assert.equal(decodeFgwMessage(decoded[5].frame.rawProto)[1].text(1), 'offline-replay-token');
+  assert.equal(decodeFgwMessage(decoded.find(packet => packet.outbound && identify(packet.frame) === '20001/1')!.frame.rawProto)[1].text(1), 'offline-replay-token');
   assert.deepEqual(normalizeLog(result.entries).entries, result.entries, 'normalization is idempotent');
   assert.throws(() => normalizeLog([...redacted, { ...redacted.at(-1)!, payload: '' }]), /non-bootstrap/);
 });
@@ -83,10 +85,28 @@ test('replay rejects invalid, incomplete, absent-login and unreconstructible log
   assert.throws(() => normalizeLog([...fixture, { ...fixture.at(-1)!, timestamp: '2020-01-01T00:00:00Z' }]), /chronological/);
 });
 
+test('normalization renumbers player request IDs and matches out-of-order replies', () => {
+  const messages = [
+    [true, { 1: 42, 3: 'player-19' }],
+    [true, { 1: 43, 3: 'player-20' }],
+    [false, { 1: 0, 2: 'player-20', 3: 43, 5: 532905654 }],
+    [false, { 1: 0, 2: 'player-19', 3: 42 }],
+  ] as const;
+  const input = [...fixture.slice(0, 10), ...messages.map(([out, body]) => ({
+    ...fixture.at(-1)!, source: out ? fixture[5].source : fixture[5].destination,
+    destination: out ? fixture[5].destination : fixture[5].source,
+    payload: frame(26200, encodeFgwMessage(42, 20043, 1001, body), true).toString('base64'),
+  }))];
+  const normalized = normalizeLog(input).entries;
+  assert.deepEqual(packets(normalized).slice(-4).map(packet => decodeFgwMessage(packet.frame.rawProto)[1].text(packet.outbound ? 3 : 2)),
+    ['player-1', 'player-2', 'player-2', 'player-1']);
+  assert.deepEqual(normalizeLog(normalized).entries, normalized);
+  assert.equal(decodeFgwMessage(packets(normalized).at(-2)!.frame.rawProto)[1].number(5), 532905654);
+});
+
 test('replay infers UI actions from protocol requests and leaves automatic packets alone', () => {
   for (const [packet, action] of [
     [gateway(GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_REQUEST, { 1: 101 }), { type: 'match', id: 101 }],
-    [gateway(GAME_SVR_MGR, RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST), { type: 'cancel' }],
     [gateway(GAME_SVR, 201, { 1: 3, 2: 15 }), { type: 'play', x: 3, y: 15 }],
     [gateway(GAME_SVR, 204), { type: 'pass' }],
     [gateway(GAME_SVR, 301), { type: 'count' }],
@@ -96,6 +116,7 @@ test('replay infers UI actions from protocol requests and leaves automatic packe
   ] as const) assert.deepEqual(inferAction(packet), action);
   assert.equal(inferAction(gateway(SVR_TYPE_FGW, 5)), null);
   assert.equal(inferAction(gateway(GAME_SVR, 501)), null);
+  assert.equal(inferAction(gateway(20043, 1001, { 1: 42, 3: 'player-1' })), null);
   assert.deepEqual(inferAction(packets(fixture)[0].frame), { type: 'login' });
 });
 
@@ -114,6 +135,20 @@ test('recorded server entries retain their imported bytes, order and timestamps'
   for (const recording of provenance) {
     const entries: NetworkEntry[] = JSON.parse(await readFile(new URL(`./integration/fixtures/${recording.fixture}`, import.meta.url), 'utf8'));
     const server = entries.filter(entry => !entry.source.startsWith('client:'));
-    assert.equal(createHash('sha256').update(JSON.stringify(server)).digest('hex'), recording.serverEntriesSha256, recording.fixture);
+    const digest = (entries: NetworkEntry[]) => createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+    assert.equal(digest(server), recording.serverEntriesSha256, recording.fixture);
+    if (recording.classicBootstrap) {
+      const synthetic = [...(recording.syntheticLobbyResponses?.entries ?? [])].map((entry: NetworkEntry) => JSON.stringify(entry));
+      const imported = server.filter(entry => {
+        if (entry.destination.endsWith(':pc')) return false;
+        const index = synthetic.indexOf(JSON.stringify(entry));
+        if (index === -1) return true;
+        synthetic.splice(index, 1);
+        return false;
+      });
+      assert.equal(synthetic.length, 0, `${recording.fixture}: documented synthetic replies must remain present`);
+      assert.equal(digest(imported), recording.classicBootstrap.originalServerEntriesSha256,
+        `${recording.fixture}: historical server traffic must survive synthetic PC bootstrap additions`);
+    }
   }
 });

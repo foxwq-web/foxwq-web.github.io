@@ -7,6 +7,7 @@ interface ReplayBrowser {
   ticks: number;
   sent: SentPacket[];
   errors: string[];
+  connectionState(connection: string): 'open' | 'closed' | 'absent';
   deliver(connection: string, payload: string): void;
   captureHeartbeat(): void;
   fireHeartbeat(): void;
@@ -43,6 +44,10 @@ export function installReplay({ channels }: ReplayOptions) {
   };
   const replay: ReplayBrowser = window.__networkReplay = {
     ticks: 0, sent: [], errors: [],
+    connectionState(id) {
+      const socket = sockets.get(id);
+      return !socket ? 'absent' : socket.readyState === 3 ? 'closed' : 'open';
+    },
     captureHeartbeat() {
       const candidates = [...timers].filter(([, timer]) => timer.delay === 5000);
       if (candidates.length !== 1) throw Error(`Expected one scheduled heartbeat, got ${candidates.length}`);
@@ -56,6 +61,9 @@ export function installReplay({ channels }: ReplayOptions) {
     },
     deliver(id, payload) {
       const socket = sockets.get(id);
+      // Frames still in flight when the client closed a socket are discarded,
+      // as they would be by the network stack.
+      if (socket?.readyState === 3) return;
       if (!socket || socket.readyState !== 1) throw Error(`Replay connection ${id} is not open.`);
       const bytes = Uint8Array.from(atob(payload), char => char.charCodeAt(0));
       socket.dispatchEvent(new MessageEvent('message', { data: bytes.buffer }));
@@ -127,11 +135,11 @@ export async function act(page: Page, action: Action, username: string, password
         svg.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: screen.x, clientY: screen.y }));
       }, action);
       break;
-    case 'cancel': await click('#cancel-match'); break;
     case 'pass': await click('#pass'); break;
     case 'count': await click('#request-score'); break;
     case 'confirm': await click(action.accept ? '#counting-accept' : '#counting-reject'); break;
     case 'resign':
+      await click('#resign');
       await click('#resign');
       break;
     default: throw Error(`Unsupported inferred action: ${action.type}`);
@@ -141,7 +149,7 @@ export async function act(page: Page, action: Action, username: string, password
 export async function uiSnapshot(page: Page) {
   const dom = await page.evaluate(() => {
     const visible = (element: Element) => element.checkVisibility() && !element.closest('[hidden], dialog:not([open])');
-    const board = document.querySelector('#board')!;
+    const board = document.querySelector('#board');
     return {
       title: document.title,
       controls: [...document.querySelectorAll('button, input, select, a')].filter(visible).map(element => {
@@ -152,16 +160,15 @@ export async function uiSnapshot(page: Page) {
           disabled: 'disabled' in input ? input.disabled : undefined,
           value: input.tagName === 'INPUT' ? input.type === 'password' ? '<redacted>' : input.value : undefined,
           checked: input.type === 'radio' || input.type === 'checkbox' ? input.checked : undefined,
-          expanded: element.getAttribute('aria-expanded') ?? undefined,
         };
       }),
       board: {
-        visible: !!visible(board),
-        stones: [...board.querySelectorAll('.board-stones .stone')].map(stone => {
+        visible: !!board && !!visible(board),
+        stones: [...(board?.querySelectorAll('.board-stones .stone') ?? [])].map(stone => {
           const circle = stone.querySelector('circle')!;
           return { color: stone.classList.contains('stone-black') ? 'black' : 'white', x: circle.getAttribute('cx'), y: circle.getAttribute('cy') };
         }),
-        annotations: [...board.querySelectorAll('polygon, text, .estimated-territory rect')].map(element => element.outerHTML),
+        annotations: [...(board?.querySelectorAll('polygon, text, .estimated-territory rect') ?? [])].map(element => element.outerHTML),
       },
     };
   });

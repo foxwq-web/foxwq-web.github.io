@@ -5,8 +5,7 @@
       "tag": "button",
       "id": "",
       "text": "Replay player —",
-      "disabled": false,
-      "expanded": "false"
+      "disabled": false
     },
     {
       "tag": "button",

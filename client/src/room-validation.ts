@@ -49,6 +49,7 @@ export function validateGameRoom(
   message: Message,
   header: Message | undefined,
   expected: Record<number, number>,
+  serverType = GAME_SVR,
 ): ValidatedGameRoom | null {
   const identity: Record<number, number> = {};
   const bodyFields = new Set<number>();
@@ -67,7 +68,7 @@ export function validateGameRoom(
     return !source.has(tag) || fields(source.sub(tag), [Game.RoomKey.server_type, Game.RoomKey.server_id, Game.RoomKey.room_id, Game.RoomKey.create_time]);
   }
   try {
-    if (!add(GAME_SVR, Game.RoomKey.server_type, false) || (header && !fields(header, [Common.FGWHead.server_type, Common.FGWHead.server_id], false))) return null;
+    if (!add(serverType, Game.RoomKey.server_type, false) || (header && !fields(header, [Common.FGWHead.server_type, Common.FGWHead.server_id], false))) return null;
     const roomTag = roomKeyFields[messageId];
     if (roomTag !== undefined && !nested(message, roomTag)) return null;
     if (messageId === ID.GC_START_SET_PIECE_NOTIFY && !fields(message, [Game.StartSetPieceNotify.server_type, Game.StartSetPieceNotify.server_id, Game.StartSetPieceNotify.room_id, Game.StartSetPieceNotify.room_create_time])) return null;

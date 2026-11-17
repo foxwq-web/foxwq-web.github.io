@@ -4,7 +4,6 @@ import { Board } from '../src/board.ts';
 import { Session } from '../src/session.ts';
 import { DEV_SCREENS, applyDevScreen } from '../src/dev-screens.ts';
 import { COUNTING_PREVIEW } from '../src/dev-counting.ts';
-
 test('playing previews include AlphaGo move 37 and preserve the player’s turn', async () => {
   for (const [id, color, moveCount] of [['board-white', 2, 37], ['board-black', 1, 38]] as const) {
     const session = new Session();
@@ -16,6 +15,7 @@ test('playing previews include AlphaGo move 37 and preserve the player’s turn'
       assert.equal(session.board.stones[8 * 19 + 14], color === 1 ? 2 : 0); // P11, reply 38.
       assert.equal(session.color, color);
       assert.equal(session.board.turn, color);
+      assert.deepEqual([session.players[1].country, session.players[2].country], color === 1 ? [86, 81] : [81, 86]);
       assert.equal(session.pending, false);
     } finally { session.close(); }
   }
@@ -57,13 +57,18 @@ test('all offline fixtures cover session phases, have valid histories and forbid
     'error','ready','matching','joining','playing','finished'
   ]));
   for (const fixture of DEV_SCREENS) {
+    // Archived previews use the independent record-page loader; the visual
+    // suite checks their ready, loading, error and variation states.
+    if (fixture.record) {
+      assert.equal(fixture.visualSuite, 'record');
+      continue;
+    }
     const session = new Session({ connectionFactory() { assert.fail('Opened real transport'); } });
     const preview = await applyDevScreen(session, fixture.id);
     assert.ok(fixture.group && fixture.reach, fixture.id);
     assert.ok(preview, fixture.id);
-    if (preview.prompt) assert.ok('title' in preview.prompt, fixture.id);
     assert.equal(session.snapshot().phase, fixture.phase, fixture.id);
-    assert.throws(() => session.login('user', 'password'), /Offline preview/, fixture.id);
+    assert.throws(() => session.login('user', 'password'), /offline preview/, fixture.id);
     const replay = new Board();
     for (const [color, x, y] of session.board.moves) {
       if (x === null) replay.passTurn(color); else replay.play(x, y!, color);
@@ -135,7 +140,8 @@ test('previews preserve real pending, acknowledgement, rollback and pass semanti
     assert.deepEqual(sessions['action-rejected'].board.stones, sessions['board-black'].board.stones);
     assert.equal(sessions['action-rejected'].pendingMove, null);
     assert.equal(sessions['action-rejected'].pending, false);
-    assert.equal(sessions['pass-pending'].board.passes, 0);
+    // A pass is applied at once; the reply only supplies the server clock.
+    assert.equal(sessions['pass-pending'].board.passes, 1);
     assert.equal(sessions['pass-pending'].pending, true);
     assert.equal(sessions['opponent-passed'].board.passes, 1);
     assert.equal(sessions['both-passed'].board.passes, 2);

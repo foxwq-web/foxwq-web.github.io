@@ -1,3 +1,4 @@
+import { reviewPath } from './routes';
 import { ErrorCode } from "./protocol.ts";
 import { gameFields as Game, roomFields as Room, fgwFields as Fgw, panelFields as Panel } from "./protocol-fields.ts";
 import { GoGameMessageID, RoomMessageID, LegacyMsgTypeID, ClientMessageID, CLINET_MSG_ID, StoneColor, SpecialResult, ENGameEndReason, CalculateProcessType, BoardSize, GameTypeTag, ENAdditionalRuleType } from "./protocol.ts";
@@ -6,11 +7,11 @@ import { PREVIEW_PLAYERS } from "./dev-players";
 import { COUNTING_PREVIEW } from "./dev-counting";
 
 import type { Session } from "./session.ts";
-import { promptForAction, type Command, type Prompt } from "./state";
 import * as game from "./game.ts";
 import { encode, type Fields } from "./wire.ts";
 import { Buffer } from "buffer";
 import { localEstimate } from '../../score-estimator/src/local-score-estimation.ts';
+import { REGRESSION_SCREENS } from './dev-regressions';
 
 type Stage = "login" | "connecting" | "authenticating" | "bootstrap" |
   "gateway" | "discovery" | "matching" | "joining" | "started" | "playing";
@@ -18,10 +19,9 @@ type Scenario = {
   session: Session;
   notify: (op: number, fields?: Fields) => void;
   room: (op: number, fields?: Fields) => void;
-  ask: (command: Command) => void;
   error: (action: () => void) => void;
 };
-type Screen = {
+export type Screen = {
   id: string;
   label: string;
   group: string;
@@ -31,6 +31,9 @@ type Screen = {
   playerName?: string;
   coordinates?: boolean;
   variation?: [number, number][];
+  visualSuite?: 'regression' | 'record';
+  afterMount?: () => void;
+  record?: 'ready' | 'loading' | 'error' | 'variation' | 'small-board' | 'variant';
   run?: (scenario: Scenario) => void | Promise<void>;
 };
 const screen = (id: string, label: string, group: string, stage: Stage,
@@ -70,10 +73,13 @@ const finishedCounting = (s: Scenario) => {
   s.notify(GoGameMessageID.GC_CALCULATE_ANSWER_REQUEST, { [Game.CalculateAnswerResponse.result]: 0 });
   s.notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { [Game.SetGameEndNotify.result]: 0, [Game.SetGameEndNotify.winner]: COUNTING_PREVIEW.winner, [Game.SetGameEndNotify.points]: COUNTING_PREVIEW.margin * 50, [Game.SetGameEndNotify.reason]: ENGameEndReason.EER_OPP_OVERTIME });
 };
+const confirmResignation = (s: Scenario) => {
+  s.notify(GoGameMessageID.GC_GIVE_UP_REQUEST, { [Game.GiveUpResponse.result]: 0 });
+  s.notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { [Game.SetGameEndNotify.result]: 0, [Game.SetGameEndNotify.chess_id]: 1793333770030061788n, [Game.SetGameEndNotify.winner]: 3 - s.session.color, [Game.SetGameEndNotify.points]: SpecialResult.SR_MID_GAME, [Game.SetGameEndNotify.reason]: ENGameEndReason.EER_OPP_RESIGN });
+};
 const finishedResignation = (s: Scenario) => {
   s.session.resign();
-  s.notify(GoGameMessageID.GC_GIVE_UP_REQUEST, { [Game.GiveUpResponse.result]: 0 });
-  s.notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { [Game.SetGameEndNotify.result]: 0, [Game.SetGameEndNotify.winner]: StoneColor.WHITE, [Game.SetGameEndNotify.points]: SpecialResult.SR_MID_GAME, [Game.SetGameEndNotify.reason]: ENGameEndReason.EER_OPP_RESIGN });
+  confirmResignation(s);
 };
 
 
@@ -86,9 +92,10 @@ export const DEV_SCREENS: Screen[] = [
   screen("gateway", "Gateway connection", "Connection", "gateway", "gateway", "Server list arrives; gateway connection is pending"),
   screen("resuming", "Restoring a game", "Connection", "discovery", "resuming", "Login discovers an existing game; synchronization is pending"),
   screen("login-error", "Login or connection error", "Connection", "authenticating", "error", "Fox rejects credentials; transport failures use this same error screen"),
+  screen("login-other-client", "Another client logged in", "Connection", "authenticating", "error", "Another client logs in; show the error in the red login footer", s => s.session.failed(s.session.generation, 'another client logged in')),
 
   screen("matchmaking", "Choose time control", "Matchmaking", "discovery", "ready", "Login completes; show the advertised 1m20s, 5m30s and 20m60s controls and player counts"),
-  { ...screen("matchmaking-player-info", "Your player info", "Matchmaking", "discovery", "ready", "Hover your player name in matchmaking"), playerName: "#matchmaking-player .player-name" },
+  { ...screen("matchmaking-player-info", "Your player info", "Matchmaking", "discovery", "ready", "Click your name above the time controls"), playerName: "#matchmaking-player .player-name" },
   screen("matching", "Searching", "Matchmaking", "matching", "matching", "Play; Fox accepts the search"),
   screen("matchmaking-rejected", "Search rejected", "Matchmaking", "matching", "ready", "Play; Fox rejects the search", s => s.room(RoomMessageID.RM_AUTO_INVITE_REQUEST, { [Room.AutoInviteResponse.result]: -1 })),
   screen("joining", "Joining a room", "Matchmaking", "joining", "joining", "A match is found; game environment is pending"),
@@ -96,9 +103,16 @@ export const DEV_SCREENS: Screen[] = [
 
   screen("board-black", "Your turn as Black", "Playing", "playing", "playing", "Game starts as Black; legal moves produce this sample position"),
   { ...screen("board-coordinates", "Board coordinates", "Playing", "playing", "playing", "Sample board with coordinates always visible on all four edges"), coordinates: true },
-  { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Hover Black’s player name in the main view"), playerName: "#black-player-name" },
-  { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Hover White’s player name in the main view"), playerName: "#white-player-name" },
+  { ...screen("board-black-player-info", "Black player info", "Playing", "playing", "playing", "Click Black’s player name in the main view"), playerName: "#black-player-name" },
+  { ...screen("board-white-player-info", "White player info", "Playing", "playing", "playing", "Click White’s player name in the main view"), playerName: "#white-player-name" },
   screen("board-white", "Your turn as White", "Playing", "playing", "playing", "AlphaGo vs Lee Sedol, game 2, after move 37"),
+  screen("resign-delayed", "Resignation with delayed server reply", "Playing", "playing", "playing", "Resign as White; the offline server confirms two seconds later", s => {
+    const resign = s.session.resign.bind(s.session);
+    s.session.resign = () => {
+      resign();
+      setTimeout(() => confirmResignation(s), 2000);
+    };
+  }),
   screen("opponent-turn", "Opponent’s turn", "Playing", "playing", "playing", "Black plays; White is next", blackMove),
   screen("opponent-passed", "Opponent passed", "Playing", "playing", "playing", "Opponent’s turn → opponent passes", s => { blackMove(s); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); }),
   screen("both-passed", "Both players passed", "Playing", "playing", "playing", "Pass → Fox confirms → opponent passes; counting is available", s => { s.session.passTurn(); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST, { [Game.SkipSetPieceResponse.result]: 0 }); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); s.notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY); }),
@@ -126,7 +140,22 @@ export const DEV_SCREENS: Screen[] = [
   screen("finished", "Game ended by counting", "Results", "playing", "finished", "Confirm counting result → Fox ends the game; downloads and Quit room appear", finishedCounting),
   screen("finished-resign", "Game ended by resignation", "Results", "playing", "finished", "Resign → Fox ends the game (W+R)", finishedResignation),
   screen("finished-void", "Game cancelled", "Results", "started", "finished", "Fox cancels an initial-start game with the observed reason (8)", s => s.notify(GoGameMessageID.GC_SET_GAME_RESULT_NOTIFY, { [Game.SetGameResultNotify.winner]: StoneColor.EMPTY, [Game.SetGameResultNotify.reason]: ENGameEndReason.EER_INVALIDGAME_ROUNDNUM_TOO_SMALL })),
+  ...REGRESSION_SCREENS,
 ];
+
+// The Dev menu lists this journey in order. Other previews stay available by
+// direct URL for the interaction tests.
+export const DEV_SCREEN_MENU: Screen[] = [
+  'login', 'connecting', 'login-error',
+  'matchmaking', 'matchmaking-player-info', 'history-loading', 'matching',
+  'board-white', 'board-black-player-info', 'board-coordinates', 'opponent-turn',
+  'byoyomi', 'score-estimation', 'counting-result', 'finished-resign', 'replay-variation',
+  'record-review-loading',
+].map(id => {
+  const fixture = DEV_SCREENS.find(screen => screen.id === id);
+  if (!fixture) throw Error(`unknown dev screen ${id}`);
+  return fixture;
+});
 
 
 function position({ session, notify }: Scenario, timed = false) {
@@ -160,9 +189,9 @@ function position({ session, notify }: Scenario, timed = false) {
 
 export async function applyDevScreen(session: Session, id: string) {
   const fixture = DEV_SCREENS.find(screen => screen.id === id);
-  if (!fixture) return null;
+  if (!fixture || fixture.record) return null;
   const [self, opponent] = PREVIEW_PLAYERS;
-  const [black, white] = id === "board-white" ? [opponent, self] : [self, opponent];
+  const [black, white] = id === "board-white" || id === "resign-delayed" ? [opponent, self] : [self, opponent];
   const player = (uid: number) => PREVIEW_PLAYERS.find(player => player.uid === uid)!;
   const transport = { send() {}, close() {} };
   const waiting = () => new Promise<never>(() => {});
@@ -176,34 +205,43 @@ export async function applyDevScreen(session: Session, id: string) {
   session.estimationFetcher = async ({ payload }) => sampleEstimate(payload.status);
   const sound = session.onSound;
   session.onSound = () => {};
-  let prompt: Prompt | null = null, menuError = "", boardError = "";
+  let menuError = "", boardError = "";
   const packet = (msgTypeID: number, fields: Fields) => session.receive(
     session.generation, { msgTypeID, flag: 0, rawProto: encode(fields) });
   const message = (service: number, op: number, fields: Fields = {}) => session.receive(
     session.generation, { msgTypeID: LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET, flag: 0,
       rawProto: game.encodeFgwMessage(self.uid, service, op, fields, 63) });
-  // Hover cards use the same store and wire response path in offline previews.
+  // Player cards use the same store and wire response path in offline previews.
   session.playerInfo = new PlayerInfoStore(fields => {
-    const profile = player(Number(fields[Panel.FetchPanelUserInfoRequest.dst_uid]));
+    const name = fields[Panel.FetchPanelUserInfoRequest.dst_name];
+    const profile = typeof name === 'string'
+      ? PREVIEW_PLAYERS.find(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+      : player(Number(fields[Panel.FetchPanelUserInfoRequest.dst_uid]));
     queueMicrotask(() => message(SVR_TYPE_USER_INFO_PANEL_SVR, CLINET_MSG_ID.MTID_FETCH_PANEL_USER_INFO, {
-      ...profile.summary, [Panel.FetchPanelUserInfoResponse.transparent]: fields[Panel.FetchPanelUserInfoRequest.transparent],
+      ...(profile?.summary ?? { [Panel.FetchPanelUserInfoResponse.result]: 1 }),
+      ...(profile && typeof name === 'string' ? {
+        [Panel.FetchPanelUserInfoResponse.dst_uid]: 0,
+        [Panel.FetchPanelUserInfoResponse.uid]: profile.uid,
+        [Panel.FetchPanelUserInfoResponse.dst_name]: name,
+      } : {}),
+      [Panel.FetchPanelUserInfoResponse.transparent]: fields[Panel.FetchPanelUserInfoRequest.transparent],
     }));
   }, () => session.changed(), () => session, async input => {
     const profile = player(Number(new URL(String(input)).searchParams.get("uid")));
-    return Response.json({ result: 0, chesslist: profile.games });
+    return profile ? Response.json({ result: 0, chesslist: profile.games })
+      : new Response(null, { status: 404 });
   });
   const scenario: Scenario = {
     session,
     room: (op, fields) => message(game.GAME_SVR_MGR, op, fields),
     notify: (op, fields) => message(game.GAME_SVR, op, fields),
-    ask: command => { prompt = promptForAction(command) ?? null; },
     error: action => {
       try { action(); } catch (error) {
         const text = (error as Error).message;
         if (fixture.stage === "login") menuError = text; else boardError = text;
         return;
       }
-      throw Error(`Preview ${id} expected a rejected command`);
+      throw Error(`preview ${id} expected a rejected command`);
     },
   };
   const settled = async (ready: () => boolean) => {
@@ -211,7 +249,7 @@ export async function applyDevScreen(session: Session, id: string) {
       if (ready()) return;
       await Promise.resolve();
     }
-    throw Error(`Preview ${id} did not settle its offline transport`);
+    throw Error(`preview ${id} did not settle its offline transport`);
   };
   const setup = async () => {
     const { stage } = fixture;
@@ -245,8 +283,10 @@ export async function applyDevScreen(session: Session, id: string) {
     if (stage === "joining") return;
     scenario.notify(GoGameMessageID.GC_START_SET_PIECE_NOTIFY, { [Game.StartSetPieceNotify.rule]: { [Game.GameRule.dumiao_time]: 60 }, [Game.StartSetPieceNotify.room_id]: 100, [Game.StartSetPieceNotify.room_create_time]: 200, [Game.StartSetPieceNotify.game_users]: [
       { [Game.GameUserInfo.uid]: black.uid, [Game.GameUserInfo.nickname]: black.name, [Game.GameUserInfo.grade]: black.rank,
+        [Game.GameUserInfo.country]: black.country,
         [Game.GameUserInfo.stone_color]: StoneColor.BLACK, [Game.GameUserInfo.remaining_jushi_time]: 425, [Game.GameUserInfo.remaining_dumiao_num]: 3, [Game.GameUserInfo.remaining_dumaio_time]: 60 },
       { [Game.GameUserInfo.uid]: white.uid, [Game.GameUserInfo.nickname]: white.name, [Game.GameUserInfo.grade]: white.rank,
+        [Game.GameUserInfo.country]: white.country,
         [Game.GameUserInfo.stone_color]: StoneColor.WHITE, [Game.GameUserInfo.remaining_jushi_time]: 192, [Game.GameUserInfo.remaining_dumiao_num]: 2, [Game.GameUserInfo.remaining_dumaio_time]: 60 },
     ] });
     if (stage === "started") return;
@@ -256,17 +296,17 @@ export async function applyDevScreen(session: Session, id: string) {
     await setup();
     if (id === "login-error") packet(2005, { 1: ErrorCode.NEC_USERNAME_PASSWORD_ERROR });
     else await fixture.run?.(scenario);
-    if (session.phase !== fixture.phase)
-      throw Error(`Preview ${id}: reached ${session.phase}, expected ${fixture.phase}`);
+    if (session.snapshot().phase !== fixture.phase)
+      throw Error(`preview ${id} reached ${session.snapshot().phase} expected ${fixture.phase}`);
   } finally {
     clearTimeout(session.timer ?? undefined);
     clearTimeout(session.bootstrapTimer);
     session.timer = null;
     session.onSound = sound;
-    session.login = () => { throw Error("Offline preview. Remove dev-screen to connect to Fox."); };
-    session.connectionFactory = async () => { throw Error("Offline development preview"); };
+    session.login = () => { throw Error("offline preview remove dev-screen to connect to fox"); };
+    session.connectionFactory = async () => { throw Error("offline development preview"); };
   }
-  return { fixture, prompt, menuError, boardError };
+  return { fixture, menuError, boardError };
 }
 
 
@@ -280,25 +320,25 @@ function sampleEstimate(stones: string) {
 }
 
 export function mountDevNavigation(id: string) {
-  const playerName = DEV_SCREENS.find(screen => screen.id === id)?.playerName;
+  const fixture = DEV_SCREENS.find(screen => screen.id === id);
+  fixture?.afterMount?.();
+  const playerName = fixture?.playerName;
   if (playerName) {
-    // Focus opens the real hover card and keeps it visible for inspection.
-    document.querySelector<HTMLElement>(playerName)?.focus();
+    // Click opens the real player card and keeps it visible for inspection.
+    document.querySelector<HTMLElement>(playerName)?.click();
     return;
   }
   if (!["all", "index"].includes(id)) return;
   const section = document.createElement("section");
   section.id = "dev-screens";
   const style = document.createElement("style");
-  style.textContent = `#dev-screens{position:fixed;inset:0;z-index:100;overflow:auto;background:var(--app-background);padding:24px;color:var(--app-text);font:14px Arial, sans-serif}.dev-screen-index main,.dev-screen-index #connection-layer{display:none!important}#dev-screens li{margin:12px 0}#dev-screens small{display:block;margin-top:4px;color:#aaa}#dev-screens h2{margin-top:28px;font-size:18px}`;
+  style.textContent = `#dev-screens{position:fixed;inset:0;z-index:100;overflow:auto;background:var(--app-background);padding:24px;color:var(--app-text);font:14px Arial, sans-serif}.dev-screen-index main,.dev-screen-index #connection-layer{display:none!important}#dev-screens li{margin:12px 0}#dev-screens small{display:block;margin-top:4px;color:#aaa}`;
   section.append(style);
   const link = (screen: string, label: string) => {
     const a = document.createElement("a"),
-      url = new URL(location.href);
-    url.searchParams.set("dev-screen", screen);
+      url = devScreenURL(screen);
     a.href = url.href;
     a.textContent = label;
-    a.tabIndex = 0;
     return a;
   };
   document.body.classList.add("dev-screen-index");
@@ -308,16 +348,20 @@ export function mountDevNavigation(id: string) {
   note.textContent =
     "Each preview follows the app’s normal commands and response handlers with sample offline server inputs. The path below each link explains how to reach it. Clocks are frozen; Fox actions wait for a response offline. Downloads work. Colour and text variants share a screen.";
   section.append(title, note);
-  for (const group of new Set(DEV_SCREENS.map(screen => screen.group))) {
-    const heading = document.createElement("h2"), list = document.createElement("ul");
-    heading.textContent = group;
-    for (const screen of DEV_SCREENS.filter(screen => screen.group === group)) {
-      const li = document.createElement("li"), path = document.createElement("small");
-      path.textContent = screen.reach;
-      li.append(link(screen.id, screen.label), path);
-      list.append(li);
-    }
-    section.append(heading, list);
+  const list = document.createElement("ul");
+  for (const screen of DEV_SCREEN_MENU) {
+    const li = document.createElement("li"), path = document.createElement("small");
+    path.textContent = screen.reach;
+    li.append(link(screen.id, screen.label), path);
+    list.append(li);
   }
+  section.append(list);
   document.body.append(section);
+}
+
+export function devScreenURL(id: string) {
+  const url = new URL(location.href);
+  url.pathname = DEV_SCREENS.find(screen => screen.id === id)?.record ? reviewPath('1793333770030061788') : '/';
+  url.searchParams.set('dev-screen', id);
+  return url;
 }

@@ -8,6 +8,7 @@ import { chromium } from 'playwright';
 import { normalizeLog } from './log.ts';
 import { replay } from './replay.ts';
 import { artifacts, checkGolden, exists, json } from './artifacts.ts';
+import { availablePort } from '../available-port.ts';
 
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
 const configFile = fileURLToPath(new URL('../../vite.config.ts', import.meta.url));
@@ -61,7 +62,7 @@ are compared byte for byte. See client/tests/integration/README.md.`);
   try {
     const outDir = join(work, 'dist');
     await build({ configFile, logLevel: 'warn', define: { __CLIENT_BUILD__: JSON.stringify({ gitSha: 'network-replay' }) }, build: { outDir, emptyOutDir: true } });
-    server = await preview({ configFile, build: { outDir }, preview: { host: '127.0.0.1', port: 0 } });
+    server = await preview({ configFile, build: { outDir }, preview: { host: '127.0.0.1', port: await availablePort(), strictPort: true } });
     const address = server.httpServer.address();
     assert.ok(address && typeof address !== 'string');
     browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });

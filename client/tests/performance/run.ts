@@ -23,7 +23,7 @@ window.__bench = {
     flushSync(() => controller.emit({ type: 'initialize', state: {
       ...controller.state, session: controller.snapshot(), frozen: false,
       now: controller.session.clocks[controller.session.board.turn]?.at ?? controller.state.now,
-      preview: null, prompt: result.prompt, menuError: result.menuError, error: result.boardError, review: null
+      preview: null, prompt: null, menuError: result.menuError, error: result.boardError, review: null
     }}));
     if (result.fixture.variation) {
       flushSync(() => controller.review('previous'));

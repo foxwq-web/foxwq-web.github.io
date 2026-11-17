@@ -23,17 +23,38 @@ function setup() {
   return { s, sounds, notice, restore };
 }
 
+test('game start time survives snapshot recovery, with room creation time as a fallback', () => {
+  const { s, notice, restore } = setup();
+  try {
+    restore(undefined, { 6: 3 });
+    assert.equal(s.board.startedAt, key[4]);
+    const start = 1792758896;
+    restore(undefined, { 6: 3, 22: start });
+    assert.equal(s.board.startedAt, start);
+    restore(undefined, { 6: 3 });
+    assert.equal(s.board.startedAt, start);
+    assert.equal(s.board.clone().startedAt, start);
+    notice(ID.GC_START_SET_PIECE_NOTIFY, { 26: key, 13: start + 60 });
+    assert.equal(s.board.startedAt, start + 60);
+  } finally { s.close(); }
+});
+
 const results: [string, Fields, string][] = [
   ["Black resignation", { 1: 1, 3: 3 }, "B+R"],
   ["White resignation", { 1: 2, 3: 3 }, "W+R"],
-  ["Black points", { 1: 1, 2: 125, 3: 2 }, "B+2.5"],
-  ["White points", { 1: 2, 2: 1225, 3: 2 }, "W+24.5"],
+  ["Black points", { 1: 1, 2: 125, 3: 1 }, "B+2.5"],
+  ["White points", { 1: 2, 2: 1225, 3: 1 }, "W+24.5"],
   ["Black time", { 1: 1, 2: -2, 3: 2 }, "B+T"],
   ["White time", { 1: 2, 2: -2, 3: 2 }, "W+T"],
   ["draw", { 1: 3, 2: 0, 3: 2 }, "0"],
   ["void", { 3: 8 }, "Void"],
-  ["unknown margin", { 1: 1, 2: -1, 3: 2 }, "B+"],
-  ["omitted margin", { 1: 2, 3: 2 }, "W+"],
+  ["resignation encoded in points", { 1: 2, 2: -1, 3: 1 }, "W+R"],
+  ["timeout encoded in points", { 1: 2, 2: -2, 3: 1 }, "W+T"],
+  ["offline encoded in points", { 1: 2, 2: -3, 3: 1 }, "W+F"],
+  ["offline encoded in reason", { 1: 1, 3: 7 }, "B+F"],
+  ["void overrides special points", { 1: 2, 2: -1, 3: 8 }, "Void"],
+  ["unknown margin", { 1: 1, 2: -99, 3: 1 }, "B+"],
+  ["omitted margin", { 1: 2, 3: 1 }, "W+"],
   ["unknown winner", { 1: 99, 2: 125, 3: 2 }, ""],
 ];
 for (const [name, result, expected] of results) test(`restored ${name} matches live results and SGF`, () => {
@@ -45,7 +66,7 @@ for (const [name, result, expected] of results) test(`restored ${name} matches l
     assert.equal(s.phase, "finished");
     assert.equal(s.gameOver, true);
     assert.equal(s.pending, false);
-    assert.ok(reviewAvailable(s.snapshot()));
+    assert.equal(reviewAvailable(s.snapshot()), true);
     assert.ok(actionsBlocked(s.snapshot()));
     assert.throws(() => s.play(4, 4));
     assert.deepEqual(s.board.moves, [[1, 3, 3], [2, 15, 15]]);
@@ -124,5 +145,20 @@ test("malformed nested result is rejected before replacing the restored game", (
     restore({ 1: 2, 3: 3 });
     assert.equal(s.result, "W+R");
     assert.equal(s.phase, "finished");
+  } finally { s.close(); }
+});
+
+for (const text of [false, true]) test(`Fox archive IDs retain uint64 precision in ${text ? 'text' : 'numeric'} fields`, () => {
+  const { s, notice, restore } = setup();
+  const id = '1793333770030061788';
+  try {
+    notice(ID.GC_START_SET_PIECE_NOTIFY, { 26: key, [text ? 8 : 3]: text ? id : BigInt(id) });
+    assert.equal(s.snapshot().archiveId, id);
+    restore(undefined, { 6: 3, [text ? 11 : 9]: text ? id : BigInt(id) });
+    assert.equal(s.snapshot().archiveId, id);
+    for (const [op, field] of [[ID.GC_SET_GAME_END_NOTIFY, 9], [ID.GC_SET_GAME_RESULT_NOTIFY, 13]]) {
+      notice(op, { 2: 2, 4: 3, [field]: BigInt(id) + 1n });
+      assert.equal(s.snapshot().archiveId, (BigInt(id) + 1n).toString());
+    }
   } finally { s.close(); }
 });

@@ -10,7 +10,7 @@ The suite renders the 19 screens in the app's Dev menu, once per project
 before comparing its full-page screenshot. The index in
 `client/tests/visual/baselines/desktop/README.md` (and `mobile/README.md`)
 lists the covered screens. Archived previews redirect to
-`/archive/<encoded-game-id>?dev-screen=<id>`; no preview requires Fox
+`/game/<encoded-game-id>?dev-screen=<id>`; no preview requires Fox
 credentials or an external game-record request. Product snapshots hide the
 Dev menu via `product-snapshot.css`.
 

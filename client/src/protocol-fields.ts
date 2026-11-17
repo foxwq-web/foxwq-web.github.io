@@ -4,6 +4,13 @@
 
 // proto.game
 export const gameFields = {
+  UndoSetPieceNotify: {
+    undoer: 1,
+    step: 2,
+    countdown: 3,
+    check_syn: 4,
+    room_key: 5,
+  },
   CalculateAnswerNotify: {
     accept: 1,
     type: 2,
@@ -569,6 +576,17 @@ export const commonFields = {
 
 // user_info_panel_svr
 export const panelFields = {
+  UserStatus: {
+    room_loc_infos: 1,
+    is_online: 2,
+  },
+  RoomLocInfo: {
+    room_key: 1,
+    room_role: 2,
+  },
+  CertificationInfo: {
+    ai: 2,
+  },
   AccountInfo: {
     uid: 1,
     accounttype: 2,

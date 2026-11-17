@@ -21,6 +21,28 @@ const menu = BASELINE_SCREENS
   .map(id => DEV_SCREENS.find(screen => screen.id === id))
   .filter((screen): screen is Screen => screen !== undefined && hasBaselines(screen.id));
 
+for (const action of ['move', 'pass']) {
+  test(`Pass and Request Counting stay enabled while a ${action} is pending`, async ({ page }) => {
+    // This preview leaves submitted game actions waiting for a server reply.
+    await page.goto('/?dev-screen=board-black');
+    const pass = page.getByRole('button', { name: 'Pass', exact: true });
+    const requestCounting = page.getByRole('button', { name: 'Request Counting', exact: true });
+    await expect(page.locator('#black-player.to-play')).toBeVisible();
+
+    if (action === 'move') await page.locator('#board').click();
+    else await pass.click();
+    await expect(page.locator('#white-player.to-play')).toBeVisible();
+    await expect(pass).toBeEnabled();
+    await expect(requestCounting).toBeEnabled();
+
+    const error = page.locator('#board-status').and(page.getByRole('alert'));
+    await pass.click();
+    await expect(error).toHaveText('Error: can only pass on your turn');
+    await requestCounting.click();
+    await expect(error).toHaveText('Error: can only request counting on your turn');
+  });
+}
+
 for (const screen of menu) {
   test(screen.id, async ({ page }) => {
     // Keep sample clocks and history dates identical across runs without
@@ -30,6 +52,14 @@ for (const screen of menu) {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`/?dev-screen=${screen.id}`);
     await page.locator('#dev-menu-toggle').waitFor({ state: 'visible' });
+    const loginBackground = ['disconnected', 'error', 'connecting', 'authenticating', 'bootstrap', 'gateway', 'resuming'].includes(screen.phase);
+    if (loginBackground) {
+      await expect(page.locator('main .layout')).toBeHidden();
+      await expect(page.locator('main')).toHaveAttribute('inert', '');
+      await expect(page.locator('#board')).toBeHidden();
+      await expect(page.locator('#connection-layer')).toBeVisible();
+      expect(await page.locator('#connection-layer').evaluate(el => getComputedStyle(el).backdropFilter)).toBe('none');
+    }
     if (screen.coordinates) {
       const padding = await page.locator('main').evaluate(main => {
         const style = getComputedStyle(main);
@@ -97,15 +127,20 @@ for (const screen of menu) {
       expect(gap).toBe(test.info().project.name === 'mobile' ? 0 : 4);
     }
     if (screen.playerName) {
-      await expect(page.locator(screen.playerName)).toHaveAttribute('aria-expanded', 'true');
-      await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);
-      await expect(page.locator('.player-info-summary')).toContainText(screen.id === 'board-white-player-info' ? '157 wins' : '427 wins');
+      await expect(page.locator('.player-info')).toBeVisible();
+      if (screen.id === 'history-loading') {
+        await expect(page.locator('.player-info-summary')).toContainText('Loading player details');
+      } else {
+        await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);
+        await expect(page.locator('.player-info-summary')).toContainText(screen.id === 'board-white-player-info' ? '157 wins' : '427 wins');
+      }
     }
     if (screen.id === 'matchmaking-rejected') {
-      await expect(page.locator('#status')).toHaveText('Error: matchmaking rejected -1');
+      await expect(page.locator('#matchmaking-error')).toHaveCount(0);
+      await expect(page.locator('#match')).toBeEnabled();
     }
     if (screen.id === 'matchmaking') {
-      await expect(page.locator('.matchmaking-button')).toHaveText([
+      await expect(page.locator('#time-controls .matchmaking-button')).toHaveText([
         '19,1m20s(727)',
         '19,5m30s(612)',
         '19,20m60s(493)',
@@ -129,44 +164,49 @@ for (const screen of menu) {
     }
     await page.evaluate(() => document.fonts.ready);
     for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {
-      if (["disconnected", "error", "connecting", "ready", "matching"].includes(screen.phase)) {
+      if (loginBackground || ['ready', 'matching', 'joining', 'finished'].includes(screen.phase)) {
         await expect(page.locator(`#${id}`)).toBeHidden();
         continue;
       }
       await expect(page.locator(`#${id}`)).toBeVisible();
-      if (!['playing', 'finished', 'reconnecting'].includes(screen.phase) || (id === 'estimate-score' && screen.phase === 'finished'))
+      if (!['playing', 'finished', 'reconnecting'].includes(screen.phase))
         await expect(page.locator(`#${id}`)).toBeDisabled();
     }
-    if (screen.phase === 'finished') {
+    if (screen.phase === 'finished' && !screen.record) {
       const spacing = await page.evaluate(() => {
-        const result = document.getElementById('game-state-panel')!.getBoundingClientRect();
+        const panel = document.getElementById('game-state-panel')!.getBoundingClientRect();
         const review = document.getElementById('game-review')!.getBoundingClientRect();
-        const download = document.getElementById('save-sgf')!.getBoundingClientRect();
+        const heading = document.getElementById('game-state-heading')!.getBoundingClientRect();
         const quit = document.getElementById('quit-room')!.getBoundingClientRect();
         const primary = getComputedStyle(document.getElementById('primary-actions')!);
         return {
-          downloadToQuit: innerWidth <= 800 ? quit.left - download.right : quit.top - download.bottom,
+          quitBottom: quit.bottom,
+          panelTop: panel.top,
+          reviewTop: review.top,
+          headingBottom: heading.bottom,
           actionGap: parseFloat(primary.gap),
-          resultToReview: review.top - result.bottom,
+          panelGap: parseFloat(getComputedStyle(document.getElementById('game-state-panel')!).gap),
           sidebarGap: parseFloat(getComputedStyle(document.getElementById('sidebar-content')!).gap),
         };
       });
-      expect(spacing.resultToReview).toBe(spacing.sidebarGap);
-      expect(spacing.downloadToQuit).toBe(spacing.actionGap);
+      expect(spacing.panelTop - spacing.quitBottom).toBe(spacing.sidebarGap);
+      expect(spacing.reviewTop - spacing.headingBottom).toBe(spacing.panelGap);
       if (test.info().project.name === 'mobile') {
-        const download = await page.locator('#save-sgf').boundingBox();
+        const download = await page.locator('#game-downloads').boundingBox();
         const quit = await page.locator('#quit-room').boundingBox();
         expect(download).not.toBeNull();
         expect(quit).not.toBeNull();
-        expect(download!.y).toBe(quit!.y);
-        expect(download!.x + download!.width).toBeLessThan(quit!.x);
-        expect(download!.width).toBe(quit!.width);
-        expect(quit!.x - download!.x - download!.width).toBe(spacing.sidebarGap);
+        const heading = await page.locator('#game-state-heading').boundingBox();
+        const title = await page.locator('#game-result').boundingBox();
+        expect(download!.y + download!.height / 2).toBe(heading!.y + heading!.height / 2);
+        expect(download!.x - title!.x - title!.width).toBe(spacing.actionGap / 2);
+        expect(download!.width).toBe(download!.height);
+        expect(quit!.y + quit!.height).toBeLessThan(heading!.y);
         const panelSpacing = await page.locator('#game-state-panel').evaluate(panel => {
           const style = getComputedStyle(panel);
           return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft, style.gap].map(parseFloat);
         });
-        expect(panelSpacing).toEqual([12, 12, 12, 12, spacing.actionGap]);
+        expect(panelSpacing).toEqual([12, 12, 12, 12, spacing.panelGap]);
       }
       const offsets = await page.locator('#game-review button').evaluateAll(buttons =>
         buttons.map(button => {
@@ -189,6 +229,15 @@ for (const screen of menu) {
     }
     expect(errors).toEqual([]);
     await expect(page).toHaveScreenshot(`${screen.id}.png`, { fullPage: true });
+    if (screen.id === 'opponent-turn') {
+      const error = page.locator('#game-state-panel #board-status').and(page.getByRole('alert'));
+      await page.getByRole('button', { name: 'Pass', exact: true }).click();
+      await expect(error).toHaveText('Error: can only pass on your turn');
+      await expect(error).toBeInViewport();
+      await page.getByRole('button', { name: 'Request Counting', exact: true }).click();
+      await expect(error).toHaveText('Error: can only request counting on your turn');
+      await expect(error).toBeInViewport();
+    }
     if (screen.id === 'matchmaking') {
       const timeControls = page.locator('#time-controls button');
       await expect(timeControls).toHaveCount(3);

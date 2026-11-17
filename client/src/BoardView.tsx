@@ -50,6 +50,7 @@ export function playablePoint(
     point === null ||
     !boardAvailable(s) ||
     !!s.estimation ||
+    (s.spectating && !s.game_over && !state.review) ||
     (!reviewing && blocked(s)) ||
     !!state.prompt ||
     (!reviewing && s.color !== s.turn) ||
@@ -160,7 +161,7 @@ export function BoardView({
     s.turn === s.color,
   );
   const countdown =
-    s.phase === "playing" && !state.review && !s.pending && !s.counting &&
+    s.phase === "playing" && !s.spectating && !state.review && !s.pending && !s.counting &&
     !s.confirmation && !(s.turn !== s.color && s.opponentDisconnectDeadline != null) &&
     reading?.overtime && reading.periods > 0 &&
     reading.seconds >= 1 && reading.seconds <= 9

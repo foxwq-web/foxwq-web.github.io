@@ -14,7 +14,7 @@ function PlayerRank({ rank }: { rank?: string }) {
 }
 function RankedPlayerLabel({ name, rank, country, ai }: { name: string; rank?: string; country?: number; ai?: boolean }) {
   return <span className="player-name-with-rank"><PlayerFlag country={country} />
-    <span>{name}</span>{' '}<PlayerRank rank={rank} /></span>;
+    <span>{name}{ai ? ' AI' : ''}</span>{' '}<PlayerRank rank={rank} /></span>;
 }
 export function PlayerName({ controller: c, uid, name, rank = '', country, id }: {
   controller: Controller; uid?: number; name: string; rank?: string; country?: number; id?: string;
@@ -77,7 +77,7 @@ export function PlayerName({ controller: c, uid, name, rank = '', country, id }:
     window.addEventListener('scroll', place, true);
     return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
   }, [visible, info]);
-  const label = <RankedPlayerLabel name={name} rank={rank} />;
+  const label = <RankedPlayerLabel name={name} rank={rank} ai={!!uid && c.state.session.aiPlayers?.includes(uid)} />;
   if (!uid) return <span id={id}>{label}</span>;
   return <>
     <button ref={trigger} id={id} type="button" className="player-name" aria-expanded={!!visible}

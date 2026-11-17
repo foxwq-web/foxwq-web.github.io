@@ -14,9 +14,24 @@ export interface Clock {
   periodLength?: number;
   at: number;
 }
+// Classifies the current `status` so the UI never has to parse its wording.
+// Every status change replaces the notice, so it always describes the text it
+// was set with.
+export interface StatusNotice {
+  // The status describes a game event and keeps the game panel visible.
+  game?: boolean;
+  // The status is a failure the user must not miss.
+  error?: boolean;
+  // Meaning the layout switches on.
+  kind?: "matchmaking-cancelled" | "matchmaking-rejected" | "counting-requested";
+}
 export interface SessionState {
+  spectating?: boolean;
+  archived?: boolean;
+  archiveId?: string;
   phase: string;
   status: string;
+  notice: StatusNotice | null;
   stones: number[];
   turn: number;
   komi: number;
@@ -24,8 +39,10 @@ export interface SessionState {
   passes: number;
   moves: number;
   result: string;
+  resignationResult?: string;
   game_over: boolean;
   time: string;
+  totalPeriods?: number;
   matchFields: TimeControl[];
   fieldPlayers: Record<string, number>;
   fieldId: number | null;
@@ -57,6 +74,7 @@ export interface SessionState {
     | { phase: "error"; error: string }
     | { phase: "result"; lead: number; ownership: number[]; stones: number[] };
   playerInfo?: PlayerInfo | null;
+  aiPlayers?: number[];
   gatewayAvailable: boolean;
   koStones: number[] | null;
 }
@@ -66,7 +84,6 @@ export type Command =
   | "quit-room"
   | "select-time"
   | "match"
-  | "cancel"
   | "estimate-score"
   | "return-game"
   | "request-score"
@@ -101,7 +118,7 @@ export interface UIState {
 export type UIEvent =
   | { type: "initialize"; state: UIState }
   | { type: "session.updated"; session: SessionState }
-  | { type: "review.position"; position: NonNullable<UIState["review"]> }
+  | { type: "review.position"; position: UIState["review"] }
   | { type: "clock.tick"; now: number }
   | { type: "board.hover"; point: number | null }
   | { type: "prompt.open"; prompt: Prompt }
@@ -111,20 +128,24 @@ export type UIEvent =
   | { type: "form.remember"; value: boolean }
   | { type: "focus.changed"; id: string | null }
   | { type: "command" }
-  | { type: "error.raised"; message: string; menu: boolean }
-  | { type: "error.dismissed" };
+  | { type: "error.raised"; message: string; menu: boolean };
 
 export function boardAvailable(s: SessionState): boolean {
   return (
+    (!!s.spectating && ["joining", "finished"].includes(s.phase)) ||
     ["playing", "finished", "reconnecting", "kicked"].includes(s.phase) &&
-    [1, 2].includes(s.color)
+    ([1, 2].includes(s.color) || !!s.spectating)
   );
 }
+export function isLoginStep(s: SessionState): boolean {
+  return ["disconnected", "error", "connecting", "authenticating", "bootstrap", "gateway", "resuming"].includes(s.phase);
+}
 export function reviewAvailable(s: SessionState): boolean {
-  return boardAvailable(s) && (s.phase === "kicked" || (s.phase === "finished" && s.game_over));
+  return !!s.resignationResult || (s.phase === "finished" && s.game_over);
 }
 export function blocked(s: SessionState): boolean {
   return (
+    s.spectating ||
     s.phase !== "playing" ||
     s.pending ||
     s.paused ||
@@ -135,7 +156,7 @@ export function blocked(s: SessionState): boolean {
 }
 
 export function actionsBlocked(s: SessionState): boolean {
-  return s.phase !== "playing" || !!s.paused || (s.pending && !s.pendingMove) || !!s.estimation ||
+  return !!s.spectating || s.phase !== "playing" || !!s.paused || (s.pending && !s.pendingMove) || !!s.estimation ||
     (s.confirmationKind !== "counting-request" && (s.counting || s.confirmation));
 }
 
@@ -143,13 +164,22 @@ export function reducer(state: UIState, event: UIEvent): UIState {
   switch (event.type) {
     case "initialize":
       return event.state;
-    case "session.updated":
+    case "session.updated": {
+      const previous = state.session;
+      const keepError = boardAvailable(event.session) &&
+        event.session.gameId === previous.gameId &&
+        event.session.phase === previous.phase &&
+        event.session.turn === previous.turn &&
+        event.session.moves === previous.moves;
       return {
         ...state,
         session: event.session,
-        error: boardAvailable(event.session) ? state.error : "",
+        error: keepError ? state.error : "",
         review: reviewAvailable(event.session) &&
-          event.session.gameId === state.session.gameId && event.session.moves === state.session.moves
+          event.session.gameId === state.session.gameId &&
+          (event.session.moves === state.session.moves ||
+            (event.session.spectating && state.review &&
+              (state.review.variation?.origin ?? state.review.moves) < event.session.moves))
           ? state.review : null,
         prompt:
           actionsBlocked(event.session) ||
@@ -162,6 +192,7 @@ export function reducer(state: UIState, event: UIEvent): UIState {
             ? null
             : state.preview,
       };
+    }
     case "review.position":
       return { ...state, review: event.position, preview: null };
     case "clock.tick":
@@ -193,25 +224,17 @@ export function reducer(state: UIState, event: UIEvent): UIState {
       return event.menu
         ? { ...state, menuError: event.message }
         : { ...state, error: event.message };
-    case "error.dismissed":
-      return { ...state, error: "" };
   }
 }
 
-export const actionPrompts: Partial<Record<Command, Prompt>> = {
-  "quit-room": {
-    action: "quit-room",
-    title: "Leave this room?",
-    description: "",
-    label: "Leave",
-  },
+export const quitRoomPrompt: Prompt = {
+  action: "quit-room",
+  title: "Leave this room?",
+  description: "",
+  label: "Leave",
 };
 
 export function outOfTurn(s: Pick<SessionState, "phase" | "color" | "turn">, command: Command): boolean {
   return s.phase === "playing" && s.color !== s.turn &&
     ["pass", "request-score"].includes(command);
-}
-
-export function promptForAction(command: Command): Prompt | undefined {
-  return actionPrompts[command];
 }

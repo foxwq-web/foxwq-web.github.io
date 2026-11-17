@@ -97,7 +97,7 @@ test("an active kick preserves confirmed history, stops actions and ignores call
     assert.equal(s.pending, false); assert.equal(s.pendingMove, null);
     assert.equal(s.pendingMessageId, null);
     assert.ok(boardAvailable(s.snapshot()));
-    assert.ok(reviewAvailable(s.snapshot()));
+    assert.equal(reviewAvailable(s.snapshot()), false);
     assert.ok(blocked(s.snapshot()));
     for (const action of [() => s.play(4, 4), () => s.passTurn(), () => s.resign(), () => s.match()]) assert.throws(action);
     const state = s.snapshot(), sent = sockets[0].sent.length;

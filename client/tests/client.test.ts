@@ -144,6 +144,51 @@ test('passing on your turn leaves an incoming counting request available to answ
     assert.deepEqual(s.pendingConfirmation, confirmation);
   } finally { s.close(); }
 });
+test('a pass advances the board at once and the reply does not pass twice', () => {
+  const { s, sent, notify } = countingSession();
+  try {
+    s.passTurn();
+    assert.equal(sent.at(-1)![1].one(1), GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST);
+    assert.equal(s.board.passes, 1);
+    assert.equal(s.board.turn, 3 - s.color);
+    assert.equal(s.snapshot().pendingMove, true);
+    notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, {});
+    assert.equal(s.board.passes, 1);
+    assert.equal(s.board.turn, 3 - s.color);
+    assert.equal(s.pending, false);
+    assert.equal(s.status, 'You passed');
+    assert.equal(s.snapshot().notice?.game, true);
+  } finally { s.close(); }
+});
+test('a rejected pass restores the board and reports the failure', () => {
+  const { s, notify } = countingSession();
+  try {
+    const turn = s.board.turn;
+    s.passTurn();
+    notify(GoGameMessageID.GC_SKIP_SET_PIECE_REQUEST, { 1: -1 });
+    assert.equal(s.board.passes, 0);
+    assert.equal(s.board.turn, turn);
+    assert.equal(s.pending, false);
+    assert.equal(s.snapshot().pendingMove, false);
+    assert.match(s.status, /action 204 rejected/);
+    assert.equal(s.snapshot().notice?.error, true);
+  } finally { s.close(); }
+});
+test('a pass confirmation preserves the resignation preview until the server result', () => {
+  const { s, notify } = countingSession();
+  try {
+    s.passTurn();
+    s.resign();
+    notify(GoGameMessageID.GC_SKIP_SET_PIECE_NOTIFY, {});
+    assert.equal(s.snapshot().resignationResult, 'W+R');
+    assert.equal(s.pending, true);
+    assert.equal(s.board.passes, 1);
+    notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, { 1: 0, 2: 1, 3: 50 });
+    assert.equal(s.snapshot().resignationResult, undefined);
+    assert.equal(s.result, 'B+1');
+    assert.equal(s.board.passes, 1);
+  } finally { s.close(); }
+});
 test('both counting confirmation stages reply with their own mode; only Fox ends the game', () => {
   const { s, sent, notify } = countingSession();
   for (const mode of [1, 2]) for (const accept of [false, true]) {
@@ -170,7 +215,7 @@ test('final results decode Fox hundredths of zi to points for either winner', ()
     for (const [winner, value, result] of [
       [1, 125, 'B+2.5'], [2, 1225, 'W+24.5'],
       [1, 50, 'B+1'], [2, 75, 'W+1.5'],
-      [1, -1, 'B+'], [2, undefined, 'W+'],
+      [1, -1, 'B+R'], [1, -99, 'B+'], [2, undefined, 'W+'],
     ]) {
       const { s, notify } = countingSession();
       try {
@@ -314,6 +359,8 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
       const [h,m]=game.decodeFgwMessage(p.rawProto), service=h.number(7), op=h.number(1); requests.push([service,op]);
       assert.equal(h.one(3),42);assert.equal(h.text(19),'11509231');
       if(service===SVR_TYPE_FGW&&op===1){assert.equal(m.text(1),'private-token');this.reply(service,op,{1:0});}
+      else if(service===20046&&op===201)this.reply(service,op,{1:0,3:0,4:1});
+      else if(service===30016&&op===111)this.reply(service,op,{1:0});
       else if(op===RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST)this.reply(service,op,{1:0});
       else if(op===RoomMessageID.RM_FETCH_FIELD_CFG)this.reply(service,op,{1:[{1:101,2:19,3:1200,4:3,5:60,7:0,12:1}]});
       else if(op===RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST)this.reply(service,op,{1:ErrorCode.NEC_LOCK_NOT_EXIST_ERR});
@@ -648,6 +695,238 @@ test('matchmaking outcomes explain why searching stopped and allow retrying', ()
   }
 });
 
+test('clicking the searching button cancels the search and another button restarts it', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  try {
+    s.phase = 'ready';
+    s.matchFields = [
+      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
+      { id: 102, size: 19, main: 300, periods: 3, byoyomi: 30 },
+    ];
+    s.fieldId = 101; s.matchSettings = s.matchFields[0];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+    s.match();
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    assert.equal(s.status, 'Searching for 19,20m60s...');
+
+    // The searching button cancels instead of starting a second search.
+    s.cancelMatch();
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    // The UI stops searching immediately; only the wire exchange waits.
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.status, 'Matchmaking cancelled');
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.status, 'Matchmaking cancelled');
+    assert.equal(s.fieldId, 101);
+
+    // Another button keeps searching, with the new time control.
+    s.match();
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    s.switchMatch(102);
+    assert.equal(s.fieldId, 102);
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+    assert.equal(s.phase, 'matching');
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    const before = sent.length;
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+    assert.equal(sent.length, before + 1);
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(sent.at(-1)![1].one(1), 102);
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+
+    // Cancelling a pending switch drops the queued search entirely.
+    s.switchMatch(101);
+    assert.equal(s.fieldId, 101);
+    s.cancelMatch();
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.status, 'Matchmaking cancelled');
+  } finally {
+    s.close();
+  }
+});
+
+test('rapid time control clicks converge on the latest choice without losing a click', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  const last = () => sent.at(-1)!;
+  const ackRequest = () => s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+  const ackCancel = () => s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+  try {
+    s.phase = 'ready';
+    s.matchFields = [
+      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
+      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
+    ];
+    s.fieldId = 101; s.matchSettings = s.matchFields[0];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+
+    // First click starts the search and the UI shows it before the server replies.
+    s.selectMatchField(101);
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.status, 'Searching for 19,20m60s...');
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(last()[1].one(1), 101);
+    ackRequest();
+
+    // A click on another control switches the search instantly.
+    s.selectMatchField(100);
+    assert.equal(s.fieldId, 100);
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    ackCancel();
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(last()[1].one(1), 100);
+
+    // Further clicks during the cancel keep only the newest choice.
+    ackRequest();
+    s.selectMatchField(101);
+    s.selectMatchField(100);
+    s.selectMatchField(101);
+    assert.equal(s.fieldId, 101);
+    assert.equal(s.status, 'Searching for 19,20m60s...');
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    ackCancel();
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(last()[1].one(1), 101);
+    ackRequest();
+
+    // Clicking the searching control stops at once and leaves no search behind.
+    const packets = sent.length;
+    s.selectMatchField(101);
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.status, 'Matchmaking cancelled');
+    assert.equal(sent.length, packets + 1);
+    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    ackCancel();
+    assert.equal(s.phase, 'ready');
+    assert.equal(sent.length, packets + 1);
+  } finally {
+    s.close();
+  }
+});
+
+test('cancelling before the search is confirmed still stops it on the server', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  try {
+    s.phase = 'ready'; s.fieldId = 101;
+    s.matchFields = [{ id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 }];
+    s.matchSettings = s.matchFields[0];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+
+    s.match();
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    // The click is instant even though the request is still unanswered.
+    s.cancelMatch();
+    assert.equal(s.phase, 'ready');
+    assert.equal(sent.length, 1);
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    assert.equal(sent.length, 2);
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.status, 'Matchmaking cancelled');
+  } finally {
+    s.close();
+  }
+});
+
+test('a repeated click while a switch is in flight keeps the requested search', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  try {
+    s.phase = 'ready'; s.fieldId = 101;
+    s.matchFields = [
+      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
+      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
+    ];
+    s.matchSettings = s.matchFields[0];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+
+    s.match();
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    s.selectMatchField(100);
+    const packets = sent.length;
+    // The switch is still unconfirmed, so an impatient repeat click must not
+    // turn into a cancel.
+    s.selectMatchField(100);
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+    assert.equal(sent.length, packets);
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(sent.at(-1)![1].one(1), 100);
+    // Once confirmed, the same click stops the search.
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    s.selectMatchField(100);
+    assert.equal(s.phase, 'ready');
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
+  } finally {
+    s.close();
+  }
+});
+
+test('a click after cancelling starts the chosen time control in one step', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  try {
+    s.phase = 'ready';
+    s.matchFields = [
+      { id: 108, size: 19, main: 60, periods: 3, byoyomi: 20 },
+      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
+      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
+    ];
+    s.fieldId = 101; s.matchSettings = s.matchFields[2];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+
+    // 3rd, 3rd, 2nd: the last click must start searching the 2nd control
+    // instead of only selecting it.
+    s.selectMatchField(101);
+    assert.equal(sent.at(-1)![1].one(1), 101);
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    s.selectMatchField(101);
+    assert.equal(s.phase, 'ready');
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'ready');
+    const packets = sent.length;
+    s.selectMatchField(100);
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.fieldId, 100);
+    assert.equal(s.status, 'Searching for 19,5m30s...');
+    assert.equal(sent.length, packets + 1);
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(sent.at(-1)![1].one(1), 100);
+  } finally {
+    s.close();
+  }
+});
+
+test('restarting the same time control before the cancel reply starts a new search', () => {
+  const s = new Session(), sent: [Message, Message][] = [];
+  try {
+    s.phase = 'ready'; s.fieldId = 101;
+    s.matchFields = [{ id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 }];
+    s.matchSettings = s.matchFields[0];
+    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
+
+    s.match();
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
+    s.selectMatchField(101); // stop
+    assert.equal(s.phase, 'ready');
+    s.selectMatchField(101); // search again before the cancel reply
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.status, 'Searching for 19,20m60s...');
+    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
+    assert.equal(s.phase, 'matching');
+    assert.equal(s.status, 'Searching for 19,20m60s...');
+    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
+    assert.equal(sent.at(-1)![1].one(1), 101);
+  } finally {
+    s.close();
+  }
+});
+
 test('late matchmaking endings do not interrupt joining or playing', () => {
   const s = new Session();
   try {
@@ -691,6 +970,26 @@ test('game start announces once, including starting as White, while synchronizat
   s.close(); s.uid = 42; s.phase = 'joining';
   s.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, env, header); s.gameSvrProcess(GoGameMessageID.GC_START_SET_PIECE_NOTIFY, start, header);
   assert.deepEqual(sounds, ['start-play','start-play']); s.close();
+});
+
+test('spectator start and environment snapshots stay silent while live moves remain audible', () => {
+  for (const id of [GoGameMessageID.GC_START_SET_PIECE_NOTIFY, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST]) {
+    const sounds: string[] = [], s = new Session({ onSound: name => sounds.push(name) });
+    try {
+      s.uid = 42; s.phase = 'joining'; s.spectating = true;
+      s.roomKey = { 1: GAME_SVR, 2: 63, 3: 23, 4: 202 };
+      const header = decode(encode({ 7: GAME_SVR, 8: 63 }));
+      const snapshot = id === GoGameMessageID.GC_START_SET_PIECE_NOTIFY
+        ? { 1: { 7: 30 }, 6: 23, 7: 202, 9: [{ 1: 99, 6: 1 }, { 1: 100, 6: 2 }] }
+        : { 1: 0, 2: { 7: 30 }, 3: [{ 1: 99, 6: 1 }, { 1: 100, 6: 2 }], 6: 3, 7: 23, 10: 202, 12: GAME_SVR, 13: 63 };
+      s.gameSvrProcess(id, decode(encode(snapshot)), header);
+      assert.equal(s.phase, 'playing');
+      assert.deepEqual(sounds, []);
+      s.gameSvrProcess(GoGameMessageID.GC_SET_PIECE_NOTIFY, decode(encode({ 1: 3, 2: 3, 3: 1 })), header);
+      assert.equal(s.board.moves.length, 1);
+      assert.deepEqual(sounds, ['stone']);
+    } finally { s.close(); }
+  }
 });
 
 const koSequence = [[0,1],[1,1],[1,0],[0,2],[2,1],[2,2],[10,10],[1,3],[1,2]];
@@ -797,7 +1096,7 @@ test('player names and ranks follow their colors through game start and restorat
 });
 
 test('rank labels cover kyu, dan, professional and unavailable ranks', () => {
-  for (const [rank, label] of [[0,'18k'],[17,'1k'],[18,'1d'],[26,'9d'],[27,'1p'],[35,'9p'],[-1,''],[100,''],[null,'']] as const) {
+  for (const [rank, label] of [[0,'18k'],[17,'1k'],[18,'1d'],[26,'9d'],[27,'1p'],[35,'9p'],[-1,''],[100,'1p'],[101,'2p'],[103,'4p'],[108,'9p'],[109,''],[99,''],[null,'']] as const) {
     assert.equal(game.rankLabel(rank as number), label);
   }
 });
@@ -808,6 +1107,39 @@ test('time controls use compact minute and byoyomi notation', () => {
   assert.equal(game.timeLabel({main:0,periods:5,byoyomi:30}), '30s');
 });
 
+
+test('resignation previews the result and returns to live play on rejection', () => {
+  for (const color of [1, 2]) {
+    const {s, notify} = countingSession();
+    try {
+      s.color = color;
+      const result = color === 1 ? 'W+R' : 'B+R';
+      s.resign();
+      assert.equal(s.snapshot().phase, 'playing');
+      assert.equal(s.snapshot().game_over, false);
+      assert.equal(s.snapshot().result, '');
+      assert.equal(s.snapshot().resignationResult, result);
+      assert.equal(s.snapshot().pending, true);
+      notify(GoGameMessageID.GC_GIVE_UP_REQUEST, {1: 7});
+      assert.equal(s.snapshot().phase, 'playing');
+      assert.equal(s.snapshot().game_over, false);
+      assert.equal(s.snapshot().result, '');
+      assert.equal(s.snapshot().resignationResult, undefined);
+      assert.equal(s.snapshot().notice?.error, true);
+      s.resign();
+      notify(GoGameMessageID.GC_GIVE_UP_REQUEST, {1: 0});
+      assert.equal(s.snapshot().game_over, false);
+      assert.equal(s.snapshot().resignationResult, result);
+      assert.equal(s.snapshot().pending, true);
+      notify(GoGameMessageID.GC_SET_GAME_END_NOTIFY, {1: 0, 2: 3 - color, 3: -1, 4: 3});
+      assert.equal(s.snapshot().phase, 'finished');
+      assert.equal(s.snapshot().game_over, true);
+      assert.equal(s.snapshot().result, result);
+      assert.equal(s.snapshot().resignationResult, undefined);
+      assert.equal(s.snapshot().pending, false);
+    } finally { s.close(); }
+  }
+});
 
 test('resignation can follow an unconfirmed placement and remains pending after its reply', () => {
   for (const rejected of [false, true]) {
@@ -843,231 +1175,4 @@ test('a rejected resignation preserves a placement still awaiting confirmation',
     assert.equal(s.pending, false);
     assert.equal(s.board.moves.length, 1);
   } finally { s.close(); }
-});
-
-test('clicking the searching button cancels the search and another button restarts it', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  try {
-    s.phase = 'ready';
-    s.matchFields = [
-      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
-      { id: 102, size: 19, main: 300, periods: 3, byoyomi: 30 },
-    ];
-    s.fieldId = 101; s.matchSettings = s.matchFields[0];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-    s.match();
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    assert.equal(s.status, 'Searching for 19,20m60s...');
-
-    // The searching button cancels instead of starting a second search.
-    s.cancelMatch();
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    // The UI stops searching immediately; only the wire exchange waits.
-    assert.equal(s.phase, 'ready');
-    assert.equal(s.status, 'Matchmaking cancelled');
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'ready');
-    assert.equal(s.status, 'Matchmaking cancelled');
-    assert.equal(s.fieldId, 101);
-
-    // Another button keeps searching, with the new time control.
-    s.match();
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    s.switchMatch(102);
-    assert.equal(s.fieldId, 102);
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-    assert.equal(s.phase, 'matching');
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    const before = sent.length;
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-    assert.equal(sent.length, before + 1);
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(sent.at(-1)![1].one(1), 102);
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-
-    // Cancelling a pending switch drops the queued search entirely.
-    s.switchMatch(101);
-    assert.equal(s.fieldId, 101);
-    s.cancelMatch();
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'ready');
-    assert.equal(s.status, 'Matchmaking cancelled');
-  } finally {
-    s.close();
-  }
-});
-test('rapid time control clicks converge on the latest choice without losing a click', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  const last = () => sent.at(-1)!;
-  const ackRequest = () => s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-  const ackCancel = () => s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-  try {
-    s.phase = 'ready';
-    s.matchFields = [
-      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
-      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
-    ];
-    s.fieldId = 101; s.matchSettings = s.matchFields[0];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-
-    // First click starts the search and the UI shows it before the server replies.
-    s.selectMatchField(101);
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.status, 'Searching for 19,20m60s...');
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(last()[1].one(1), 101);
-    ackRequest();
-
-    // A click on another control switches the search instantly.
-    s.selectMatchField(100);
-    assert.equal(s.fieldId, 100);
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    ackCancel();
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(last()[1].one(1), 100);
-
-    // Further clicks during the cancel keep only the newest choice.
-    ackRequest();
-    s.selectMatchField(101);
-    s.selectMatchField(100);
-    s.selectMatchField(101);
-    assert.equal(s.fieldId, 101);
-    assert.equal(s.status, 'Searching for 19,20m60s...');
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    ackCancel();
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(last()[1].one(1), 101);
-    ackRequest();
-
-    // Clicking the searching control stops at once and leaves no search behind.
-    const packets = sent.length;
-    s.selectMatchField(101);
-    assert.equal(s.phase, 'ready');
-    assert.equal(s.status, 'Matchmaking cancelled');
-    assert.equal(sent.length, packets + 1);
-    assert.equal(last()[0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    ackCancel();
-    assert.equal(s.phase, 'ready');
-    assert.equal(sent.length, packets + 1);
-  } finally {
-    s.close();
-  }
-});
-test('cancelling before the search is confirmed still stops it on the server', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  try {
-    s.phase = 'ready'; s.fieldId = 101;
-    s.matchFields = [{ id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 }];
-    s.matchSettings = s.matchFields[0];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-
-    s.match();
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    // The click is instant even though the request is still unanswered.
-    s.cancelMatch();
-    assert.equal(s.phase, 'ready');
-    assert.equal(sent.length, 1);
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    assert.equal(sent.length, 2);
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'ready');
-    assert.equal(s.status, 'Matchmaking cancelled');
-  } finally {
-    s.close();
-  }
-});
-test('a repeated click while a switch is in flight keeps the requested search', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  try {
-    s.phase = 'ready'; s.fieldId = 101;
-    s.matchFields = [
-      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
-      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
-    ];
-    s.matchSettings = s.matchFields[0];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-
-    s.match();
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    s.selectMatchField(100);
-    const packets = sent.length;
-    // The switch is still unconfirmed, so an impatient repeat click must not
-    // turn into a cancel.
-    s.selectMatchField(100);
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-    assert.equal(sent.length, packets);
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(sent.at(-1)![1].one(1), 100);
-    // Once confirmed, the same click stops the search.
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    s.selectMatchField(100);
-    assert.equal(s.phase, 'ready');
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_CANCEL_REQUEST);
-  } finally {
-    s.close();
-  }
-});
-test('a click after cancelling starts the chosen time control in one step', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  try {
-    s.phase = 'ready';
-    s.matchFields = [
-      { id: 108, size: 19, main: 60, periods: 3, byoyomi: 20 },
-      { id: 100, size: 19, main: 300, periods: 3, byoyomi: 30 },
-      { id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 },
-    ];
-    s.fieldId = 101; s.matchSettings = s.matchFields[2];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-
-    // 3rd, 3rd, 2nd: the last click must start searching the 2nd control
-    // instead of only selecting it.
-    s.selectMatchField(101);
-    assert.equal(sent.at(-1)![1].one(1), 101);
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    s.selectMatchField(101);
-    assert.equal(s.phase, 'ready');
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'ready');
-    const packets = sent.length;
-    s.selectMatchField(100);
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.fieldId, 100);
-    assert.equal(s.status, 'Searching for 19,5m30s...');
-    assert.equal(sent.length, packets + 1);
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(sent.at(-1)![1].one(1), 100);
-  } finally {
-    s.close();
-  }
-});
-test('restarting the same time control before the cancel reply starts a new search', () => {
-  const s = new Session(), sent: [Message, Message][] = [];
-  try {
-    s.phase = 'ready'; s.fieldId = 101;
-    s.matchFields = [{ id: 101, size: 19, main: 1200, periods: 3, byoyomi: 60 }];
-    s.matchSettings = s.matchFields[0];
-    s.fgwConnection = { send: (command, payload) => sent.push(unpack(Buffer.from(payload))), close() {} };
-
-    s.match();
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_REQUEST, decode(encode({ 1: 0 })));
-    s.selectMatchField(101); // stop
-    assert.equal(s.phase, 'ready');
-    s.selectMatchField(101); // search again before the cancel reply
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.status, 'Searching for 19,20m60s...');
-    s.gameSvrMgrProcess(RoomMessageID.RM_AUTO_INVITE_CANCEL_NOTIFY, decode(encode({})));
-    assert.equal(s.phase, 'matching');
-    assert.equal(s.status, 'Searching for 19,20m60s...');
-    assert.equal(sent.at(-1)![0].one(1), RoomMessageID.RM_AUTO_INVITE_REQUEST);
-    assert.equal(sent.at(-1)![1].one(1), 101);
-  } finally {
-    s.close();
-  }
 });

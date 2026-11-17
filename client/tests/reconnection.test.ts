@@ -56,18 +56,24 @@ function setup() {
   return { s, sockets, reply, authenticate, fields, restore, start };
 }
 
-test("gateway loss preserves the board and rejoins through authentication and discovery in either order", async () => {
+test("gateway loss preserves the board and rejoins through authentication and discovery in either order", async context => {
+  const time = 100_000;
+  context.mock.timers.enable({ apis: ["Date"], now: time * 1000 });
   for (const fieldsFirst of [true, false]) {
     const { s, sockets, reply, authenticate, fields, restore, start } = setup();
     try {
       await start();
+      s.clocks[1] = { main: 300, periods: 3, byoyomi: 60, at: time - 20 };
+      s.clocks[2] = { main: 120, periods: 3, byoyomi: 60, at: time - 8 };
       const before = s.snapshot(), oldGateway = sockets[1];
-      oldGateway.fail("Proxy connection closed");
+      oldGateway.fail("Proxy connection closed (code 1011: TCP read failed)");
       const reconnecting = s.snapshot();
       assert.equal(reconnecting.phase, "reconnecting");
-      assert.equal(reconnecting.status, "Connection lost. Reconnecting... (Attempt 1)");
+      assert.equal(reconnecting.status, "Proxy connection closed (code 1011: TCP read failed) reconnecting attempt 1");
       assert.deepEqual(reconnecting.stones, before.stones);
       assert.deepEqual(reconnecting.players, before.players);
+      assert.deepEqual(reconnecting.clocks[1], before.clocks[1]);
+      assert.deepEqual(reconnecting.clocks[2], { ...before.clocks[2], main: 112, at: time });
       assert.ok(boardAvailable(reconnecting));
       assert.ok(blocked(reconnecting)); assert.ok(actionsBlocked(reconnecting));
       assert.throws(() => s.play(4, 4));
@@ -80,6 +86,7 @@ test("gateway loss preserves the board and rejoins through authentication and di
       if (!fieldsFirst) fields();
       assert.equal(s.snapshot().phase, "reconnecting");
       assert.deepEqual(s.snapshot().stones, before.stones);
+      assert.deepEqual(s.snapshot().clocks, reconnecting.clocks);
       const sync = sockets.at(-1)!.sent.filter(p => p.command === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET).map(p => game.decodeFgwMessage(p.payload)).find(([h]) => h.number(1) === GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST);
       assert.equal(sync?.[0].number(8), 63);
       restore();
@@ -87,7 +94,7 @@ test("gateway loss preserves the board and rejoins through authentication and di
       assert.equal(s.board.moves.length, 2);
       assert.ok(!blocked(s.snapshot()));
       sockets.at(-1)!.fail("Proxy connection closed");
-      assert.match(s.snapshot().status, /Attempt 1/);
+      assert.match(s.snapshot().status, /attempt 1/);
     } finally { s.close(); }
   }
 });
@@ -99,13 +106,13 @@ test("timeouts and network errors retry with progress; close cancels retries and
     await start();
     sockets[1].fail("Proxy connection closed");
     context.mock.timers.tick(15000);
-    assert.match(s.snapshot().status, /Reconnection timed out.*Attempt 1/);
+    assert.match(s.snapshot().status, /reconnection timed out.*attempt 1/);
     context.mock.timers.tick(2000);
     for (let i = 0; i < 5; i++) await Promise.resolve();
     assert.ok(sockets[2].closed, "late open from the timed out attempt is closed");
-    assert.match(s.snapshot().status, /Reconnecting\.\.\. \(Attempt 2\)/);
+    assert.match(s.snapshot().status, /reconnecting attempt 2/);
     sockets.at(-1)!.fail("Proxy unreachable");
-    assert.match(s.snapshot().status, /Reconnection failed: Proxy unreachable.*Attempt 2/);
+    assert.match(s.snapshot().status, /reconnection failed Proxy unreachable.*attempt 2/);
     const attempts = sockets.length;
     s.close();
     context.mock.timers.tick(60000);
@@ -146,7 +153,7 @@ test("a failed connection open retries while preserving an unconfirmed stone unt
     sockets[1].fail("Proxy connection closed");
     for (let i = 0; i < 8; i++) await Promise.resolve();
     assert.deepEqual(s.snapshot().stones, visible);
-    assert.match(s.snapshot().status, /Reconnection failed: Login connection failed.*Attempt 1/);
+    assert.match(s.snapshot().status, /reconnection failed login connection failed.*attempt 1/);
     assert.ok(blocked(s.snapshot()));
   } finally { s.close(); }
 });
@@ -160,7 +167,7 @@ test("rejected synchronization retries and partial game events cannot unlock rec
     reply(game.GAME_SVR, GoGameMessageID.GC_SET_GAME_END_NOTIFY, { 1: 0, 2: 2, 4: 3 });
     assert.equal(s.snapshot().phase, "reconnecting");
     reply(game.GAME_SVR, GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST, { 1: 1 });
-    assert.match(s.snapshot().status, /Reconnection failed: Invalid protocol response/);
+    assert.match(s.snapshot().status, /reconnection failed invalid protocol response/);
     assert.ok(blocked(s.snapshot()));
   } finally { s.close(); }
 });
@@ -206,3 +213,126 @@ for (const failure of ["socket loss", "snapshot rejection", "snapshot timeout", 
     } finally { s.close(); }
   });
 }
+
+async function ready(f: ReturnType<typeof setup>) {
+  await f.authenticate();
+  f.fields();
+  f.reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 1 });
+}
+
+test('fatal login rejections during matchmaking recovery return to login without more retries', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const service of ['navigation', 'gateway', 'room-manager']) {
+    const f = setup();
+    try {
+      await ready(f);
+      f.sockets[1].fail('Offline');
+      if (service === 'navigation') {
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+        f.s.receive(f.s.generation, { msgTypeID: 2005, flag: 0,
+          rawProto: encode({ 1: ErrorCode.NEC_USERNAME_PASSWORD_ERROR }) });
+      } else {
+        await f.authenticate();
+        if (service === 'gateway') f.reply(game.SVR_TYPE_FGW, ClientMessageID.MID_LOGIN_REQUEST, { 1: -1 });
+        else f.reply(game.GAME_SVR_MGR, RoomMessageID.RM_LOGIN_GAME_SVR_MGR_REQUEST, { 1: -1 });
+      }
+      assert.equal(f.s.snapshot().phase, 'error', service);
+      assert.match(f.s.status, /incorrect credentials|gateway login status -1|room manager login failed/);
+      assert.equal(f.s.fgwConnection, null);
+      const sockets = f.sockets.length;
+      context.mock.timers.tick(60000);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      assert.equal(f.sockets.length, sockets, service);
+      assert.equal(f.s.snapshot().phase, 'error', service);
+    } finally { f.s.close(); }
+  }
+});
+
+test('matchmaking recovery restores a match assigned during the outage instead of starting another search', async () => {
+  const f = setup();
+  try {
+    await ready(f); f.s.match(); f.sockets[1].fail('Offline');
+    await f.authenticate(); f.fields();
+    f.reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: game.GAME_SVR, 3: 63, 4: 23, 7: 202 });
+    f.restore();
+    assert.equal(f.s.snapshot().phase, 'playing');
+    assert.equal(f.s.color, 1);
+    assert.equal(f.s.spectating, false);
+  } finally { f.s.close(); }
+});
+
+test('a server kick during matchmaking recovery is terminal', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = setup();
+  try {
+    await ready(f);
+    f.sockets[1].fail('Offline'); await f.authenticate();
+    f.reply(game.SVR_TYPE_FGW, ClientMessageID.MID_KICKOUT_NOTIFY, { 1: 51001 });
+    const sockets = f.sockets.length;
+    context.mock.timers.tick(60000);
+    assert.equal(f.s.snapshot().phase, 'error');
+    assert.equal(f.sockets.length, sockets);
+    assert.equal(f.s.spectating, false);
+  } finally { f.s.close(); }
+});
+
+for (const fieldsFirst of [true, false]) {
+  test(`post-game reconnect stays silent and retains review until discovery completes (fields first: ${fieldsFirst})`, async () => {
+    const { s, sockets, start, restore, authenticate, fields, reply } = setup();
+    try {
+      await start(); restore(true);
+      const before = s.snapshot(), board = s.board;
+      s.estimation = { phase: 'loading' };
+      sockets[1].fail('Proxy connection closed');
+      assert.equal(s.snapshot().phase, 'finished');
+      assert.equal(s.snapshot().status, before.status);
+      assert.equal(s.snapshot().estimation?.phase, 'loading');
+      await authenticate();
+      if (fieldsFirst) fields();
+      // A stale lock must not reopen the completed room.
+      reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 0, 2: game.GAME_SVR, 3: 63 });
+      if (!fieldsFirst) fields();
+      assert.equal(s.phase, 'finished');
+      assert.equal(s.snapshot().gameId, before.gameId);
+      assert.equal(s.board, board);
+      assert.deepEqual(s.snapshot().players, before.players);
+      assert.equal(s.snapshot().gatewayAvailable, true);
+      assert.equal(s.snapshot().estimation?.phase, 'loading');
+      s.quitRoom();
+      assert.equal(s.phase, 'ready');
+      assert.equal(s.snapshot().gatewayAvailable, true);
+    } finally { s.close(); }
+  });
+}
+
+test('a failed post-game reconnect leaves the review intact without an error or retry', async () => {
+  const { s, sockets, start, restore } = setup();
+  try {
+    await start(); restore(true);
+    const before = s.snapshot();
+    sockets[1].fail('Proxy connection closed');
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    assert.equal(sockets.length, 3, 'tries to reconnect without asking for credentials');
+    sockets[2].fail('connection failed');
+    assert.equal(s.phase, 'finished');
+    assert.equal(s.snapshot().status, before.status);
+    assert.equal(s.snapshot().notice, before.notice);
+    assert.deepEqual(s.snapshot().stones, before.stones);
+    s.quitRoom();
+    assert.equal(s.phase, 'ready');
+  } finally { s.close(); }
+});
+
+test('quitting during a background reconnect continues discovery for the lobby', async () => {
+  const { s, sockets, start, restore, authenticate, fields, reply } = setup();
+  try {
+    await start(); restore(true);
+    sockets[1].fail('Proxy connection closed');
+    s.quitRoom();
+    assert.equal(s.snapshot().game_over, false);
+    await authenticate(); fields();
+    reply(game.GAME_SVR_MGR, RoomMessageID.RM_QUERY_GAME_LOCK_REQUEST, { 1: 1 });
+    assert.equal(s.phase, 'ready');
+    assert.equal(s.snapshot().gatewayAvailable, true);
+  } finally { s.close(); }
+});

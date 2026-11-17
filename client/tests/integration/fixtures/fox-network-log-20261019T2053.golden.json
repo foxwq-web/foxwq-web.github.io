@@ -5,15 +5,13 @@
       "tag": "button",
       "id": "black-player-name",
       "text": "杨三郎 2d",
-      "disabled": false,
-      "expanded": "false"
+      "disabled": false
     },
     {
       "tag": "button",
       "id": "white-player-name",
       "text": "products 3d",
-      "disabled": false,
-      "expanded": "false"
+      "disabled": false
     },
     {
       "tag": "button",
@@ -993,5 +991,5 @@
       "<polygon points=\"709.3333333333334,544 709.3333333333334,564.6666666666666 730,544\" fill=\"#fff\"></polygon>"
     ]
   },
-  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"杨三郎 2d\":\n      - paragraph:\n        - button \"杨三郎 2d\"\n      - paragraph: \"Captures: 1\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 01:00\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Captures: 1 + 7.5\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 00:59\n    - button \"Pass\"\n    - button \"Request Counting\"\n    - button \"Resign\"\n    - button \"Estimate Score\""
+  "accessibility": "- main:\n  - img\n  - complementary:\n    - region \"杨三郎 2d\":\n      - paragraph:\n        - button \"杨三郎 2d\"\n      - paragraph: \"Score: 1\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 01:00\n    - region \"products 3d\":\n      - paragraph:\n        - button \"products 3d\"\n      - paragraph: \"Score: 1\"\n      - term: \"Byoyomi: 3/3\"\n      - definition:\n        - time: 00:59\n    - button \"Pass\"\n    - button \"Request Counting\"\n    - button \"Resign\"\n    - button \"Estimate Score\""
 }
