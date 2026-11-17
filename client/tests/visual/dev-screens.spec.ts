@@ -131,7 +131,7 @@ for (const screen of menu) {
       if (screen.id === 'history-loading') {
         await expect(page.locator('.player-info-summary')).toContainText('Loading player details');
       } else {
-        await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);
+        await expect(page.locator('.player-info-games tbody tr')).toHaveCount(20);
         await expect(page.locator('.player-info-summary')).toContainText(screen.id === 'board-white-player-info' ? '157 wins' : '427 wins');
       }
     }

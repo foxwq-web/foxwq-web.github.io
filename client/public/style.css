@@ -308,54 +308,91 @@ dialog.quest-panel:not([open]) { display: none; }
 #dev-menu input[type="file"] { height: auto; margin-top: 8px; }
 #dev-screen-tools li { margin-block: 8px; }
 
+button.player-name { text-align: left; text-decoration: none; cursor: pointer; }
+button.player-name:hover { text-decoration: underline; }
+.player-name-with-rank { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: calc(var(--player-stone-gap) / 2); }
+.player-info { --player-info-size: min(400px, calc(100vw - 2 * var(--player-info-inset))); --history-cell-padding: 5px; position: fixed; z-index: 1200; box-sizing: border-box; width: var(--player-info-size); max-width: var(--player-info-size); height: var(--player-info-size); max-height: calc(100dvh - 2 * var(--player-info-inset)); padding: var(--panel-padding); display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); background: var(--app-background); color: var(--app-text); font-size: 12px; }
+.player-info { inset: 0; margin: auto; transform: translateY(max(calc(-50dvh + 50% + var(--player-info-inset)), -10dvh)); }
+.player-info:focus { outline: none; }
+.player-info:not([open]) { display: none; }
+.player-info::backdrop { background: #0004; backdrop-filter: blur(4px); }
+.player-info-close { position: absolute; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; }
+.player-info > :not(.player-info-games) { flex-shrink: 0; }
+.player-info h2 { display: flex; margin: 0; padding-right: 24px; font-size: 16px; line-height: 22.5px; overflow-wrap: anywhere; }
+.player-info p { margin: 0; }
+.player-info-summary { display: grid; gap: 8px; }
+/* Match the skeleton bar heights so the history table keeps its position once
+   the text arrives, regardless of the browser's default line-height. */
+.player-info-summary p { line-height: 15px; }
+.player-info-summary .player-rank-progress { line-height: 14px; }
+/* A block placeholder keeps the em dash from growing the line box to 16px. */
+.player-info-summary p:first-child .player-data-placeholder { display: block; }
+.player-info-loading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .player-skeleton { display: block; max-width: 100%; height: 14px; border-radius: 3px; background: var(--button-background); }
 .player-card-name-skeleton { width: 65%; height: 15px; }
 .player-card-detail-skeleton { width: 75px; }
 .player-card-clock-skeleton { width: 76px; height: 36px; }
 .game-result-skeleton { width: 120px; }
-button.player-name { display: inline; width: auto; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: default; text-decoration: none; }
-button.player-name:enabled:hover { background: transparent; }
-button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-offset: 3px; }
-.player-info { position: fixed; z-index: 1200; box-sizing: border-box; width: min(360px, calc(100vw - 2 * var(--player-info-inset))); padding: var(--panel-padding); display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); background: var(--app-background); color: var(--app-text); font-size: 13px; }
-.player-info h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.player-info p { margin: 0; }
-.player-info-summary { display: grid; gap: 8px; }
+.player-summary-skeleton { display: grid; gap: inherit; }
+/* Keep every bar at the shared 14px height. The first row still reserves the
+   15px line box of the text it replaces so the history table keeps its
+   position once the text arrives; bottom-aligning its bar keeps the spacing
+   between the bars equal. */
+.player-summary-skeleton > p:first-child { display: flex; align-items: flex-end; height: 15px; }
+.player-summary-skeleton > p:first-child .player-skeleton { width: 30%; }
+.player-recent-placeholder { display: flex; align-items: center; height: 16px; }
+.player-recent-placeholder .player-skeleton { width: 100%; }
+.player-summary-skeleton .player-rank-progress .player-skeleton { width: 55%; }
+.player-history-skeleton td.history-date .player-skeleton { width: 80%; }
+.player-history-skeleton td.history-opponent-cell .player-skeleton { width: 80%; }
+.player-history-skeleton td.history-rank .player-skeleton { width: 20px; }
+.player-history-skeleton td.history-result .player-skeleton { width: 30px; }
+.player-history-skeleton td.history-moves .player-skeleton { width: 30px; margin-inline-start: auto; }
 .player-rank-progress, .player-info-games table { font-size: 12px; }
-.player-recent { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 2px; }
-.player-recent span { position: relative; aspect-ratio: 1; }
+.player-data-placeholder { font-size: 12px; }
+.player-recent { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); align-items: start; gap: 2px; height: 16px; }
+.player-recent span { position: relative; width: 100%; max-width: 16px; aspect-ratio: 1; }
 /* Solid colors sampled from Fox Skin/PlayerInfo/playerinfo_pkg_01.png. */
 .player-recent .win::before { content: ""; position: absolute; inset: 1px; border: 2px solid currentColor; border-radius: 50%; }
 .player-recent .loss::before, .player-recent .loss::after { content: ""; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: currentColor; transform: translateY(-50%) rotate(45deg); }
 .player-recent .loss::after { transform: translateY(-50%) rotate(-45deg); }
-.player-recent span:not(.win):not(.loss)::before { content: ""; position: absolute; top: 50%; inset-inline: 2px; height: 2px; background: var(--muted-text); transform: translateY(-50%); }
+.player-recent span:where(:not(.win):not(.loss):not(.player-recent-empty))::before { content: ""; position: absolute; top: 50%; inset-inline: 2px; height: 2px; background: var(--muted-text); transform: translateY(-50%); }
 #game-result.win, .player-info .win { color: #05ac01; }
-#game-result.loss, .player-info .loss { color: #f93500; }
-.player-info-games { min-width: 0; }
+#game-result.loss, .player-info .loss { color: var(--loss-color); }
+/* Reserve the requested visible rows, including the header and last-row spacing.
+   Keep the same column width when short screens require a scrollbar. */
+.player-info-games { container-type: inline-size; flex: 1; min-width: 0; min-height: 0; height: calc((var(--history-visible-rows) + 1) * (15px + 2 * var(--history-cell-padding)) - var(--history-cell-padding) - 1px); overflow: auto; scrollbar-gutter: stable; }
 .player-info-games table { width: 100%; border-collapse: collapse; }
+/* Share row and column geometry across placeholders, Latin names and CJK names. */
+.player-info-games table { --history-column-gap: 8px; table-layout: fixed; line-height: 14px; }
+/* Cover fractional-pixel seams above the sticky header in the translated dialog. */
+.player-info-games thead { position: sticky; top: 0; z-index: 1; background: var(--app-background); box-shadow: 0 -1px 0 var(--app-background); }
+.player-info-games th.history-date, .player-info-games th.history-opponent-cell { box-sizing: border-box; width: calc((100% - 120px) / 2); }
+.history-date-text { display: block; overflow: hidden; text-overflow: ellipsis; }
+.player-info-games th.history-rank, .player-info-games th.history-result, .player-info-games th.history-moves { box-sizing: border-box; width: 40px; }
+.player-info-games .history-moves { text-align: right; }
+.player-info-games .history-result { text-align: left; }
 .player-info-games th { color: var(--muted-text); }
 .player-info-games td, .player-info-games th { padding: 5px 0; text-align: left; border-bottom: 1px solid #444; white-space: nowrap; }
+.player-info-games td, .player-info-games th { padding-block: var(--history-cell-padding); }
 .player-info-games tbody tr:last-child td { border-bottom: 0; padding-bottom: 0; }
-.player-info-games td:not(:nth-child(2)) { width: 1%; }
 .player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 16px; }
-.player-info-games th:last-child, .player-info-games td:last-child { text-align: right; }
-.player-info-games td:last-child a { margin-left: 8px; }
-.player-info-games a svg { --icon-size: 12px; vertical-align: middle; }
+.player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 8px; }
+.player-info-games tbody tr { position: relative; }
+.history-game-link { position: absolute; inset: 0; cursor: pointer; }
+.player-info-games tbody tr:has(.history-game-link):hover { background: var(--field-background); }
 .history-opponent { display: flex; align-items: center; gap: 5px; }
 .history-opponent .player-stone { --stone-size: 10px; }
-.history-opponent-name { max-width: min(145px, calc(100vw - 260px)); overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 460px) {
-  .player-info { padding: 10px 8px; }
-}
+.history-opponent-name { min-width: 0; max-width: 145px; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 359px) {
-  .player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 12px; }
+  .player-info-games table { --history-column-gap: 4px; }
+  .player-info-games th:not(:last-child), .player-info-games td:not(:last-child) { padding-right: 4px; }
 }
 @media (max-height: 500px) {
-  .player-info { padding: 8px; gap: 8px; }
+  .player-info { --history-cell-padding: 2px; height: auto; padding: 8px; gap: 8px; }
   .player-info-summary { gap: 6px; }
-  .player-info-games td, .player-info-games th { padding-block: 2px; }
 }
 
-.player-name-with-rank { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: calc(var(--player-stone-gap) / 2); }
 #game-review { display: grid; gap: var(--action-gap); }
 #game-review button { display: flex; align-items: center; justify-content: center; }
 #game-review svg { display: block; }

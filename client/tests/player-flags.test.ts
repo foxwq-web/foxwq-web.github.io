@@ -38,6 +38,23 @@ test('the prefetched account country reaches the pinned player and survives part
   } finally { s.close(); }
 });
 
+test('country fields survive partial player updates and explicit corrections', () => {
+  const s = new Session();
+  try {
+    s.readGameUserInfo(message({ 1: 42, 3: 'River', 4: 20, 6: 1, 20: 82 }));
+    s.readGameUserInfo(message({ 1: 42, 6: 1 }));
+    assert.equal(s.players[1].country, 82);
+    s.readGameUserInfo(message({ 1: 42, 6: 1, 20: 0 }));
+    assert.equal(s.players[1].country, 0);
+    const info = { uid: 42, name: 'River', rank: '' } as PlayerInfo;
+    applyPlayerSummary(info, message({ 3: 42, 8: { 7: 44 } }));
+    applyPlayerSummary(info, message({ 3: 42 }));
+    assert.equal(info.country, 44);
+    applyPlayerSummary(info, message({ 3: 42, 8: { 7: 0 } }));
+    assert.equal(info.country, 0);
+  } finally { s.close(); }
+});
+
 test('country flags use embedded images and omit missing or unsupported countries', () => {
   for (const country of [86, 81, 82, 1, 44]) {
     const html = renderToStaticMarkup(createElement(PlayerFlag, { country }));

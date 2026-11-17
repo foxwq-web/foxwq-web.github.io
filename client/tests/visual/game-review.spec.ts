@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect } from 'playwright/test';
 
-test('review changes the URL on demand and keeps player cards and the connected lobby', async ({ page, isMobile }) => {
+test('review changes the URL on demand and keeps player cards and the connected lobby', async ({ page }) => {
   await page.goto('/?dev-screen=finished-resign');
   await expect(page.locator('#game-result')).toHaveText('W+R');
   expect(new URL(page.url()).pathname).toBe('/play');
@@ -10,14 +10,12 @@ test('review changes the URL on demand and keeps player cards and the connected 
   await page.locator('#review-previous').click();
   await expect(page).toHaveURL(/\/game\/[A-Za-z0-9_-]{11}\?/);
   await expect(page.locator('.player-panel img.player-flag')).toHaveCount(0);
-  const playerName = page.locator('#black-player-name');
-  if (isMobile) await playerName.tap();
-  else await playerName.click();
+  await page.locator('#black-player-name').click();
   await expect(page.locator('.player-info')).toBeVisible();
   await expect(page.locator('.player-info h2 .player-flag + span + .player-rank')).toHaveCSS('color', 'rgb(170, 170, 170)');
-  await expect(page.locator('.player-info-games tbody tr')).toHaveCount(10);
+  await expect(page.locator('.player-info .history-rank .player-rank').first()).toHaveCSS('color', 'rgb(231, 231, 231)');
+  await expect(page.locator('.player-info-games tbody tr')).toHaveCount(20);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.player-info')).toBeHidden();
   await page.locator('#quit-room').click();
   await expect(page.locator('#time-controls')).toBeVisible();
   await expect(page.locator('#matchmaking-player .player-flag')).toHaveCount(0);

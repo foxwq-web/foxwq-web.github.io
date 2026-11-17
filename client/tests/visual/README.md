@@ -31,4 +31,4 @@ Inspect the changed PNGs and run the same command without
 native browser fonts can produce different pixels. Failed comparisons and page
 snapshots are written under `client/tests/visual/results/`.
 
-All dev lobby tables share the lobby responses paired with `fox-network-log-20261103T2155-name-lookup.golden.json`. `client/src/dev-lobby-recording.json` contains only the corresponding room-list and player-list messages from its network recording; previews replay them through the production decoders.
+All dev lobby tables share the lobby responses from the final login session in `fox-network-log-20261108T2159.json`. `client/src/dev-lobby-recording.json` contains only the corresponding broadcast list, online-player list and classic PC directory page messages from that network recording; previews replay them through the production decoders.

@@ -83,7 +83,7 @@ async function open(browser: Browser, url: string, viewport: { width: number; he
   }, screen);
   assert.equal(load.actual, load.expected, screen);
   if (screen.includes('player-info')) {
-    await page.waitForFunction(() => document.querySelectorAll('.player-info tbody tr').length === 10);
+    await page.waitForFunction(() => document.querySelectorAll('.player-info tbody tr').length === 20);
   }
   await page.waitForTimeout(300);
   const cdp = await page.context().newCDPSession(page);
@@ -104,7 +104,7 @@ export async function survey(browser: Browser, url: string, report: any) {
       const after = await metrics(cdp), state = compact(await dom(page));
       assert.equal(state.horizontalOverflow, false, `${screen.id}: horizontal overflow`);
       assert.equal(state.workers.active, 0, `${screen.id}: worker not terminated`);
-      if (screen.id.includes('player-info')) assert.equal(state.historyRows, 10);
+      if (screen.id.includes('player-info')) assert.equal(state.historyRows, 20);
       if (screen.id === 'replay-variation') assert.equal(state.variationNumbers, 5);
       if (screen.id === 'board-coordinates') assert.equal(state.coordinates, 76);
       if (['score-estimation', 'counting-result'].includes(screen.id)) assert.ok(state.territory > 0, `${screen.id}: missing ownership overlay`);
