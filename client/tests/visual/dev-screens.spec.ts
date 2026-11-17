@@ -129,6 +129,10 @@ for (const screen of menu) {
     }
     await page.evaluate(() => document.fonts.ready);
     for (const id of ['pass', 'request-score', 'resign', 'estimate-score']) {
+      if (["disconnected", "error", "connecting", "ready", "matching"].includes(screen.phase)) {
+        await expect(page.locator(`#${id}`)).toBeHidden();
+        continue;
+      }
       await expect(page.locator(`#${id}`)).toBeVisible();
       if (!['playing', 'finished', 'reconnecting'].includes(screen.phase) || (id === 'estimate-score' && screen.phase === 'finished'))
         await expect(page.locator(`#${id}`)).toBeDisabled();

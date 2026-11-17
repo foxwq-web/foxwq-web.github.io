@@ -1,4 +1,5 @@
 import { faBackwardStep, faArrowLeft, faArrowRight, faForwardStep, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { formatError } from "./error-message";
 import { Icon } from "./Icon";
 import { PlayerName } from "./PlayerInfo";
 import {
@@ -186,7 +187,7 @@ export function App({ controller: c }: { controller: Controller }) {
     counting: boolean;
   } | null>(null);
   const statusError = !!state.menuError ||
-    (s.phase === "error" && s.status !== "another client logged in") ||
+    s.phase === "error" ||
     s.status.startsWith("matchmaking rejected");
   const statusSeparate = statusError ||
     (s.phase === "ready" && s.status.startsWith("Matchmaking "));
@@ -433,8 +434,7 @@ export function App({ controller: c }: { controller: Controller }) {
       hidden={statusHidden}
       className={statusError ? "is-error" : ""}
     >
-      {!statusHidden && statusError && <Icon icon={faTriangleExclamation} />}
-      {!statusHidden && `${statusError ? "Error: " : ""}${statusError ? state.menuError || s.status : s.status}`}
+      {!statusHidden && (statusError ? formatError(state.menuError || s.status) : s.status)}
     </span>
   );
   const bottomColor = s.color === 2 ? 2 : 1,
@@ -445,7 +445,7 @@ export function App({ controller: c }: { controller: Controller }) {
         style={{ "--coordinate-gutter": `${coordinateGutterPixels}px` } as CSSProperties}
         inert={showMenu}
       >
-        <div className={`layout${c.previewCoordinates || coordinates ? " has-coordinates" : ""}`}>
+        <div hidden={showMenu} className={`layout${c.previewCoordinates || coordinates ? " has-coordinates" : ""}`}>
           <section className="board-wrap">
             <BoardView
               coordinates={c.previewCoordinates || coordinates}
@@ -670,19 +670,19 @@ export function App({ controller: c }: { controller: Controller }) {
         hidden={!showMenu}
       >
         <div
-          ref={menu}
-          id="connection-menu"
-          tabIndex={-1}
+          id="connection-menu" ref={menu} tabIndex={-1}
         >
           <h2 id="menu-title">{loginStep ? "Foxwq-web" : "Matchmaking"}</h2>
           <p className="login-intro login-copy" hidden={!loginStep}>
             <a id="github-source" href="https://github.com/foxwq-web/foxwq-web.github.io" target="_blank" rel="noopener noreferrer">A web client</a> for {" "}
-            the <a id="fox-server" href="https://foxwq.com" target="_blank" rel="noopener noreferrer">Fox go server</a>.
+            the <a id="fox-server" href="https://foxwq.com/?lang=en" target="_blank" rel="noopener noreferrer">Fox go server</a>.
           </p>
           <p id="matchmaking-player" className="login-intro login-copy" hidden={loginStep}>
             Playing as <PlayerName controller={c} uid={loginStep ? undefined : c.session.uid}
-              name={s.account?.name || state.form.username} rank={s.account?.rank} />
+              name={s.account?.name || state.form.username} rank={s.account?.rank}
+              country={s.account?.country} />
           </p>
+
           {/* Retire the credential form after login, before game downloads. */}
           {loginStep && <form
             id="login-form"
@@ -707,6 +707,7 @@ export function App({ controller: c }: { controller: Controller }) {
           >
             <label htmlFor="username">
               <input
+                className="text-input"
                 id="username"
                 name="username"
                 placeholder="Username"
@@ -721,6 +722,7 @@ export function App({ controller: c }: { controller: Controller }) {
             </label>
             <label htmlFor="password">
               <input
+                className="text-input"
                 ref={passwordInput}
                 id="password"
                 name="password"
@@ -739,7 +741,6 @@ export function App({ controller: c }: { controller: Controller }) {
                   id="remember"
                   name="remember"
                   type="checkbox"
-                  disabled={loginPending}
                   checked={state.form.remember}
                   onChange={(e) => c.remember(e.currentTarget.checked)}
                 />
@@ -747,16 +748,16 @@ export function App({ controller: c }: { controller: Controller }) {
               </label>
               <a href="https://account.foxwq.com/reg/foreign.html" target="_blank" rel="noopener noreferrer">Sign up</a>
             </div>
-            <button
+            <button className="button"
               id="login"
               type="submit"
               disabled={!state.form.username.trim() || state.form.passwordLength === 0 || loginPending}
             >
-              {statusHidden || statusError ? "Log in" : null}
-              {loginStep && !statusError && status}
+              {statusHidden || statusSeparate ? "Log in" : null}
+              {loginStep && !statusSeparate && status}
             </button>
           </form>}
-          {loginStep && statusError && status}
+          {loginStep && statusSeparate && status}
           <div id="matchmaking" hidden={loginStep}>
             <TimeControls fields={s.matchFields} populations={s.fieldPlayers}
               selected={s.fieldId} disabled={!["ready", "finished"].includes(s.phase)} controller={c} />

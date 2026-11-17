@@ -1,3 +1,4 @@
+import { persistenceAllowed } from "./persistence";
 import type { TimeControl } from "./state";
 const NAME = "foxwq_time_control";
 export function rememberedTimeControl(): Omit<TimeControl, "id"> | null {
@@ -25,6 +26,7 @@ export function rememberTimeControl({
   periods,
   byoyomi,
 }: Omit<TimeControl, "id">) {
+  if (!persistenceAllowed()) return;
   const value = encodeURIComponent(
     JSON.stringify({ size, main, periods, byoyomi }),
   );

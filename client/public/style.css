@@ -7,6 +7,8 @@
   --border: #626262;
   --disabled-text: #999;
   --muted-text: #aaa;
+  --loss-color: #f93500;
+  --error-color: #cc3300;
   --field-background: #2b2b2b;
   --ui-font-size: 14px;
   --player-stone-gap: calc(8em / 14);
@@ -16,6 +18,7 @@
   --panel-padding: 12px;
   --sidebar-gap: 16px;
   --player-info-inset: 8px;
+  --box-shadow: 1px 2px 2px #00000014, 2px 3px 1px -2px #0000002e, 2px 3px 5px #0000001a;
 
   background: var(--app-background);
   color: var(--app-text);
@@ -144,9 +147,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   display: grid;
   place-items: start center;
   padding: 16px;
-  background: #0004;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: var(--app-background);
 }
 #connection-menu {
   box-sizing: border-box;
@@ -155,36 +156,45 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   max-width: 100%;
   padding: 32px;
   border: 0;
-  margin-top: max(0px, calc(50dvh - 166px));
+  margin-top: max(0px, calc(40dvh - 166px));
   max-height: min(calc(100dvh - 32px), calc(50dvh + 134px));
   overflow: auto;
   background: var(--panel-background);
+  font-size: var(--ui-font-size);
 }
-#connection-menu, .player-info { box-shadow: 8px 12px 48px #0004; }
-#connection-menu:focus { outline: none; }
+.player-info { box-shadow: 8px 12px 48px #0004; }
 html:has(#connection-layer:not([hidden])),
 body:has(#connection-layer:not([hidden])) { overflow: hidden; }
-#login-form, #login-form .login-options, #login-form .remember, .time-option { gap: 8px; }
+#login-form, #login-form .login-options, #login-form .remember { gap: 8px; }
 #login-form { display: grid; }
 #login-form label { display: block; }
 #login-form .login-options { display: flex; align-items: center; justify-content: space-between; }
-#login-form .remember { display: flex; align-items: center; justify-content: flex-start; min-height: var(--control-height); margin: 0; padding: 0; }
+#login-form .remember { display: flex; align-items: center; justify-content: flex-start; min-height: var(--control-height); margin: 0; padding: 0; cursor: pointer; }
 #login-form .remember input { flex: none; margin: 0; padding: 10px; }
-#connection-menu > button,
-#matchmaking > button { margin-top: 20px; }
+#connection-menu > button { margin-top: 20px; }
+.active-game-actions { display: grid; gap: var(--action-gap); }
 #connection-menu #status.is-error { display: block; margin-top: 16px; }
-#menu-title { margin: 0 0 20px; }
+#connection-menu:has(#login-form) #status.is-error:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  margin: 32px -32px -32px;
+  padding: var(--panel-padding) 32px;
+  border-block: 1px solid transparent;
+  background: var(--error-color);
+  color: #fff;
+}
+#menu-title { margin: 0 0 20px; font-size: 24px; }
 .login-copy { font-size: var(--ui-font-size); line-height: 1.5; }
 #login-form .remember,
-.time-option,
 #status.is-error,
 #error,
 #estimation-status { font-size: var(--ui-font-size); }
 a { color: var(--muted-text); text-decoration: underline; }
-a:hover,
-a:focus-visible { color: #fff; }
+a:hover { color: #fff; }
 .login-intro { margin: -8px 0 16px; }
-#matchmaking-player { margin-bottom: 17.5px; }
 #login, #match { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 #time-settings { display: grid; gap: 12px; }
 #time-settings h3, #time-settings p { margin: 0; font-size: 1em; }
@@ -301,3 +311,9 @@ button.player-name:focus-visible { outline: 2px solid var(--app-text); outline-o
 .player-name-with-rank { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: calc(var(--player-stone-gap) / 2); }
 /* Keep the flag's 4:3 proportions as the font scales. */
 .player-flag { flex: none; width: calc(11em / 14 * 4 / 3); height: calc(11em / 14); object-fit: contain; }
+
+#connection-menu .button, #connection-menu .text-input { font-size: inherit; }
+
+#connection-menu { box-shadow: var(--box-shadow); }
+
+#connection-menu:focus { outline: none; }

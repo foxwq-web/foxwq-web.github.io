@@ -1,6 +1,6 @@
 # foxwq-web.github.io
 
-A web client for the [Fox go server](https://foxwq.com/).
+A web client for the [Fox go server](https://foxwq.com/?lang=en).
 
 This project aims to faithfully recreate Fox's gameplay in the browser. No fancy graphics or community features here, just good old Fox as you know it. If you're only in it for the gameplay, you've come to the right place.
 

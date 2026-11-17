@@ -1,3 +1,4 @@
+import { persistenceAllowed } from "./persistence";
 const NAME = "foxwq_coordinates";
 
 export function rememberedCoordinates(): boolean {
@@ -9,6 +10,7 @@ export function rememberedCoordinates(): boolean {
 }
 
 export function rememberCoordinates(shown: boolean) {
+  if (!persistenceAllowed()) return;
   try {
     document.cookie = `${NAME}=${shown}; Max-Age=${365 * 24 * 60 * 60}; Path=/; SameSite=Strict${location.protocol === "https:" ? "; Secure" : ""}`;
   } catch {}

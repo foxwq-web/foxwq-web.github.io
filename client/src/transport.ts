@@ -123,8 +123,12 @@ export class Connection {
         fail("invalid protocol response");
       }
     });
-    ws.addEventListener("error", () => fail("Proxy unreachable"));
-    ws.addEventListener("close", () => fail("Proxy connection closed"));
+    // A WebSocket error is followed by close; wait for its diagnostic details.
+    ws.addEventListener("close", ({ code, reason, wasClean }) => {
+      if (this.connectionId !== undefined)
+        this.networkLog?.closeConnection(this.connectionId, { code, reason, wasClean });
+      fail(`proxy connection closed code ${code}${reason ? ` ${reason}` : ""}`);
+    }, { once: true });
     this.receive = receive;
     this.fail = fail;
   }

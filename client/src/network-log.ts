@@ -5,12 +5,14 @@ import { extractNetMsgFromBytes, splitFgwPacket } from "./framing.ts";
 import { decode } from "./wire.ts";
 import { SVR_TYPE_FGW } from "./game.ts";
 import { networkLogStore, type NetworkLogStore, type StoredNetworkEntry } from "./network-log-store";
+import { onPersistenceChange } from "./persistence";
 
 export interface NetworkEntry {
   timestamp: string;
   source: string;
   destination: string;
   payload: string;
+  websocketClose?: { code: number; reason: string; wasClean: boolean };
 }
 interface PendingChunk extends StoredNetworkEntry {
   remaining: number;
@@ -28,7 +30,11 @@ export class NetworkLog {
   private sequence = 0;
   private connections = new Map<number, { client: string; server: string }>();
   private streams = new Map<string, Stream>();
-  constructor(private store: NetworkLogStore = networkLogStore()) {}
+  constructor(private store: NetworkLogStore = networkLogStore()) {
+    if (store === networkLogStore()) onPersistenceChange(allowed => {
+      if (!allowed) this.streams.clear();
+    });
+  }
 
   connection(host: string, port: number) {
     const id = this.connections.size + 1;
@@ -48,12 +54,20 @@ export class NetworkLog {
     stream.chunks = [];
     stream.buffer = Buffer.alloc(0);
   }
-  closeConnection(connectionId: number) {
+  closeConnection(connectionId: number, websocketClose?: NetworkEntry["websocketClose"]) {
     for (const direction of ["inbound", "outbound"]) {
       const key = `${connectionId}:${direction}`;
       const stream = this.streams.get(key);
       if (stream) this.finish(stream);
       this.streams.delete(key);
+    }
+    if (websocketClose && this.recording()) {
+      const { client, server } = this.connections.get(connectionId)!;
+      const timestamp = new Date().toISOString();
+      this.store.put({
+        key: `${timestamp}:${this.pageId}:${String(this.sequence++).padStart(16, "0")}`,
+        entry: { timestamp, source: server, destination: client, payload: "", websocketClose },
+      });
     }
   }
   traffic(connectionId: number, direction: "inbound" | "outbound", bytes: Uint8Array) {
@@ -81,7 +95,7 @@ export class NetworkLog {
       let decoded;
       while ((decoded = extractNetMsgFromBytes(stream.buffer))) {
         const [frame, size] = decoded;
-        let sensitive = frame.msgTypeID === 2000 || frame.msgTypeID === 2005;
+        let sensitive = [2000, 2005, 4000, 4005].includes(frame.msgTypeID);
         if (frame.msgTypeID === LegacyMsgTypeID.MTID_CS_GATEWAYSERVER_PACKET) {
           try {
             const [header] = splitFgwPacket(frame.rawProto);

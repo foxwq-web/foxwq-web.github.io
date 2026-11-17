@@ -23,6 +23,7 @@ test("network log export reports unavailable storage instead of downloading an e
   const controller = new Controller();
   try {
     controller.emit({ type: "initialize", state: initial(controller.session) });
+    controller.remember(true);
     for (const duringRead of [false, true]) {
       const store = {
         enabled: duringRead,
@@ -37,6 +38,7 @@ test("network log export reports unavailable storage instead of downloading an e
         "Network log unavailable: NotFoundError: Missing log store. Reload the page to try again.");
     }
   } finally {
+    controller.remember(false);
     controller.dispose();
   }
 });
@@ -184,6 +186,18 @@ test("remembered credentials are replaced only after Fox accepts the submitted l
     controller.session.connection = { send() {}, close() {} };
     reply({ 1: 0, 2: 42, 8: Buffer.from("accepted-token") });
     assert.equal(rememberedCredentials(), null, "opting out during login must keep storage empty");
+    controller.remember(true);
+    assert.deepEqual(rememberedCredentials(), { username: "EditedWhilePending", password: "edited-password" },
+      "opting back in after authentication must save the accepted submission");
+    controller.remember(false);
+    controller.command("login");
+    controller.remember(true);
+    controller.remember(false);
+    controller.remember(true);
+    controller.session.connection = { send() {}, close() {} };
+    reply({ 1: 0, 2: 42, 8: Buffer.from("accepted-token") });
+    assert.deepEqual(rememberedCredentials(), { username: "EditedWhilePending", password: "edited-password" },
+      "the final choice before authentication must be honored in both directions");
   } finally { controller.dispose(); }
 });
 test("byoyomi replaces the last-move marker with contrasting seconds and restores it outside countdown", async () => {

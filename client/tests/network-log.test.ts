@@ -18,6 +18,62 @@ function memoryStore(): NetworkLogStore {
   return { put(record) { records.set(record.key, record); }, read: () => [...records.values()] };
 }
 
+test('classic PC lobby authentication never persists its session token', async () => {
+  for (const id of [4000, 4005]) {
+    const log = new NetworkLog(memoryStore()), connection = log.connection('pc-lobby', 8000);
+    const bytes = frame(id, encode({ 1: 123, 4: 'classic-session-token' }));
+    log.traffic(connection, id === 4000 ? 'outbound' : 'inbound', bytes.subarray(0, 7));
+    log.traffic(connection, id === 4000 ? 'outbound' : 'inbound', bytes.subarray(7));
+    const entries: NetworkEntry[] = JSON.parse(await log.serialize());
+    assert.equal(entries.length, 2);
+    assert.ok(entries.every(entry => entry.payload === ''));
+  }
+});
+
+for (const details of [
+  { code: 1011, reason: 'TCP read failed', wasClean: true },
+  { code: 1006, reason: '', wasClean: false },
+  { code: 1000, reason: 'Connection ended', wasClean: true },
+]) {
+  test(`WebSocket close ${details.code} is recorded and included in the failure message`, async () => {
+    const log = new NetworkLog(memoryStore()), connectionId = log.connection('fox.example', 10000);
+    const ws = Object.assign(new EventTarget(), { close() {} });
+    const failures: string[] = [];
+    const connection = new Connection(ws as unknown as WebSocket, () => {}, reason => failures.push(reason),
+      { networkLog: log, connectionId });
+    const packet = frame(3005, encode({ 1: 42 }));
+    log.traffic(connectionId, 'inbound', packet);
+    if (details.code === 1006) {
+      ws.dispatchEvent(new Event('error'));
+      assert.deepEqual(failures, [], 'wait for the close event rather than discarding its details');
+    }
+    ws.dispatchEvent(Object.assign(new Event('close'), details));
+    ws.dispatchEvent(Object.assign(new Event('close'), details));
+    assert.equal(connection.closed, true);
+    assert.deepEqual(failures, [`proxy connection closed code ${details.code}${details.reason ? ` ${details.reason}` : ''}`]);
+    const entries: NetworkEntry[] = JSON.parse(await log.serialize());
+    assert.equal(entries.length, 2, 'record the close once, after preceding traffic');
+    assert.equal(entries[0].payload, packet.toString('base64'));
+    assert.deepEqual(entries[1].websocketClose, details);
+    assert.equal(entries[1].payload, '', 'close metadata must not be decoded as a Fox packet');
+    assert.equal(entries[1].source, 'fox.example:10000');
+    assert.equal(entries[1].destination, entries[0].destination);
+  });
+}
+
+test('intentional close records the eventual WebSocket details without reporting a failure', async () => {
+  const store = memoryStore(), log = new NetworkLog(store), connectionId = log.connection('fox.example', 10000);
+  const ws = Object.assign(new EventTarget(), { close() {} });
+  const connection = new Connection(ws as unknown as WebSocket, () => {}, () => assert.fail('intentional close'),
+    { networkLog: log, connectionId });
+  connection.close();
+  const details = { code: 1000, reason: '', wasClean: true };
+  ws.dispatchEvent(Object.assign(new Event('close'), details));
+  const entries: NetworkEntry[] = JSON.parse(await new NetworkLog(store).serialize());
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0].websocketClose, details, 'close details survive reloading the logger');
+});
+
 test('network-only export preserves one timestamp/source/destination/payload per wire chunk', async () => {
   const log = new NetworkLog(memoryStore());
   const first = log.connection('fox.example',10000), second = log.connection('fox.example',10000);

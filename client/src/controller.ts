@@ -1,3 +1,4 @@
+import { persistenceAllowed, setPersistenceAllowed } from "./persistence";
 import { Board } from "./board.ts";
 import { Session } from "./session.ts";
 import { PROXY_URL, PROXY_TOKEN } from "./proxy.ts";
@@ -51,9 +52,10 @@ export class Controller {
   private errorTimer?: ReturnType<typeof setTimeout>;
   private suppress = false;
   private assetsStarted = false;
-  private pendingCredentials?: { username: string; password: string; remember: boolean };
+  private submittedCredentials?: { username: string; password: string; remember: boolean; accepted: boolean };
 
   constructor() {
+    setPersistenceAllowed(!!rememberedCredentials());
     this.session = new Session({
       proxyUrl: PROXY_URL,
       proxyToken: PROXY_TOKEN,
@@ -129,12 +131,12 @@ export class Controller {
   }
   private sync(session: SessionState) {
     if (!this.state || this.suppress) return;
-    if (this.pendingCredentials && this.session.uid && this.session.token.length) {
-      const { username, password, remember } = this.pendingCredentials;
-      this.pendingCredentials = undefined;
+    if (this.submittedCredentials && !this.submittedCredentials.accepted && this.session.uid && this.session.token.length) {
+      const { username, password, remember } = this.submittedCredentials;
+      this.submittedCredentials.accepted = true;
       if (!this.preview) rememberCredentials(username, password, remember);
     } else if (["error", "disconnected", "kicked"].includes(session.phase)) {
-      this.pendingCredentials = undefined;
+      this.submittedCredentials = undefined;
     }
     const wasAvailable = boardAvailable(this.state.session);
     this.emit({ type: "session.updated", session });
@@ -187,8 +189,14 @@ export class Controller {
   }
   remember(value: boolean) {
     this.emit({ type: "form.remember", value });
-    if (this.pendingCredentials && !value) this.pendingCredentials.remember = false;
-    if (!this.preview && !value) rememberCredentials("", "", false);
+    if (this.submittedCredentials) this.submittedCredentials.remember = value;
+    if (!this.preview) {
+      setPersistenceAllowed(value);
+      if (value && this.submittedCredentials?.accepted) {
+        const { username, password } = this.submittedCredentials;
+        rememberCredentials(username, password, true);
+      }
+    }
   }
   command(
     command: Command,
@@ -211,7 +219,7 @@ export class Controller {
     try {
       switch (command) {
         case "login":
-          this.pendingCredentials = { username, password, remember };
+          this.submittedCredentials = { username, password, remember, accepted: false };
           this.session.login(username, password);
           break;
         case "disconnect":
@@ -259,7 +267,7 @@ export class Controller {
           break;
       }
     } catch (error) {
-      if (command === "login") this.pendingCredentials = undefined;
+      if (command === "login") this.submittedCredentials = undefined;
       this.raise(error instanceof Error ? error.message : String(error));
     } finally {
       this.session.flushChanges();
@@ -386,7 +394,7 @@ export class Controller {
     }
   }
   dispose() {
-    this.pendingCredentials = undefined;
+    this.submittedCredentials = undefined;
     clearTimeout(this.clockTimer);
     clearTimeout(this.errorTimer);
     this.suppress = true;

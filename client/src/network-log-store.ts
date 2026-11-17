@@ -1,4 +1,5 @@
 import type { NetworkEntry } from "./network-log";
+import { onPersistenceChange, persistenceAllowed } from "./persistence";
 
 export interface StoredNetworkEntry {
   key: string;
@@ -30,6 +31,8 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
   private pendingBytes = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private writing?: Promise<void>;
+  private clearing?: Promise<void>;
+  private revision = 0;
   private database: Promise<IDBDatabase>;
 
   constructor(factory: IDBFactory, name = "fox-network-log", private maxBytes = NETWORK_LOG_MAX_BYTES) {
@@ -102,8 +105,10 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
   }
 
   private async drain() {
+    const revision = this.revision;
+    await this.clearing;
     const db = await this.database;
-    while (this.enabled && this.pending.size) {
+    while (this.enabled && revision === this.revision && this.pending.size) {
       const rows = [...this.pending.values()];
       this.pending.clear();
       this.pendingBytes = 0;
@@ -141,6 +146,29 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
     }
   }
 
+  clear(): Promise<void> {
+    this.revision++;
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.pending.clear();
+    this.pendingBytes = 0;
+    const writing = this.writing;
+    const clearing = this.clearing;
+    return this.clearing = (async () => {
+      await clearing;
+      await writing;
+      if (!this.enabled) return;
+      const db = await this.database;
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(["entries", "metadata"], "readwrite");
+        tx.objectStore("entries").clear();
+        tx.objectStore("metadata").clear();
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+      });
+    })().catch(error => this.disable(error));
+  }
+
   async read(): Promise<StoredNetworkEntry[]> {
     await this.flush();
     if (!this.enabled) return [];
@@ -158,9 +186,27 @@ export class IndexedDBNetworkLogStore implements NetworkLogStore {
   }
 }
 
-export function networkLogStore(): NetworkLogStore {
+let persistentStore: IndexedDBNetworkLogStore | undefined;
+onPersistenceChange(allowed => {
+  if (!allowed) {
+    if (persistentStore) void persistentStore.clear();
+    else {
+      try { indexedDB.deleteDatabase("fox-network-log"); } catch {}
+    }
+  }
+});
+function activeStore(): NetworkLogStore {
+  if (!persistenceAllowed()) return disabledStore;
   try {
-    if (typeof indexedDB !== "undefined") return new IndexedDBNetworkLogStore(indexedDB);
+    if (typeof indexedDB !== "undefined") return persistentStore ??= new IndexedDBNetworkLogStore(indexedDB);
   } catch { /* Debug logging is optional. */ }
   return disabledStore;
 }
+const managedStore: NetworkLogStore = {
+  get enabled() { return activeStore().enabled; },
+  get error() { return persistenceAllowed() ? activeStore().error : "network logging is disabled while remember me is off"; },
+  put(record) { activeStore().put(record); },
+  read() { return activeStore().read(); },
+  flush() { return activeStore().flush?.(); },
+};
+export function networkLogStore(): NetworkLogStore { return managedStore; }
