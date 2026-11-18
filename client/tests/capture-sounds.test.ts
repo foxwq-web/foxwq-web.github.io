@@ -82,6 +82,36 @@ test('rejected or unsent capturing moves do not add playback or leave captures b
   }
 });
 
+test('snapshots announce newly recovered opponent captures, without sounding old or unrelated moves', () => {
+  for (const mode of ['recovered', 'unchanged', 'own', 'pass', 'different-room', 'divergent', 'spectating', 'finished']) {
+    const sounds: string[] = [], session = new Session({ onSound: name => sounds.push(name) });
+    try {
+      session.uid = 42;
+      session.phase = 'joining';
+      session.roomKey = { 1: GAME_SVR, 2: 63 };
+      const moves: [number, number | null, number | null][] = [[1,1,0], [1,0,1], [1,2,1], [2,1,1]];
+      const snapshot = (finished = false) => session.gameSvrProcess(GoGameMessageID.GC_FETCH_GAME_ENV_REQUEST,
+        decode(encode({ 1: 0, 3: [{ 1: 42, 6: mode === 'own' ? 1 : 2 }],
+          4: moves.map(([color,x,y]) => ({ 1: x === null ? 2 : 1, 2:x, 3:y, 4:color })),
+          5: {1:moves.length}, 6: finished ? 5 : 3, 12:GAME_SVR, 13:63 })), decode(encode({})));
+      snapshot();
+      assert.deepEqual(sounds, ['start-play'], 'initial history only announces game start');
+      sounds.length = 0;
+      if (mode !== 'unchanged') moves.push(mode === 'pass' ? [1, null, null] : [1,1,2]);
+      if (mode === 'different-room') session.boardRoomKey = 'another-room';
+      if (mode === 'divergent') session.board.moves[0] = [1,10,10];
+      if (mode === 'spectating') session.spectating = true;
+      snapshot(mode === 'finished');
+      assert.deepEqual(sounds, mode === 'recovered' ? ['stone-capture-small'] : [], mode);
+      if (mode === 'recovered') {
+        assert.equal(session.board.captures[1], 1);
+        snapshot();
+        assert.deepEqual(sounds, ['stone-capture-small'], 'no duplicate playback');
+      }
+    } finally { session.close(); }
+  }
+});
+
 test('capture effects overlap each other and never replace or stop voice announcements', () => {
   const started: (AudioBuffer | null)[] = [], stopped: (AudioBuffer | null)[] = [];
   const audio = Object.assign(Object.create(FoxSounds.prototype) as FoxSounds, {

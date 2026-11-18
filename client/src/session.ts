@@ -1407,10 +1407,15 @@ export class Session {
         this.boardRoomKey = roomKey;
         this.clocks = {};
         this.color = 0;
+        let recoveredPlacement: { color: number; sound: string } | null = null;
         for (const data of m.get(Game.FetchGameEnvResponse.stone_moves) ?? []) {
           const move = decode(data);
-          if (move.number(Game.StoneMove.flag) === StoneMoveFlag.E_NOMAL_MOVE)
-            this.board.play(move.number(Game.StoneMove.x), move.number(Game.StoneMove.y), move.number(Game.StoneMove.color));
+          if (move.number(Game.StoneMove.flag) === StoneMoveFlag.E_NOMAL_MOVE) {
+            const color = move.number(Game.StoneMove.color);
+            const captures = this.board.play(move.number(Game.StoneMove.x), move.number(Game.StoneMove.y), color);
+            if (this.board.moves.length > previousBoard.moves.length)
+              recoveredPlacement = { color, sound: placementSound(captures) };
+          }
           else if (move.number(Game.StoneMove.flag) === StoneMoveFlag.E_PASS) this.board.passTurn(move.number(Game.StoneMove.color));
         }
 
@@ -1460,6 +1465,13 @@ export class Session {
         }
         this.pending = false;
         if (!this.gameOver) this.announceStart(resuming);
+        // A snapshot can deliver the opponent's move missed during an outage.
+        // Announce it once, after restoring the active player and audio state.
+        if (resuming && sameGame && !this.spectating && !this.gameOver &&
+            recoveredPlacement?.color === 3 - this.color &&
+            previousBoard.moves.every((move, i) =>
+              move.every((value, j) => value === this.board.moves[i]?.[j])))
+          this.onSound(recoveredPlacement.sound);
         if (this.quitRequested) {
           if (this.gameOver) this.leaveFinishedRoom();
           else {

@@ -92,7 +92,7 @@ test("recovery coalesces signals, blocks every action, and only a matching snaps
     assert.equal(s.pendingMessageId, null);
     assert.equal(s.clocks[1].main, 300);
     assert.deepEqual(s.board.moves, [[1, 3, 3], [2, 15, 15]]);
-    assert.deepEqual(sounds, ["stone"], "snapshot replay is silent");
+    assert.deepEqual(sounds, ["stone", "stone"], "the snapshot announces the missed opponent move without replaying our move");
     assert.doesNotThrow(() => s.play(4, 4));
   } finally { s.close(); }
 });

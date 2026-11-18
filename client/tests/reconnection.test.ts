@@ -11,13 +11,14 @@ import type { NetMsg } from "../src/framing.ts";
 import type { Transport } from "../src/transport.ts";
 
 function setup() {
+  const sounds: string[] = [];
   const sockets: {
     receive: (frame: NetMsg) => void;
     fail: (reason: string) => void;
     sent: { command: number; payload: Buffer }[];
     closed: boolean;
   }[] = [];
-  const s = new Session({ connectionFactory: async (_host, _port, receive, fail) => {
+  const s = new Session({ onSound: name => sounds.push(name), connectionFactory: async (_host, _port, receive, fail) => {
     const socket = { receive, fail, sent: [] as { command: number; payload: Buffer }[], closed: false };
     sockets.push(socket);
     return {
@@ -53,16 +54,17 @@ function setup() {
     reply(game.GAME_SVR, GoGameMessageID.GC_START_SET_PIECE_NOTIFY, { 6: 23, 7: 202, 9: [{ 1: 42, 6: 1 }] });
     s.play(3, 3); reply(game.GAME_SVR, GoGameMessageID.GC_SET_PIECE_NOTIFY, { 1: 3, 2: 3, 3: 1 });
   };
-  return { s, sockets, reply, authenticate, fields, restore, start };
+  return { s, sounds, sockets, reply, authenticate, fields, restore, start };
 }
 
 test("gateway loss preserves the board and rejoins through authentication and discovery in either order", async context => {
   const time = 100_000;
   context.mock.timers.enable({ apis: ["Date"], now: time * 1000 });
   for (const fieldsFirst of [true, false]) {
-    const { s, sockets, reply, authenticate, fields, restore, start } = setup();
+    const { s, sounds, sockets, reply, authenticate, fields, restore, start } = setup();
     try {
       await start();
+      sounds.length = 0;
       s.clocks[1] = { main: 300, periods: 3, byoyomi: 60, at: time - 20 };
       s.clocks[2] = { main: 120, periods: 3, byoyomi: 60, at: time - 8 };
       const before = s.snapshot(), oldGateway = sockets[1];
@@ -92,6 +94,9 @@ test("gateway loss preserves the board and rejoins through authentication and di
       restore();
       assert.equal(s.snapshot().phase, "playing");
       assert.equal(s.board.moves.length, 2);
+      assert.deepEqual(sounds, ["stone"], "the opponent's recovered move plays once");
+      restore();
+      assert.deepEqual(sounds, ["stone"], "repeated snapshots stay silent");
       assert.ok(!blocked(s.snapshot()));
       sockets.at(-1)!.fail("Proxy connection closed");
       assert.match(s.snapshot().status, /attempt 1/);
