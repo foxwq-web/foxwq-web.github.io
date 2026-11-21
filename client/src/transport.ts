@@ -6,7 +6,7 @@ import type { NetworkLog } from "./network-log.ts";
 export interface Transport {
   closed?: boolean;
   send(command: number, payload: Uint8Array): void;
-  close(): void;
+  close(reason?: string): void;
   start?(): void;
 }
 export interface TransportOptions {
@@ -47,6 +47,8 @@ export class Connection {
     url.searchParams.set("host", host);
     url.searchParams.set("port", String(port));
     const connectionId = networkLog?.connection(host, port);
+    const diagnosticId = crypto.randomUUID();
+    url.searchParams.set("connection_id", diagnosticId);
 
 
     const ws = new WebSocket(url, ["tcp-proxy", proxyToken]);
@@ -54,10 +56,11 @@ export class Connection {
     const connection = new Connection(ws, receive, failed, {
       networkLog,
       connectionId,
+      diagnosticId,
     });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        connection.close();
+        connection.close("proxy connection timed out");
         reject(Error("proxy connection timed out"));
       }, 10000);
       const done = (callback: () => void) => {
@@ -85,18 +88,35 @@ export class Connection {
     {
       networkLog,
       connectionId,
-    }: { networkLog?: NetworkLog; connectionId?: number } = {},
+      diagnosticId,
+    }: { networkLog?: NetworkLog; connectionId?: number; diagnosticId?: string } = {},
   ) {
     this.networkLog = networkLog;
     this.connectionId = connectionId;
+    this.diagnosticId = diagnosticId;
     this.ws = ws;
     this.closed = false;
     this.buffer = Buffer.alloc(0);
     this.started = false;
     this.queued = [];
+    this.diagnostic("connecting");
+    ws.addEventListener("open", () => this.diagnostic("open"), { once: true });
+    ws.addEventListener("error", () => this.diagnostic("websocket_error"));
+    const environmentChanged = () => this.diagnostic("browser_state");
+    if (diagnosticId) {
+      globalThis.addEventListener?.("online", environmentChanged);
+      globalThis.addEventListener?.("offline", environmentChanged);
+      if (typeof document !== "undefined") document.addEventListener("visibilitychange", environmentChanged);
+      this.removeDiagnosticListeners = () => {
+        globalThis.removeEventListener?.("online", environmentChanged);
+        globalThis.removeEventListener?.("offline", environmentChanged);
+        if (typeof document !== "undefined") document.removeEventListener("visibilitychange", environmentChanged);
+      };
+    }
     const fail = (reason: string) => {
       if (!this.closed) {
-        this.close();
+        this.diagnostic("failure", reason);
+        this.close(reason);
         failed(reason);
       }
     };
@@ -104,6 +124,8 @@ export class Connection {
       try {
         if (!(data instanceof ArrayBuffer))
           throw Error("proxy sent a nonbinary message");
+        this.receivedBytes += data.byteLength;
+        this.lastReceivedAt = performance.now();
         this.networkLog?.traffic(
           this.connectionId!,
           "inbound",
@@ -125,6 +147,8 @@ export class Connection {
     });
     // A WebSocket error is followed by close; wait for its diagnostic details.
     ws.addEventListener("close", ({ code, reason, wasClean }) => {
+      this.diagnostic("close", `code ${code}${reason ? ` ${reason}` : ""}; clean ${wasClean}`);
+      this.removeDiagnosticListeners?.();
       if (this.connectionId !== undefined)
         this.networkLog?.closeConnection(this.connectionId, { code, reason, wasClean });
       fail(`proxy connection closed code ${code}${reason ? ` ${reason}` : ""}`);
@@ -147,11 +171,41 @@ export class Connection {
     if (this.ws.bufferedAmount + packet.length > MAX_SIZE)
       throw Error("send buffer limit exceeded");
     this.ws.send(packet);
+    this.sentBytes += packet.length;
+    this.lastSentAt = performance.now();
     this.networkLog?.traffic(this.connectionId!, "outbound", packet);
   }
-  close() {
+  private diagnosticId?: string;
+  private createdAt = performance.now();
+  private sentBytes = 0;
+  private receivedBytes = 0;
+  private lastSentAt: number | null = null;
+  private lastReceivedAt: number | null = null;
+  private localCloseReason?: string;
+  private removeDiagnosticListeners?: () => void;
+  private diagnostic(event: string, reason?: string) {
+    if (!this.diagnosticId || !this.networkLog || this.connectionId === undefined) return;
+    const time = performance.now();
+    this.networkLog.diagnostic(this.connectionId, {
+      connectionId: this.diagnosticId, event, elapsedMs: Math.round(time - this.createdAt),
+      sentBytes: this.sentBytes, receivedBytes: this.receivedBytes,
+      lastSentAgoMs: this.lastSentAt === null ? null : Math.round(time - this.lastSentAt),
+      lastReceivedAgoMs: this.lastReceivedAt === null ? null : Math.round(time - this.lastReceivedAt),
+      bufferedBytes: this.ws.bufferedAmount, readyState: this.ws.readyState,
+      online: typeof navigator === "undefined" ? null : navigator.onLine ?? null,
+      visibility: typeof document === "undefined" ? null : document.visibilityState,
+      ...(reason ? { reason } : {}),
+      ...(this.localCloseReason ? { localCloseReason: this.localCloseReason } : {}),
+    });
+  }
+  close(reason = "client close") {
     if (this.closed) return;
+    if (this.ws.readyState < 2) {
+      this.localCloseReason = reason;
+      this.diagnostic("close_requested", reason);
+    }
     this.closed = true;
+    this.removeDiagnosticListeners?.();
     this.queued = [];
     this.buffer = Buffer.alloc(0);
     if (this.connectionId !== undefined) this.networkLog?.closeConnection(this.connectionId);

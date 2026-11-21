@@ -18,6 +18,67 @@ function memoryStore(): NetworkLogStore {
   return { put(record) { records.set(record.key, record); }, read: () => [...records.values()] };
 }
 
+test('connection diagnostics correlate lifecycle and traffic, distinguishing local closes from remote loss', async t => {
+  let time = 100;
+  t.mock.method(performance, 'now', () => time);
+  const original = globalThis.WebSocket;
+  globalThis.WebSocket = { OPEN: 1 } as typeof WebSocket;
+  t.after(() => { globalThis.WebSocket = original; });
+  for (const local of [true, false]) {
+    const log = new NetworkLog(memoryStore()), connectionId = log.connection('fox.example', 3001);
+    const ws = Object.assign(new EventTarget(), { readyState: 0, bufferedAmount: 0, send() {}, close() {} });
+    const failures: string[] = [];
+    const connection = new Connection(ws as unknown as WebSocket, () => {}, reason => failures.push(reason),
+      { networkLog: log, connectionId, diagnosticId: 'a7a5f242-c6b1-467f-9707-afb04725c871' });
+    connection.start(); ws.readyState = 1; ws.dispatchEvent(new Event('open'));
+    time += 20; connection.send(3000, encode({ 1: 42 }));
+    const bytes = frame(3005, encode({ 1: 42 }));
+    time += 10; ws.dispatchEvent(new MessageEvent('message', { data: Uint8Array.from(bytes).buffer }));
+    time += 50;
+    if (local) connection.close('session recovery: heartbeat timed out');
+    else ws.dispatchEvent(new Event('error'));
+    ws.readyState = 3;
+    ws.dispatchEvent(Object.assign(new Event('close'), { code: local ? 1000 : 1006, reason: '', wasClean: local }));
+    const entries: NetworkEntry[] = JSON.parse(await log.serialize());
+    const diagnostics = entries.flatMap(entry => entry.connectionDiagnostic ? [entry.connectionDiagnostic] : []);
+    assert.ok(diagnostics.every(entry => entry.connectionId === 'a7a5f242-c6b1-467f-9707-afb04725c871'));
+    const closed = diagnostics.find(entry => entry.event === 'close')!;
+    assert.equal(closed.elapsedMs, 80);
+    assert.equal(closed.receivedBytes, bytes.length);
+    assert.equal(closed.sentBytes, frame(3000, encode({ 1: 42 })).length);
+    assert.equal(closed.lastSentAgoMs, 60); assert.equal(closed.lastReceivedAgoMs, 50);
+    assert.equal(closed.localCloseReason, local ? 'session recovery: heartbeat timed out' : undefined);
+    assert.equal(diagnostics.filter(entry => entry.event === 'close_requested').length, local ? 1 : 0);
+    assert.equal(failures.length, local ? 0 : 1);
+    assert.ok(entries.find(entry => entry.websocketClose));
+  }
+});
+
+test('opening a connection sends the same diagnostic ID to the Worker and the downloaded log', async t => {
+  let endpoint = '';
+  class Socket extends EventTarget {
+    readyState = 0; bufferedAmount = 0;
+    constructor(url: string | URL) {
+      super(); endpoint = String(url);
+      queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event('open')); });
+    }
+    close() { this.readyState = 3; this.dispatchEvent(Object.assign(new Event('close'), {code:1000, reason:'', wasClean:true})); }
+  }
+  const original = globalThis.WebSocket;
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  t.after(() => { globalThis.WebSocket = original; });
+  const log = new NetworkLog(memoryStore());
+  const connection = await Connection.open('fox.example', 3001, () => {}, () => {},
+    {proxyUrl:'wss://proxy.example/proxy', proxyToken:'a'.repeat(43), networkLog:log});
+  connection.close();
+  const id = new URL(endpoint).searchParams.get('connection_id');
+  assert.match(id!, /^[a-f0-9-]{36}$/);
+  const entries: NetworkEntry[] = JSON.parse(await log.serialize());
+  assert.ok(entries.some(entry => entry.connectionDiagnostic?.event === 'open'));
+  assert.ok(entries.filter(entry => entry.connectionDiagnostic).every(entry => entry.connectionDiagnostic!.connectionId === id));
+  assert.equal(JSON.stringify(entries).includes('a'.repeat(43)), false);
+});
+
 test('classic PC lobby authentication never persists its session token', async () => {
   for (const id of [4000, 4005]) {
     const log = new NetworkLog(memoryStore()), connection = log.connection('pc-lobby', 8000);

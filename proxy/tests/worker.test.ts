@@ -2,7 +2,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createServer, type Socket } from 'node:net';
-import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { Miniflare, convertV4MiniflareOptions, Log, LogLevel } from 'miniflare';
 import { build } from 'esbuild';
 
 async function compileWorker(path: string) {
@@ -26,7 +26,13 @@ test('Worker authenticates upgrades and relays opaque binary chunks in both dire
     const path = fileURLToPath(new URL(`../src/${name}`, import.meta.url));
     return { type: 'ESModule' as const, path, contents: await compileWorker(path) };
   }));
+  const logs: string[] = [];
+  class CaptureLog extends Log {
+    logWithLevel(_level: LogLevel, message: string) { logs.push(message); }
+  }
   const mf = new Miniflare(convertV4MiniflareOptions({
+    log: new CaptureLog(LogLevel.DEBUG),
+    handleStructuredLogs: log => logs.push(log.message),
     modules, compatibilityDate: '2026-10-08',
     outboundService: () => assert.fail('Unexpected outbound HTTP request'),
     bindings: { PROXY_TOKEN: 'a'.repeat(43), ALLOWED_ORIGINS: 'http://localhost:5173', ALLOWED_TARGETS: `127.0.0.1:${port}` }
@@ -34,7 +40,8 @@ test('Worker authenticates upgrades and relays opaque binary chunks in both dire
   let ws: Awaited<ReturnType<typeof mf.dispatchFetch>>['webSocket'] = null;
   const headers = { Upgrade: 'websocket', Origin: 'http://localhost:5173', 'Sec-WebSocket-Protocol': `tcp-proxy, ${'a'.repeat(43)}` };
   try {
-    const endpoint = `http://localhost/proxy?host=127.0.0.1&port=${port}`;
+    const diagnosticId = 'a7a5f242-c6b1-467f-9707-afb04725c871';
+    const endpoint = `http://localhost/proxy?host=127.0.0.1&port=${port}&connection_id=${diagnosticId}`;
     assert.equal((await mf.dispatchFetch('http://localhost/health')).status, 200);
     for (const method of ['GET', 'POST', 'OPTIONS']) {
       assert.equal((await mf.dispatchFetch('http://localhost/estimate', { method })).status, 404);
@@ -57,8 +64,37 @@ test('Worker authenticates upgrades and relays opaque binary chunks in both dire
     assert.deepEqual(await received, Buffer.from([0,255,8,13,10,99,128]));
     const closed = new Promise<{ code: number }>(resolve => websocket.addEventListener('close', resolve, { once: true }));
     ws.send('not binary'); assert.equal((await closed).code, 1003);
+    for (let i = 0; i < 100 && !logs.join('\n').includes('proxy_closed'); i++)
+      await new Promise(resolve => setTimeout(resolve, 10));
+    const records = logs.join('\n');
+    assert.match(records, /proxy_connecting/);
+    assert.match(records, /proxy_open/);
+    assert.match(records, /proxy_closed/);
+    assert.match(records, new RegExp(diagnosticId));
+    assert.match(records, /invalid_message/);
+    assert.match(records, /sentBytes.*7/s);
+    assert.match(records, /receivedBytes.*7/s);
+    assert.equal(records.includes('a'.repeat(43)), false, 'proxy access tokens are never logged');
+    for (const initiator of ['tcp_eof', 'websocket_close']) {
+      const start = logs.length;
+      const response = await mf.dispatchFetch(endpoint, { headers });
+      const peer = response.webSocket!; ws = peer; peer.accept();
+      const ended = new Promise(resolve => peer.addEventListener('close', resolve, { once: true }));
+      if (initiator === 'tcp_eof') {
+        const socket = [...sockets].at(-1)!;
+        socket.end();
+      } else peer.close(1000, 'done');
+      if (initiator === 'tcp_eof') await ended;
+      for (let i = 0; i < 100 && !logs.slice(start).join('\n').includes('proxy_closed'); i++)
+        await new Promise(resolve => setTimeout(resolve, 10));
+      const lifecycle = logs.slice(start).join('\n');
+      assert.match(lifecycle, new RegExp(initiator));
+      assert.equal(lifecycle.match(/proxy_closed/g)?.length, 1, 'shutdown races produce one terminal record');
+      if (initiator === 'websocket_close') assert.match(lifecycle, /peerCode.*1000/s);
+    }
   } finally {
-    ws?.close(); await mf.dispose(); for (const socket of sockets) socket.destroy();
+    try { ws?.close(); } catch { /* The client-close scenario already closed it. */ }
+    await mf.dispose(); for (const socket of sockets) socket.destroy();
     await new Promise<void>((resolve, reject) => tcp.close(error => error ? reject(error) : resolve()));
   }
 });

@@ -13,6 +13,21 @@ export interface NetworkEntry {
   destination: string;
   payload: string;
   websocketClose?: { code: number; reason: string; wasClean: boolean };
+  connectionDiagnostic?: {
+    connectionId: string;
+    event: string;
+    elapsedMs: number;
+    sentBytes: number;
+    receivedBytes: number;
+    lastSentAgoMs: number | null;
+    lastReceivedAgoMs: number | null;
+    bufferedBytes: number;
+    readyState: number;
+    online: boolean | null;
+    visibility: string | null;
+    reason?: string;
+    localCloseReason?: string;
+  };
 }
 interface PendingChunk extends StoredNetworkEntry {
   remaining: number;
@@ -46,6 +61,16 @@ export class NetworkLog {
     return this.store.error ?? (this.recording() ? undefined : "browser storage is unavailable");
   }
   flush() { return this.store.flush?.(); }
+
+  diagnostic(connectionId: number, diagnostic: NonNullable<NetworkEntry['connectionDiagnostic']>) {
+    if (!this.recording()) return;
+    const { client, server } = this.connections.get(connectionId)!;
+    const timestamp = new Date().toISOString();
+    this.store.put({
+      key: `${timestamp}:${this.pageId}:${String(this.sequence++).padStart(16, "0")}`,
+      entry: { timestamp, source: client, destination: server, payload: "", connectionDiagnostic: diagnostic },
+    });
+  }
 
   private finish(stream: Stream) {
     for (const chunk of stream.chunks) {

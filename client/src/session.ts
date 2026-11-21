@@ -498,8 +498,8 @@ export class Session {
         clearTimeout(this.timer ?? undefined);
         clearTimeout(this.bootstrapTimer);
         this.timer = null;
-        this.fgwConnection?.close();
-        this.connection?.close();
+        this.fgwConnection?.close(`session recovery: ${reason}`);
+        this.connection?.close(`session recovery: ${reason}`);
         this.fgwConnection = this.connection = null;
         this.restoreFinishedReview();
         return;
@@ -514,8 +514,8 @@ export class Session {
         clearTimeout(this.bootstrapTimer);
         clearTimeout(this.reconnectTimer);
         this.timer = null;
-        this.fgwConnection?.close();
-        this.connection?.close();
+        this.fgwConnection?.close(`session recovery: ${reason}`);
+        this.connection?.close(`session recovery: ${reason}`);
         this.fgwConnection = this.connection = null;
         if (this.loginPacket && !fatal) {
           this.reconnectBoard = finished;
@@ -549,8 +549,8 @@ export class Session {
         clearTimeout(this.timer ?? undefined);
         clearTimeout(this.bootstrapTimer);
         clearTimeout(this.reconnectTimer);
-        this.fgwConnection?.close();
-        this.connection?.close();
+        this.fgwConnection?.close(`session recovery: ${reason}`);
+        this.connection?.close(`session recovery: ${reason}`);
         this.fgwConnection = this.connection = null;
         this.phase = "reconnecting";
         this.pending = false;

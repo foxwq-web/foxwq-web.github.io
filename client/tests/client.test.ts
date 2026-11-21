@@ -406,7 +406,9 @@ test('browser WebSocket transport: login, gateway, start before entry, play, pas
       assert.ok(!Buffer.from(entry.payload, 'base64').includes(Buffer.from('private-token')));
     assert.ok(packets(secondClient, false).some(p => game.decodeFgwMessage(p.rawProto)[0].one(1) === RoomMessageID.RM_AUTO_INVITE_REQUEST));
     assert.ok(packets(secondClient, true).some(p => game.decodeFgwMessage(p.rawProto)[0].one(1) === GoGameMessageID.GC_SET_GAME_END_NOTIFY));
-    assert.ok(log.every(e => Object.keys(e).join(',') === 'timestamp,source,destination,payload' && !Number.isNaN(Date.parse(e.timestamp))));
+    assert.ok(log.every(e => !Number.isNaN(Date.parse(e.timestamp)) &&
+      Object.keys(e).every(key => ['timestamp', 'source', 'destination', 'payload', 'connectionDiagnostic', 'websocketClose'].includes(key))));
+    assert.ok(log.some(e => e.connectionDiagnostic?.event === 'open'));
   } finally {s.close();globalThis.WebSocket=Original;}
 });
 test('late asynchronous login cannot overwrite a disconnected session', async () => {

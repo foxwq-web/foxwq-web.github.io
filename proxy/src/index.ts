@@ -1,4 +1,5 @@
 import { connect } from 'cloudflare:sockets';
+import { ConnectionDiagnostics, errorDetails } from './connection-diagnostics';
 
 interface Env extends Omit<ProxyBindings, 'PROXY_TOKEN'> {
   PROXY_TOKEN?: string;
@@ -72,6 +73,13 @@ export default {
     const port = Number(rawPort);
     if (!/^[a-zA-Z0-9.-]+$/.test(hostname) || !/^\d{1,5}$/.test(rawPort) || port < 1 || port > 65535) return new Response('Invalid target', { status: 400 });
     if (!list(env.ALLOWED_TARGETS).includes(`${hostname}:${port}`)) return new Response('Target forbidden', { status: 403 });
+    const suppliedId = url.searchParams.get('connection_id') ?? '';
+    const diagnostics = new ConnectionDiagnostics({
+      connectionId: /^[a-f0-9-]{36}$/i.test(suppliedId) ? suppliedId : crypto.randomUUID(),
+      target: `${hostname}:${port}`, rayId: request.headers.get('cf-ray'),
+      colo: typeof request.cf?.colo === 'string' ? request.cf.colo : null,
+    });
+    diagnostics.event('proxy_connecting');
     let socket: Socket | undefined;
     try {
       socket = connect({ hostname, port }, { secureTransport: 'off', allowHalfOpen: false });
@@ -79,32 +87,39 @@ export default {
       try {
         await Promise.race([socket.opened, new Promise<void>((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), 10000); })]);
       } finally { if (timer !== undefined) clearTimeout(timer); }
-    } catch { socket?.close().catch(() => {}); return new Response('TCP connection failed', { status: 502 }); }
+    } catch (error) {
+      diagnostics.event('proxy_connect_failed', errorDetails(error));
+      socket?.close().catch(() => {}); return new Response('TCP connection failed', { status: 502 });
+    }
+    diagnostics.event('proxy_open');
     const tcpSocket = socket;
     const [client, server] = Object.values(new WebSocketPair());
     server.accept(); server.binaryType = 'arraybuffer';
     const writer = tcpSocket.writable.getWriter();
     let closed = false, queued = 0, writes = Promise.resolve();
-    const shutdown = (code = 1000, reason = 'TCP connection closed') => {
+    const shutdown = (code = 1000, reason = 'TCP connection closed', initiator = 'tcp_eof', details: Record<string, unknown> = {}) => {
       if (closed) return;
       closed = true;
+      diagnostics.event('proxy_closed', { code, reason, initiator, queuedBytes: queued, ...details });
       try { server.close(code, reason); } catch {                      }
       tcpSocket.close().catch(() => {});
     };
     server.addEventListener('message', event => {
       if (closed) return;
-      if (!(event.data instanceof ArrayBuffer)) { shutdown(1003, 'Binary messages required'); return; }
+      if (!(event.data instanceof ArrayBuffer)) { shutdown(1003, 'Binary messages required', 'invalid_message'); return; }
       const bytes = new Uint8Array(event.data);
       queued += bytes.byteLength;
-      if (queued > LIMIT) { shutdown(1009, 'Write buffer limit exceeded'); return; }
+      if (queued > LIMIT) { shutdown(1009, 'Write buffer limit exceeded', 'write_buffer_limit'); return; }
       writes = writes.then(async () => {
-        if (!closed) await writer.write(bytes);
+        if (!closed) { await writer.write(bytes); diagnostics.sent(bytes.byteLength); }
         queued -= bytes.byteLength;
-      }).catch(() => shutdown(1011, 'TCP write failed'));
+      }).catch(error => shutdown(1011, 'TCP write failed', 'tcp_write_error', errorDetails(error)));
     });
-    server.addEventListener('close', () => shutdown());
-    server.addEventListener('error', () => shutdown(1011, 'WebSocket failed'));
-    tcpSocket.closed.catch(() => shutdown(1011, 'TCP connection failed'));
+    server.addEventListener('close', event => shutdown(1000, 'TCP connection closed', 'websocket_close', {
+      peerCode: event.code, peerReason: event.reason.slice(0, 123), peerWasClean: event.wasClean,
+    }));
+    server.addEventListener('error', () => shutdown(1011, 'WebSocket failed', 'websocket_error'));
+    tcpSocket.closed.catch(error => shutdown(1011, 'TCP connection failed', 'tcp_socket_error', errorDetails(error)));
 
     void (async () => {
       const reader = tcpSocket.readable.getReader();
@@ -112,10 +127,12 @@ export default {
         while (!closed) {
           const { value, done } = await reader.read();
           if (done) break;
-          server.send(value);
+          try { server.send(value); }
+          catch (error) { shutdown(1011, 'WebSocket send failed', 'websocket_send_error', errorDetails(error)); return; }
+          diagnostics.received(value.byteLength);
         }
         shutdown();
-      } catch { shutdown(1011, 'TCP read failed'); }
+      } catch (error) { shutdown(1011, 'TCP read failed', 'tcp_read_error', errorDetails(error)); }
       finally { reader.releaseLock(); }
     })();
     return new Response(null, { status: 101, webSocket: client, headers: { 'Sec-WebSocket-Protocol': 'tcp-proxy' } });
